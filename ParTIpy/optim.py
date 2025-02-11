@@ -22,7 +22,7 @@ import scipy.optimize
 import numpy as np
 from numba import njit, prange
 
-from .const import lambda_param
+from .const import LAMBDA
 
 
 def compute_A_regularized_nnls(
@@ -32,8 +32,8 @@ def compute_A_regularized_nnls(
     derivative_max_iter=None,
 ) -> np.ndarray:
     # huge_constant is added as a new column to account for w norm constraint
-    X_padded = np.column_stack([X, lambda_param * np.ones(X.shape[0])])
-    Zt_padded = np.row_stack([Z.T, lambda_param * np.ones(Z.shape[0])])
+    X_padded = np.hstack([X, (LAMBDA * np.ones(X.shape[0]))[:, None]])
+    Zt_padded = np.vstack([Z.T, LAMBDA * np.ones(Z.shape[0])])
 
     # Use non-negative least squares to solve the optimization problem
     A = np.array(
@@ -52,8 +52,8 @@ def compute_B_regularized_nnls(
     derivative_max_iter=None,
 ) -> np.ndarray:
     Z = np.linalg.lstsq(a=A, b=X, rcond=None)[0]
-    Z_padded = np.column_stack([Z, lambda_param * np.ones(Z.shape[0])])
-    Xt_padded = np.row_stack([X.T, lambda_param * np.ones(X.shape[0])])
+    Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
+    Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
     B = np.array(
         [
             scipy.optimize.nnls(A=Xt_padded, b=Z_padded[k, :])[0]
@@ -105,9 +105,8 @@ def compute_A_projected_gradients(
         )  # chain rule of projection, check broadcasting
 
         prev_A = A
-        for _ in range(
-            derivative_max_iter * 100
-        ):  # Base implementation has a while True
+        # NOTE: original implementation has a while True
+        for _ in range(derivative_max_iter * 100):
             A = (prev_A - muA * G).clip(0)
             A = A / (
                 np.sum(A, axis=1)[:, None] + np.finfo(np.float64).eps
@@ -161,9 +160,8 @@ def compute_B_projected_gradients(
         )  # chain rule of projection, check broadcasting
 
         prev_B = B
-        for _ in range(
-            derivative_max_iter * 100
-        ):  # Base implementation has a while True
+        # NOTE: original implementation has a while True
+        for _ in range(derivative_max_iter * 100):
             B = (prev_B - muB * G).clip(0)
             B = B / (
                 np.sum(B, axis=1)[:, None] + np.finfo(np.float64).eps

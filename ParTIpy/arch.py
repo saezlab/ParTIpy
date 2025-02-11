@@ -10,14 +10,23 @@ from typing import Union
 
 import numpy as np
 
+from .const import (
+    OPTIM_ALGS,
+    INIT_ALGS,
+    WEIGHT_ALGS,
+    DEFAULT_OPTIM,
+    DEFAULT_INIT,
+    DEFAULT_WEIGHT,
+)
+
 
 class AA(object):
     def __init__(
         self,
         n_archetypes: int,
-        init: str = "furthest_sum",
-        optim: str = "projected_gradients",
-        weight: Union[None, str] = None,
+        init: str = DEFAULT_INIT,
+        optim: str = DEFAULT_OPTIM,
+        weight: Union[None, str] = DEFAULT_WEIGHT,
         max_iter: int = 100,
         derivative_max_iter: int = 10,
         tol: float = 1e-6,
@@ -37,6 +46,11 @@ class AA(object):
         self.n_samples, self.n_features = None, None
         self.RSS = None
         self.varexpl = None
+
+        # checks
+        assert self.init in INIT_ALGS
+        assert self.optim in OPTIM_ALGS
+        assert self.weight in WEIGHT_ALGS
 
     def fit(self, X: np.ndarray):
         """

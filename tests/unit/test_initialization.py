@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 
 from ParTIpy.initialize import furthest_sum_init, random_init
-from generate_test_data import simulate
+from ParTIpy.generate_test_data import simulate
 
 N_SAMPLES = 1_000
 

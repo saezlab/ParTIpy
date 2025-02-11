@@ -12,7 +12,7 @@ from ParTIpy.arch import AA
 
 X = np.array(pd.read_csv(Path("benchmarking") / "aa_toy_data.csv").values)
 
-X = np.vstack((X, np.array([30, 31, 30, 33.5, 31, 32.1]).reshape(-1, 2)))
+# X = np.vstack((X, np.array([30, 31, 30, 33.5, 31, 32.1]).reshape(-1, 2)))
 
 feature_means = X.mean(axis=0, keepdims=True)
 feature_stds = X.std(axis=0, keepdims=True)
@@ -23,8 +23,10 @@ A, B, Z, RSS, varexpl = (
     AA(
         n_archetypes=3,
         init="furthest_sum",
-        optim="projected_gradients",
-        weight="bisquare",
+        # optim="regularized_nnls",
+        optim="regularized_nnls",
+        # weight="bisquare",
+        weight=None,
     )
     .fit(X=X)
     .return_all()
