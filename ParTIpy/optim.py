@@ -20,7 +20,7 @@ b) https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 
 import scipy.optimize
 import numpy as np
-from numba import njit, prange
+from numba import njit
 
 from .const import LAMBDA
 
@@ -69,6 +69,7 @@ def compute_A_projected_gradients(
     Z: np.ndarray,
     A: np.ndarray,
     derivative_max_iter: int = 10,
+    muA: float = 1.0,
 ) -> np.ndarray:
     """Updates the A matrix given the data matrix X and the archetypes Z.
 
@@ -94,7 +95,6 @@ def compute_A_projected_gradients(
         Updated A matrix with shape (n_samples, n_archetypes).
     """
     rel_tol = 1e-6
-    muA = 1.0
     prev_RSS = np.linalg.norm(X - A @ Z) ** 2
     for _ in range(derivative_max_iter):
         # brackets are VERY important to save time
@@ -126,6 +126,7 @@ def compute_B_projected_gradients(
     A: np.ndarray,
     B: np.ndarray,
     derivative_max_iter: int = 10,
+    muB: float = 1.0,
 ) -> np.ndarray:
     """Updates the B matrix given the data matrix X and the A matrix.
 
@@ -149,7 +150,6 @@ def compute_B_projected_gradients(
         Updated B matrix with shape (n_archetypes, n_samples).
     """
     rel_tol = 1e-6
-    muB = 1.0
     prev_RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
     for _ in range(derivative_max_iter):
         # brackets are VERY important to save time
@@ -175,7 +175,7 @@ def compute_B_projected_gradients(
     return B
 
 
-@njit(cache=True)
+# @njit(cache=True)
 def compute_A_frank_wolfe(
     X: np.ndarray,
     Z: np.ndarray,
@@ -197,21 +197,21 @@ def compute_A_frank_wolfe(
         argmins = np.argmin(G, axis=1)
 
         # set our indicator matrix e
-        # e[row_indices, argmins] = 1.0
-        for idx in prange(n_samples):
-            e[idx, argmins[idx]] = 1.0
+        e[range(n_samples), argmins] = 1.0
+        # for idx in prange(n_samples):
+        #    e[idx, argmins[idx]] = 1.0
 
         # now where does this update rule come from?
-        A += 2.0 / (t + 2.0) * (e - A)
+        A += (2.0 / (t + 2.0)) * (e - A)
 
         # reset e
-        # e[row_indices, argmins] = 0.0
-        for idx in prange(n_samples):
-            e[idx, argmins[idx]] = 0.0
+        e[range(n_samples), argmins] = 0.0
+        # for idx in prange(n_samples):
+        #    e[idx, argmins[idx]] = 0.0
     return A
 
 
-@njit(cache=True)
+# @njit(cache=True)
 def compute_B_frank_wolfe(
     X: np.ndarray,
     A: np.ndarray,
@@ -232,15 +232,15 @@ def compute_B_frank_wolfe(
         argmins = np.argmin(G, axis=1)
 
         # set our indicator matrix e
-        # e[range(n_archetypes), argmins] = 1.0
-        for idx in prange(n_archetypes):
-            e[idx, argmins[idx]] = 1.0
+        e[range(n_archetypes), argmins] = 1.0
+        # for idx in prange(n_archetypes):
+        #    e[idx, argmins[idx]] = 1.0
 
         # now where does this update rule come from?
-        B += 2.0 / (t + 2.0) * (e - B)
+        B += (2.0 / (t + 2.0)) * (e - B)
 
         # reset e
-        # e[range(n_archetypes), argmins] = 0.0
-        for idx in prange(n_archetypes):
-            e[idx, argmins[idx]] = 0.0
+        e[range(n_archetypes), argmins] = 0.0
+        # for idx in prange(n_archetypes):
+        #    e[idx, argmins[idx]] = 0.0
     return B

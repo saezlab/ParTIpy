@@ -6,7 +6,7 @@ Note: notation used X ≈ A · B · X = A · Z
 Code adapted from https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 """
 
-from typing import Union
+from typing import Union, List
 
 import numpy as np
 
@@ -18,6 +18,19 @@ from .const import (
     DEFAULT_INIT,
     DEFAULT_WEIGHT,
 )
+
+from .initialize import random_init, furthest_sum_init
+
+from .optim import (
+    compute_A_regularized_nnls,
+    compute_B_regularized_nnls,
+    compute_A_frank_wolfe,
+    compute_B_frank_wolfe,
+    compute_A_projected_gradients,
+    compute_B_projected_gradients,
+)
+
+from .weights import compute_bisquare_weights
 
 
 class AA(object):
@@ -43,8 +56,10 @@ class AA(object):
         self.A = None
         self.B = None
         self.Z = None  # Archetypes
+        self.muA, self.muB = None, None
         self.n_samples, self.n_features = None, None
         self.RSS = None
+        self.RSS_trace: List[float] = []
         self.varexpl = None
 
         # checks
@@ -66,33 +81,20 @@ class AA(object):
 
         # set the initalization function
         if self.init == "random":
-            from .initialize import random_init
-
             initialize_B = random_init
         elif self.init == "furthest_sum":
-            from .initialize import furthest_sum_init
-
             initialize_B = furthest_sum_init
         else:
             raise NotImplementedError()
 
         # set the optimization functions
         if self.optim == "regularized_nnls":
-            from .optim import compute_A_regularized_nnls, compute_B_regularized_nnls
-
             compute_A = compute_A_regularized_nnls
             compute_B = compute_B_regularized_nnls
         elif self.optim == "projected_gradients":
-            from .optim import (
-                compute_A_projected_gradients,
-                compute_B_projected_gradients,
-            )
-
             compute_A = compute_A_projected_gradients
             compute_B = compute_B_projected_gradients
         elif self.optim == "frank_wolfe":
-            from .optim import compute_A_frank_wolfe, compute_B_frank_wolfe
-
             compute_A = compute_A_frank_wolfe
             compute_B = compute_B_frank_wolfe
         else:
@@ -101,8 +103,6 @@ class AA(object):
         # set the weight function
         if self.weight:
             if self.weight == "bisquare":
-                from .weights import compute_bisquare_weights
-
                 compute_weights = compute_bisquare_weights
             else:
                 raise NotImplementedError()
@@ -135,6 +135,7 @@ class AA(object):
             if (prev_RSS is not None) and ((abs(prev_RSS - RSS) / prev_RSS) < self.tol):
                 break
             prev_RSS = RSS
+            self.RSS_trace.append(float(RSS))
 
         # Recalculate A and B using the unweighted data
         if self.weight:
@@ -147,6 +148,7 @@ class AA(object):
         self.A = A
         self.B = B
         self.RSS = RSS
+        self.RSS_trace = np.array(self.RSS_trace)
         self.varexpl = (TSS - RSS) / TSS
         return self
 

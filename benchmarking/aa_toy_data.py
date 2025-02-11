@@ -24,7 +24,7 @@ A, B, Z, RSS, varexpl = (
         n_archetypes=3,
         init="furthest_sum",
         # optim="regularized_nnls",
-        optim="regularized_nnls",
+        optim="projected_gradients",
         # weight="bisquare",
         weight=None,
     )
