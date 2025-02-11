@@ -1,0 +1,39 @@
+repos:
+  # Add some general purpose useful hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Make sure that contained YAML files are well-formed
+      - id: check-yaml
+      # Trim trailing whitespace of all sorts
+      - id: trailing-whitespace
+      # Simple parser validation of e.g. pyproject.toml
+      - id: check-toml
+      # Unify file endings
+      - id: end-of-file-fixer
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.4
+    hooks:
+      - id: ruff
+        types_or: [python] # ignore jupyter for now [python, jupyter]
+        args: [--fix]
+      - id: ruff-format
+        types_or: [python] # ignore jupyter for now [python, jupyter]
+
+  # pytest hook to run tests on commit
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run pytest
+        entry: pytest
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+
+  # type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy

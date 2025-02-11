@@ -1,13 +1,14 @@
 import sys
 import os
 from pathlib import Path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from parTIpy.arch import AA
+from ParTIpy.arch import AA
 
 X = np.array(pd.read_csv(Path("benchmarking") / "aa_toy_data.csv").values)
 
@@ -18,11 +19,16 @@ feature_stds = X.std(axis=0, keepdims=True)
 X -= feature_means
 X /= feature_stds
 
-A, B, Z, RSS, varexpl = AA(n_archetypes=3, 
-                           init="random", 
-                           optim="projected_gradients",
-                           weight="bisquare"
-                           ).fit(X=X).return_all()
+A, B, Z, RSS, varexpl = (
+    AA(
+        n_archetypes=3,
+        init="furthest_sum",
+        optim="projected_gradients",
+        weight="bisquare",
+    )
+    .fit(X=X)
+    .return_all()
+)
 
 plt.style.use("dark_background")
 plt.scatter(X[:, 0], X[:, 1], alpha=0.5)

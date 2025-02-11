@@ -2,24 +2,22 @@ import numpy as np
 from scipy.sparse import csr_matrix
 
 
-def random_init(X: np.ndarray, 
-                n_archetypes: int, 
-                exclude: list = [], 
-                seed: int = 42):
+def random_init(
+    X: np.ndarray, n_archetypes: int, exclude: list = [], seed: int = 42
+) -> np.ndarray:
     B = np.eye(N=n_archetypes, M=X.shape[0])
     return B
 
 
-def furthest_sum_init(X: np.ndarray, 
-                      n_archetypes: int, 
-                      exclude: list = [], 
-                      seed: int = 42):
+def furthest_sum_init(
+    X: np.ndarray, n_archetypes: int, exclude: list = [], seed: int = 42
+) -> np.ndarray:
     """Furthest sum algorithm, to efficiently generat initial archetypes.
-    
+
     Parameters
     ----------
     X: numpy 2d-array
-        data matrix with shape (n_samples x n_features) 
+        data matrix with shape (n_samples x n_features)
 
     n_archetypes: int
         number of candidate archetypes to extract.
@@ -36,8 +34,9 @@ def furthest_sum_init(X: np.ndarray,
         B matrix with shape (n_archetypes, n_samples).
     """
     np.random.seed(seed)
-    def max_ind_val(l):
-        return max(zip(range(len(l)), l), key=lambda x: x[1])
+
+    def max_ind_val(input_list):
+        return max(zip(range(len(input_list)), input_list), key=lambda x: x[1])
 
     K = X.T
     D, N = K.shape
@@ -62,15 +61,16 @@ def furthest_sum_init(X: np.ndarray,
             sum_dist += np.lib.scimath.sqrt(Kt2 - 2 * Kq + Kt2[ind_t])
             ind, _ = max_ind_val(sum_dist[:, t][0].real)
             ind_t = t[ind]
-            i.append(ind_t)
+            i.append(ind_t)  # type: ignore
             index[ind_t] = -1
     else:
         if D != N or np.sum(K - K.T) != 0:  # Generate kernel if K not one
             Kt = K
             K = Kt.T @ Kt
             K = np.lib.scimath.sqrt(
-                np.matlib.repmat(np.diag(K), N, 1) - 2 * K + \
-                np.matlib.repmat((np.diag(K)).T, 1, N)
+                np.matlib.repmat(np.diag(K), N, 1)
+                - 2 * K
+                + np.matlib.repmat((np.diag(K)).T, 1, N)
             )
 
         Kt2 = np.diag(K)  # Horizontal
@@ -83,9 +83,13 @@ def furthest_sum_init(X: np.ndarray,
             sum_dist += np.lib.scimath.sqrt(Kt2 - 2 * K[ind_t, :] + Kt2[ind_t])
             ind, _ = max_ind_val(sum_dist[:, t][0].real)
             ind_t = t[ind]
-            i.append(ind_t)
+            i.append(ind_t)  # type: ignore
             index[ind_t] = -1
 
-    B = csr_matrix((np.ones(len(i)), (i, range(n_archetypes))), shape=(N, n_archetypes)).toarray().T
+    B = (
+        csr_matrix((np.ones(len(i)), (i, range(n_archetypes))), shape=(N, n_archetypes))
+        .toarray()
+        .T
+    )
     B = np.ascontiguousarray(B)
     return B
