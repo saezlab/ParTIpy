@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ParTIpy"
+version = "0.0.1"
+description = "Pareto Task Inference in Python"
+readme = "README.md"
+
+license = {text = "Apache License (2.0)"}
+authors = [
+    { name = "Philipp Sven Lars Schäfer", email = "philipp.schaefer@uni-heidelberg.de" },
+    { name = "Leoni Zimmermann", email = "leoni.zimmermann@stud.uni-heidelberg.de" }
+]
+dependencies = [
+    "tqdm",
+    "numpy",
+    "numba",
+    "pandas",
+    "scipy",
+    "plotnine",
+    "scanpy"
+]
+requires-python = ">=3.10"
+
+[project.urls]
+homepage = "https://github.com/saezlab/ParTIpy"
+repository = "https://github.com/saezlab/ParTIpy"
+bug-tracker = "https://github.com/saezlab/ParTIpy/issues"
+
+[tool.setuptools.packages.find]
+include = ["ParTIpy*"]
+
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    # note the use of single quote below to denote "raw" strings in TOML
+    'ignore:function ham\(\) is deprecated:DeprecationWarning',
+
+]
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+    "pytest-cov",
+    "pytest-randomly",
+    "pytest-qt",
+    "pytest-xvfb",
+    "ipytest",
+    "hypothesis",
+]
