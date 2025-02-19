@@ -21,6 +21,7 @@ b) https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 import scipy.optimize
 import numpy as np
 from numba import njit
+from scipy.optimize import line_search
 
 from .const import LAMBDA
 
@@ -179,35 +180,52 @@ def compute_B_projected_gradients(
 def compute_A_frank_wolfe(
     X: np.ndarray,
     Z: np.ndarray,
-    A: np.ndarray = None,
+    # A: np.ndarray = None,
+    A: np.ndarray,
     derivative_max_iter: int = 10,
 ) -> np.ndarray:
     n_samples, n_archetypes = X.shape[0], Z.shape[0]
     # TODO: why do we initalize A here all new?
-    A = np.zeros((n_samples, n_archetypes))
-    # TODO: why do we set here the first column of A to 1.0?
-    # is this just a simplest way to create a matrix A that satisfies the constraints?
-    A[:, 0] = 1.0
+    # A = np.zeros((n_samples, n_archetypes))
+    # # TODO: why do we set here the first column of A to 1.0?
+    # # is this just a simplest way to create a matrix A that satisfies the constraints?
+    # A[:, 0] = 1.0
     e = np.zeros(A.shape)
     for t in range(derivative_max_iter):
-        # compute the gradient wrt A (brackets are VERY important to save time)
-        G = 2.0 * (A @ (Z @ Z.T) - X @ Z.T)
-
+        # Define the objective function and its gradient
+        def f(A_flat):
+            A_mat = A_flat.reshape((n_samples, n_archetypes))
+            return np.linalg.norm(X - A_mat @ Z) ** 2
+        
+        def grad_f(A_flat):
+            A_mat = A_flat.reshape((n_samples, n_archetypes))
+            return 2.0 * (A_mat @ (Z @ Z.T) - X @ Z.T).flatten()
+        
+        # Compute the gradient at the current iterate
+        G = grad_f(A.flatten())
+        
         # For each sample, get the archetype column with the most negative gradient
-        argmins = np.argmin(G, axis=1)
-
-        # set our indicator matrix e
+        argmins = np.argmin(G.reshape((n_samples, n_archetypes)), axis=1)
+        
+        # Set the indicator matrix e
         e[range(n_samples), argmins] = 1.0
-        # for idx in prange(n_samples):
-        #    e[idx, argmins[idx]] = 1.0
+        
+        # Compute the search direction
+        d = (e - A).flatten()
+        
+        # Perform line search using scipy.optimize.line_search
+        gamma = line_search(f, grad_f, A.flatten(), d)[0]
+        if gamma is None or gamma < 1e-6:
+            gamma = 1e-6
 
-        # now where does this update rule come from?
-        A += (2.0 / (t + 2.0)) * (e - A)
-
-        # reset e
+        # Update A
+        A += gamma * (e - A)
+        
+        # Reset e
         e[range(n_samples), argmins] = 0.0
-        # for idx in prange(n_samples):
-        #    e[idx, argmins[idx]] = 0.0
+
+    assert np.allclose(np.sum(A, axis=1), 1.0), "A is not a stochastic matrix"
+    assert np.all(A >= 0), "A has negative elements"    
     return A
 
 
@@ -215,32 +233,50 @@ def compute_A_frank_wolfe(
 def compute_B_frank_wolfe(
     X: np.ndarray,
     A: np.ndarray,
-    B=None,
+    # B=None,
+    B: np.ndarray,
     derivative_max_iter: int = 10,
 ) -> np.ndarray:
     n_samples, n_archetypes = X.shape[0], A.shape[1]
-    B = np.zeros((n_archetypes, n_samples))
-    # TODO: why do we set here the first column of B to 1.0?
-    # is this just a simplest way to create a matrix B that satisfies the constraints?
-    B[:, 0] = 1.0
+    # B = np.zeros((n_archetypes, n_samples))
+    # # TODO: why do we set here the first column of B to 1.0?
+    # # is this just a simplest way to create a matrix B that satisfies the constraints?
+    # B[:, 0] = 1.0
     e = np.zeros(B.shape)
     for t in range(derivative_max_iter):
-        # compute the gradient wrt B (brackets are VERY important to save time)
-        G = 2.0 * ((A.T @ A) @ (B @ X) @ X.T - (A.T @ X) @ X.T)
-
+        # Define the objective function and its gradient
+        def f(B_flat):
+            B_mat = B_flat.reshape((n_archetypes, n_samples))
+            return np.linalg.norm(X - A @ (B_mat @ X)) ** 2
+        
+        def grad_f(B_flat):
+            B_mat = B_flat.reshape((n_archetypes, n_samples))
+            return 2.0 * ((A.T @ A) @ (B_mat @ X) @ X.T - (A.T @ X) @ X.T).flatten()
+        
+        # Compute the gradient at the current iterate
+        G = grad_f(B.flatten())
+        
         # For each archetype, get the sample column with the most negative gradient
-        argmins = np.argmin(G, axis=1)
-
-        # set our indicator matrix e
+        argmins = np.argmin(G.reshape((n_archetypes, n_samples)), axis=1)
+        
+        # Set the indicator matrix e
         e[range(n_archetypes), argmins] = 1.0
-        # for idx in prange(n_archetypes):
-        #    e[idx, argmins[idx]] = 1.0
-
-        # now where does this update rule come from?
-        B += (2.0 / (t + 2.0)) * (e - B)
-
-        # reset e
+        
+        # Compute the search direction
+        d = (e - B).flatten()
+        
+        # Perform line search using scipy.optimize.line_search
+        gamma = line_search(f, grad_f, B.flatten(), d)[0]
+        if gamma is None or gamma < 1e-6:
+            gamma = 1e-6
+        
+        # Update B
+        B += gamma * (e - B)
+        
+        # Reset e
         e[range(n_archetypes), argmins] = 0.0
-        # for idx in prange(n_archetypes):
-        #    e[idx, argmins[idx]] = 0.0
+    
+    assert np.allclose(np.sum(B, axis=1), 1.0), "B is not a stochastic matrix"
+    assert np.all(B >= 0), "B has negative elements"
     return B
+
