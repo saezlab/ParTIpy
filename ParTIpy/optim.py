@@ -63,7 +63,7 @@ def compute_B_regularized_nnls(
     return B
 
 
-@njit(cache=True)
+# @njit(cache=True)
 def compute_A_projected_gradients(
     X: np.ndarray,
     Z: np.ndarray,
@@ -120,7 +120,7 @@ def compute_A_projected_gradients(
     return A
 
 
-@njit(cache=True)
+# @njit(cache=True)
 def compute_B_projected_gradients(
     X: np.ndarray,
     A: np.ndarray,

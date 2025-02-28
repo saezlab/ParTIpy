@@ -30,7 +30,7 @@ def euclidean_distance(x, archetypes):
     squared_distances = sx + sa - 2 * x.dot(archetypes)
 
     # Clip small negative values to zero
-    squared_distances[np.isclose(squared_distances, 0)] = 0
+    squared_distances = np.maximum(squared_distances, 0)
 
     # Calculate Euclidian distance
     distances = np.sqrt(squared_distances)
@@ -109,14 +109,7 @@ def weighted_expr(weights, expr):
      pseudobulk : numpy.ndarray
          pseudobulk of the archetypes
     """
-    pseudobulk = np.zeros((weights.shape[0], expr.shape[1]))
-
-    for archetype in range(weights.shape[0]):
-        # multiply weights with cells expression
-        weighted_expr = weights[archetype, :, None] * expr
-        # compute weighted sum
-        pseudobulk[archetype, :] = weighted_expr.sum(axis=0) / sum(
-            weights[archetype, :]
-        )
-
+    pseudobulk = np.einsum('ij,jk->ik', weights, expr)
+    pseudobulk /= weights.sum(axis=1, keepdims=True)
+    
     return pseudobulk
