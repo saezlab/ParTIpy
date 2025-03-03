@@ -1,14 +1,16 @@
 import math
+from typing import Tuple
 
 import numpy as np
-import plotnine as pn
 import pandas as pd
-from scipy.spatial import ConvexHull
-from scipy.spatial.distance import cdist
-from scipy.optimize import linear_sum_assignment
-from typing import Tuple
 import plotly.express as px
 import plotly.graph_objects as go
+import plotnine as pn
+import scanpy as sc
+from joblib import Parallel, delayed
+from scipy.optimize import linear_sum_assignment
+from scipy.spatial import ConvexHull
+from scipy.spatial.distance import cdist
 
 from .arch import AA
 from .const import (
@@ -17,30 +19,53 @@ from .const import (
 )
 
 ####TODO####
-# Make functions work with andata object (add our dataframes to uns)
-# Break functions up in those adding to andata and plotting
 # add/fix t-ratio function
 # Function mean archetype variance for different n_archetypes
 # Functions to extract results more easily
 ############
 
-def var_explained_aa(
-        X: np.ndarray,
-        min_a: int = 2, 
-        max_a: int = 10,
-        optim: str = DEFAULT_OPTIM, 
-        init: str = DEFAULT_INIT
-    ) -> Tuple[pn.ggplot, pn.ggplot, pn.ggplot, pd.DataFrame]:
+def reduce_pca(
+    adata: sc.AnnData, 
+    n_pcs: int):
     """
-    Computes variance explained by Archetypal Analysis (AA) 
-    for a range of archetypes (min_a to max_a) and returns:
-    - Three plotnine plots (ggplot)
-    - A Pandas DataFrame with variance explained data
+    Reduces the PCA representation in `adata.obsm["X_pca"]` to the first `n_pcs` components.
+    If `adata.obsm["X_pca"]` does not exist, PCA is computed and stored in `adata.obsm["X_pca"]`.
 
     Parameters:
     -----------
-    X : np.ndarray
-        Input data matrix for AA.
+    adata : sc.AnnData
+        Annotated data matrix.
+    n_pcs : int
+        Number of principal components to retain.
+    """
+    if "X_pca" not in adata.obsm:
+        print("X_pca not found in adata.obsm. Computing PCA...")
+        sc.pp.pca(adata, mask_var="highly_variable")  
+    
+    if n_pcs > adata.obsm["X_pca"].shape[1]:
+        raise ValueError(
+            f"Requested {n_pcs} PCs, but only {adata.obsm['X_pca'].shape[1]} PCs are available."
+        )
+    
+    adata.obsm["X_pca_reduced"] = adata.obsm["X_pca"][:, :n_pcs]
+
+def var_explained_aa(
+        adata: sc.AnnData,
+        min_a: int = 2, 
+        max_a: int = 10,
+        optim: str = DEFAULT_OPTIM, 
+        init: str = DEFAULT_INIT,
+        n_jobs: int = -1
+    ):
+    """
+    Computes variance explained by Archetypal Analysis (AA) on `adata.obsm["X_pca_reduced"]`
+    for a range of archetypes (min_a to max_a), storing the result in `adata.uns["AA_var"]`.
+    If `adata.obsm["X_pca_reduced"]` does not exist, the variance explained is computed based on `adata.obsm["X_pca"]`.
+
+    Parameters:
+    -----------
+    adata: sc.AnnData
+        Annotated data matrix containing adata.obsm["X_pca_reduced"].
     min_a : int, optional (default=2)
         Minimum number of archetypes to test.
     max_a : int, optional (default=10)
@@ -49,22 +74,25 @@ def var_explained_aa(
         optimization function to use.
     init : str, optional (default=DEFAULT_INIT)
         initalization function to use.
-
-    Returns:
-    --------
-    Tuple[pn.ggplot, pn.ggplot, pn.ggplot, pd.DataFrame]
-        p1: ggplot - Variance Explained plot
-        p2: ggplot - Distance to projected point plot
-        p3: ggplot - Variance explained over (k-1) model
-        plot_df: pd.DataFrame - Data for plotting
+    n_jobs : int, optional (default=-1)
+        Number of jobs for parallel computation. -1 uses all available cores.
     """
-    
+
+    if "X_pca_reduced" not in adata.obsm:
+        print("No reduced PCA found. Calculating with all available PCs from X_pca")
+        X = adata.obsm["X_pca"]
+    else:
+        X = adata.obsm["X_pca_reduced"]
+
     k_arr = np.arange(min_a, max_a+1)
-    results = {}
     
-    for k in k_arr:
+    def compute_aa(k):
         A, B, Z, RSS, varexpl = AA(n_archetypes=k, optim=optim, init=init).fit(X).return_all()
-        results[k] = {"Z": Z, "A": A, "B": B, "RSS": RSS, "varexpl": varexpl}
+        return k, {"Z": Z, "A": A, "B": B, "RSS": RSS, "varexpl": varexpl}
+
+    results_list = Parallel(n_jobs=n_jobs)(delayed(compute_aa)(k) for k in k_arr)
+
+    results = {k: result for k, result in results_list}
        
     varexpl_values = np.array([results[k]["varexpl"] for k in k_arr])
 
@@ -77,9 +105,6 @@ def var_explained_aa(
         }
     )
     
-    diag_df = pd.concat([plot_df.head(1), plot_df.tail(1)])
-    diag_df.loc[diag_df["k"] == 1, "varexpl"] = 0
-
     offset_vec = plot_df[["k", "varexpl"]].iloc[0].values
     proj_vec = (plot_df[["k", "varexpl"]].values - offset_vec)[-1, :][:, None]
     proj_mtx = proj_vec @ np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T
@@ -87,57 +112,134 @@ def var_explained_aa(
     proj_df = pd.DataFrame(proj_val, columns=["k", "varexpl"])
     plot_df["dist_to_projected"] = np.linalg.norm(plot_df[["k", "varexpl"]].values - proj_df[["k", "varexpl"]].values, axis=1)
 
-    p1 = (
+    adata.uns["AA_var"] = plot_df
+
+def plot_var_explained_aa(
+        adata: sc.AnnData,
+        ) -> pn.ggplot:    
+    """
+    Elbow plot of the explained variance by a range of archetypes, based on data from `adata.uns["AA_var"]`.
+    If `adata.uns["AA_var"]` does not exist, the explained variance is computed and stored in `adata.uns["AA_var"]`.
+    
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        Annotated data object containing the variance explained data in `adata.uns["AA_var"]`.
+        
+    Returns:
+    --------
+    p : pn.ggplot
+        A ggplot object showing the variance explained plot.
+    """
+    if "AA_var" not in adata.uns:
+        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
+        var_explained_aa(adata=adata) 
+    
+    plot_df = adata.uns["AA_var"]
+    
+    diag_data = pd.DataFrame({
+        "k": [plot_df["k"].min(), plot_df["k"].max()],
+        "varexpl": [plot_df["varexpl"].min(), plot_df["varexpl"].max()]
+    })
+
+    p = (
         pn.ggplot(plot_df)
-        + pn.geom_line(data=plot_df, mapping=pn.aes(x="k", y="varexpl"), color="black")
-        + pn.geom_point(data=plot_df, mapping=pn.aes(x="k", y="varexpl"), color="black")
-        + pn.geom_line(data=diag_df, mapping=pn.aes(x="k", y="varexpl"), color="gray")
+        + pn.geom_line(mapping=pn.aes(x="k", y="varexpl"), color="black")
+        + pn.geom_point(mapping=pn.aes(x="k", y="varexpl"), color="black")
+        + pn.geom_line(data=diag_data, mapping=pn.aes(x="k", y="varexpl"), color="gray")
         + pn.labs(x="Number of Archetypes (k)", y="Variance Explained")
         + pn.lims(y=[0, 1])
-        + pn.scale_x_continuous(breaks=np.arange(min_a, max_a + 1))
+        + pn.scale_x_continuous(breaks=np.arange(plot_df["k"].min(), plot_df["k"].max() + 1))
         + pn.theme_matplotlib()
     )
+    return p
 
-    p2 = (
-        pn.ggplot()
-        + pn.geom_col(data=plot_df, mapping=pn.aes(x="k", y="dist_to_projected"))
-        + pn.scale_x_continuous(breaks=np.arange(min_a, max_a + 1))
+def plot_projected_dist(
+        adata: sc.AnnData,
+        ) -> pn.ggplot:    
+    """
+    Plot based on data from `adata.uns["AA_var"]`, showing the projected distance for a range of archetypes.
+    If `adata.uns["AA_var"]` does not exist, the explained variance is computed and stored in `adata.uns["AA_var"]`.
+
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        Annotated data object containing the variance explained data in `adata.uns["AA_var"]`.
+        
+    Returns:
+    --------
+    p : pn.ggplot
+        A ggplot object showing the projected distance plot.
+    """
+    if "AA_var" not in adata.uns:
+        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
+        var_explained_aa(adata=adata) 
+
+    plot_df = adata.uns["AA_var"]
+    
+    p = (
+        pn.ggplot(plot_df)
+        + pn.geom_col(mapping=pn.aes(x="k", y="dist_to_projected"))
+        + pn.scale_x_continuous(breaks=np.arange(plot_df["k"].min(), plot_df["k"].max() + 1))
         + pn.labs(x="Number of Archetypes (k)", y="Distance to Projected Point")
         + pn.theme_matplotlib()
     )
 
-    p3 = (
+    return p
+
+def plot_var_on_top(
+        adata: sc.AnnData,
+        ) -> pn.ggplot:    
+    """
+    Plot based on data from `adata.uns["AA_var"]`, showing the variance explained on top of (k-1) model for a range of archetypes.
+    If `adata.uns["AA_var"]` does not exist, the explained variance is computed and stored in `adata.uns["AA_var"]`.
+    
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        Annotated data object containing the variance explained data in `adata.uns["AA_var"]`.
+        
+    Returns:
+    --------
+    p : pn.ggplot
+        A ggplot object showing the variance explained on top of (k-1) model plot.
+    """
+    if "AA_var" not in adata.uns:
+        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
+        var_explained_aa(adata=adata)
+
+    plot_df = adata.uns["AA_var"]
+    
+    p = (
         pn.ggplot(plot_df)
         + pn.geom_point(pn.aes(x="k", y="varexpl_ontop"), color="black")
         + pn.geom_line(pn.aes(x="k", y="varexpl_ontop"), color="black")
         + pn.labs(
             x="Number of Archetypes (k)", y="Variance Explained on Top of (k-1) Model"
         )
-        + pn.scale_x_continuous(breaks=np.arange(min_a, max_a + 1))
+        + pn.scale_x_continuous(breaks=np.arange(plot_df["k"].min(), plot_df["k"].max() + 1))
         + pn.lims(y=(0, None))
         + pn.theme_matplotlib()
     )
 
-    return p1, p2, p3, plot_df
+    return p
 
-def bootstrap_AA(
-        X: np.ndarray, 
+def bootstrap_aa(
+        adata: sc.AnnData, 
         n_bootstrap: int,
         n_archetypes: int, 
         optim: str = DEFAULT_OPTIM, 
         init: str = DEFAULT_INIT, 
-        seed: int = 42, 
-        plot: bool = True,
-        **kwargs
-    ) -> Tuple[pd.DataFrame, go.Figure]:
+        seed: int = 42
+    ) :
     """
     Computes archetypes on bootstrap samples, aligns them with reference archetypes,  
     and returns the results along with an interactive 3D scatter plot.
 
     Parameters:
     -----------
-    X : np.ndarray
-        Input data matrix of shape (n_samples, n_features).
+    adata: sc.AnnData
+        Annotated data matrix containing adata.obsm["X_pca_reduced"].
     n_bootstrap : int
         Number of bootstrap samples.
     n_archetypes : int
@@ -148,15 +250,12 @@ def bootstrap_AA(
         initalization function to use.
     seed : int, optional (default=42)
         Random seed for reproducibility.
-    plot: bool, optional (default=True)
-        If the 3D plot will be returned or not.
-
-    Returns:
-    --------
-    Tuple[pd.DataFrame, go.Figure]
-        bootstrap_df: DataFrame containing bootstrap archetype results.
-        fig: Interactive 3D plot of the results. Only when plot=True
     """
+    if "X_pca_reduced" not in adata.obsm:
+        print("No reduced PCA found. Calculating with all available PCs from X_pca")
+        X = adata.obsm["X_pca"]
+    else:
+        X = adata.obsm["X_pca_reduced"]
 
     n_samples, n_features = X.shape
     rng = np.random.default_rng(seed)
@@ -193,37 +292,59 @@ def bootstrap_AA(
     bootstrap_df["reference"] = bootstrap_df["iter"] == 0
     bootstrap_df["archetype"] = pd.Categorical(bootstrap_df["archetype"])
 
-    bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].map(dict(zip(np.arange(n_archetypes), var_per_archetype)))
     bootstrap_df["mean_variance"] = mean_variance
 
-    if plot:
-        fig = px.scatter_3d(
-            bootstrap_df,
-            x='pc_0', 
-            y='pc_1', 
-            z='pc_2',
-            color='archetype', 
-            symbol="reference",
-            labels={
-                "pc_0": "PC 1",
-                "pc_1": "PC 2",
-                "pc_2": "PC 3",
-            },
-            title="Archetypes on bootstrapepd data",
-            size_max=kwargs.pop("size_max", 10),
-            hover_data=["iter", "archetype", "reference"],
-            **kwargs,
-        )
-        fig.update_layout(template="none")
+    adata.uns["AA_bootstrap"] = bootstrap_df
 
-        return bootstrap_df, fig
-    return bootstrap_df
+def plot_bootstrap_aa(
+    adata : sc.AnnData
+    ) -> go.Figure:
+    """
+    3D plot based on data from `adata.uns["AA_bootstrap"]`, showing the position of the archetypes from the iterations o the bootstrap.
+    If `adata.uns["AA_bootstrap"]` does not exist, the bootstrap is computed and stored in `adata.uns["AA_bootstrap"]`.
+    
+    
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
+        
+    Returns:
+    --------
+    fig: go.Figure:
+        3D plot of bootstrap results for the archetypes
+    """
+
+    if "AA_bootstrap" not in adata.uns:
+        print("AA_bootstrap not found in adata.uns. Computing bootstrap of archetypes...")
+        bootstrap_aa(adata=adata) 
+
+    bootstrap_df = adata.uns["AA_bootstrap"]
+    fig = px.scatter_3d(
+        bootstrap_df,
+        x='pc_0', 
+        y='pc_1', 
+        z='pc_2',
+        color='archetype', 
+        symbol="reference",
+        labels={
+            "pc_0": "PC 1",
+            "pc_1": "PC 2",
+            "pc_2": "PC 3",
+        },
+        title="Archetypes on bootstrapepd data",
+        size_max=10,
+        hover_data=["iter", "archetype", "reference"],
+        opacity=0.5
+    )
+    fig.update_layout(template="none")
+
+    return fig
 
 def plot_2D(
         X: np.ndarray, 
         Z: np.ndarray, 
-        color_vec: np.ndarray=None, 
-        **kwargs
+        color_vec: np.ndarray=None
     ) -> pn.ggplot:
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
@@ -263,9 +384,9 @@ def plot_2D(
         if len(color_vec) != len(plot_df):
             raise ValueError("color_vec must have the same length as X.")
         plot_df["color_vec"] = np.array(color_vec)  
-        p1 += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1", color="color_vec"), **kwargs)
+        p1 += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1", color="color_vec"), alpha=0.5)
     else:
-        p1 += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1"), color="black", **kwargs)
+        p1 += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1"), color="black", alpha=0.5)
 
     p1 += pn.geom_point(data=arch_df, mapping=pn.aes(x="x0", y="x1"), color="red", size=1)
     p1 += pn.geom_path(data=arch_df, mapping=pn.aes(x="x0", y="x1"), color="red", size=1)
@@ -280,8 +401,7 @@ def plot_3D(
         Z: np.ndarray, 
         color_vec: np.ndarray=None, 
         marker_size: int = 4, 
-        color_polyhedron: str ="green", 
-        **kwargs
+        color_polyhedron: str ="green"
     ) -> go.Figure:
     """
     3D plot of the datapoints in X and the 3D polytope enclosed by the archetypes in Z.
@@ -313,8 +433,6 @@ def plot_3D(
     plot_df = pd.DataFrame(X_plot, columns=["x0", "x1", "x2"])
     plot_df["marker_size"] = np.repeat(marker_size, X_plot.shape[0])
 
-    kwargs.pop("color_polyhedron", None)
-
     if color_vec is not None:
         if len(color_vec) != len(plot_df):
             raise ValueError("color_vec must have the same length as X.")
@@ -328,8 +446,8 @@ def plot_3D(
             title="3D polytope",
             color="color_vec",
             size="marker_size",
-            size_max=kwargs.pop("size_max", 10),
-            **kwargs,
+            size_max=10,
+            opacity=0.5
         )
     else:
         fig = px.scatter_3d(
@@ -340,8 +458,8 @@ def plot_3D(
             labels={"x0": "PC 1", "x1": "PC 2", "x2": "PC 3"},
             title="3D polytope",
             size="marker_size",
-            size_max=kwargs.pop("size_max", 10),
-            **kwargs,
+            size_max=10,
+            opacity=0.5
         )
 
     hull = ConvexHull(Z_plot)

@@ -5,6 +5,7 @@ from .enrichment import (
     weighted_expr)
 
 from .paretoti_funcs import (
+    reduce_pca,
     var_explained_aa,
     bootstrap_AA,
     plot_2D,
