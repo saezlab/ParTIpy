@@ -7,7 +7,11 @@ from .enrichment import (
 from .paretoti_funcs import (
     reduce_pca,
     var_explained_aa,
-    bootstrap_AA,
+    plot_var_explained_aa,
+    plot_projected_dist,
+    plot_var_on_top,
+    bootstrap_aa,
+    plot_bootstrap_aa,
     plot_2D,
     plot_3D,
     align_archetypes
