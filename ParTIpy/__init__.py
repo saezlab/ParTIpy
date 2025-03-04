@@ -1,8 +1,11 @@
 
 from .enrichment import (
     euclidean_distance,
-    rbf_kernel,
-    weighted_expr)
+    calculate_weights,
+    weighted_expr,
+    extract_top_processes,
+    meta_enrichment
+    )
 
 from .paretoti_funcs import (
     reduce_pca,
