@@ -6,42 +6,7 @@ from typing import Dict, Optional, Tuple, Union
 import numpy as np
 import scanpy as sc
 import pandas as pd
-
-
-def euclidean_distance(
-        X: np.ndarray, 
-        Z: np.ndarray
-    ) -> np.ndarray:
-    """
-    Calculate the Euclidean distance between each cell and each archetype.
-
-    This function computes the pairwise Euclidean distances between the cells (rows of `X`)
-    and the archetypes (columns of `Z`). The result is a distance matrix where each entry
-    represents the distance between a cell and the archetype.
-
-    Parameters:
-    -----------
-    X : np.ndarray
-        A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the cells.
-    Z : np.ndarray
-        A 2D array of shape (n_features, n_archetypes) representing the PCA coordinates of the archetypes.
-
-    Returns:
-    --------
-    np.ndarray
-        A 2D array of shape (n_archetypes, n_samples) representing the pairwise Euclidean distances.
-    """
-    SX = np.sum(X**2, axis=1, keepdims=True)
-    SZ = np.sum(Z**2, axis=0, keepdims=True)
-
-    squared_distances = SX + SZ - 2 * X.dot(Z)
-
-    # Ensure no negative values due to numerical precision issues
-    squared_distances = np.maximum(squared_distances, 0)
-
-    distances = np.sqrt(squared_distances)
-
-    return distances.T
+from scipy.spatial.distance import cdist
 
 def calculate_weights(
         X: Union[np.ndarray, sc.AnnData],
@@ -70,12 +35,14 @@ def calculate_weights(
 
     Returns:
     --------
-    Tuple[np.ndarray, Optional[float]]
-        - A 2D array of shape (n_archetypes, n_samples) representing the weights for each cell-archetype pair.
-        - The calculated length scale (if `mode="automatic"`), otherwise `None`.
+    np.ndarray
+        - If `X` is an AnnData object, the weights are added to `X.obsm["cell_weights"]` and nothing is returned.
+        - If `X` is a numpy array, a 2D array of shape (n_samples, n_archetypes) representing the weights for each cell-archetype pair.
     """
     # Handle and validate input data
+    adata = None
     if isinstance(X, sc.AnnData):
+        adata = X
         if "archetypal_analysis" not in X.uns:
             raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
         
@@ -88,7 +55,7 @@ def calculate_weights(
     # Calculate or validate length_scale based on mode
     if mode == "automatic":
         centroid = np.mean(X, axis=0).reshape(1, -1)
-        length_scale = np.median(euclidean_distance(centroid, Z.T)) / 2
+        length_scale = np.median(cdist(centroid, Z)) / 2
 
     elif mode == "manual":
         if length_scale is None:
@@ -97,15 +64,20 @@ def calculate_weights(
     else:
         raise ValueError("Mode must be either 'automatic' or 'manual'.")
 
+    print(f"Applied length scale is {length_scale}.")
+    
     # Weight calculation
-    euclidean_dist = euclidean_distance(X, Z.T)
+    euclidean_dist = cdist(X, Z)
     weights = np.exp(-(euclidean_dist**2) / (2 * length_scale**2))
 
-    return (weights, length_scale) if mode == "automatic" else weights
+    if isinstance(adata, sc.AnnData):
+        adata.obsm["cell_weights"] = weights
+    else:
+        return weights
 
 def weighted_expr(
-        weights: np.ndarray, 
-        expr: np.ndarray
+        adata: sc.AnnData,
+        layer: Optional[str] = None
     ) -> np.ndarray:
     """
     Calculate a weighted pseudobulk expression profile for each archetype.
@@ -115,21 +87,29 @@ def weighted_expr(
 
     Parameters:
     -----------
-    weights : np.ndarray
-        A 2D array of shape (n_archetypes, n_samples) representing the weights for each cell-archetype pair.
-    expr : np.ndarray
-        A 2D array of shape (n_samples, n_genes) representing the gene expression matrix. Z-scaled data is recommended for 
-        gene expression analysis between the archetypes.
+    adata : sc.AnnData
+        An AnnData object containing the gene expression data and weights. The weights should be stored in
+        `adata.obsm["cell_weights"]` as a 2D array of shape (n_samples, n_archetypes).
+    layer : str, optional (default=None)
+        The layer of the AnnData object to use for gene expression. If `None`, `adata.X` is used. For Pareto analysis of AA data,
+        z-scaled data is recommended.
 
     Returns:
     --------
     np.ndarray
         A 2D array of shape (n_archetypes, n_genes) representing the weighted pseudobulk expression profiles.
     """
+    weights = adata.obsm["cell_weights"].T
+    if layer is None:
+        expr = adata.X
+    else:
+        expr = adata.layers[layer]
     pseudobulk = np.einsum('ij,jk->ik', weights, expr)
     pseudobulk /= weights.sum(axis=1, keepdims=True)
+
+    pseudobulk_df = pd.DataFrame(pseudobulk, columns=adata.var_names)
     
-    return pseudobulk
+    return pseudobulk_df
 
 def extract_top_processes(
         est: pd.DataFrame,
@@ -196,9 +176,64 @@ def extract_top_processes(
 
     return results
 
+def extract_top_specific_processes(
+      est: pd.DataFrame,
+      pval: pd.DataFrame,
+      drop_threshold: int = 0,
+      n: int = 20,
+      p_threshold: float = 0.05):
+    """
+    Extract the top enriched biological processes that are specific to each archetype.
+
+    This function identifies the most enriched biological processes for each archetype based on
+    estimated enrichment scores (`est`) and corresponding p-values (`pval`) from the decoupler output below the 
+    specified threshold (`p_treshold`). It ensures that the selected processes are specific to the archetype by 
+    enforcing that their enrichment scores are below a specified threshold (`drop_threshold`) in all other archetypes.
+    
+    Parameters:
+    -----------
+    est : pd.DataFrame
+        A DataFrame of shape (n_archetypes, n_processes) containing the estimated enrichment scores
+        for each process and archetype.
+    pval : pd.DataFrame
+        A DataFrame of shape (n_archetypes, n_processes) containing the p-values corresponding to
+        the enrichment scores in `est`.
+    drop_threshold : int, optional (default=20)
+      The enrichment threshold below which processes are dropped.
+    n : int, optional (default=20)
+        The number of top processes to extract per archetype.
+    p_threshold : float, optional (default=0.05)
+        The p-value threshold for filtering processes. Only processes with p-values below this
+        threshold are considered.
+
+    Returns:
+    --------
+    Dict[str, pd.DataFrame]
+        A dictionary where keys are of the form "archetype_X" and values are
+        DataFrames containing the top `n` enriched processes for each archetype that are below a score of
+        `drop_threshold` for all other archetypes.
+    """
+    if est.shape != pval.shape:
+        raise ValueError("`est` and `pval` must have the same shape.")
+
+    results = {}
+    for archetype in range(est.shape[0]):
+        # Filter processes based on p-value threshold
+        significant_processes = pval.iloc[archetype] < p_threshold
+        top_processes = est.iloc[archetype, list(significant_processes )].nlargest(n).index
+
+        # Filter processes based on drop threshold
+        subset = est.loc[:, top_processes]
+        subset.index = subset.index.astype(int)
+        filtered_processes = top_processes[(subset.drop(index=archetype) < drop_threshold).all(axis=0)]
+
+        results[f"archetype_{archetype}"] = est.loc[:, filtered_processes].copy()  
+
+    return results
+
 def meta_enrichment(
-        meta: pd.Series, 
-        weights: np.ndarray
+        adata: sc.AnnData,
+        meta: str
     ) -> pd.DataFrame:
     """
     Compute the weighted enrichment of metadata categories across archetypes.
@@ -206,32 +241,33 @@ def meta_enrichment(
     This function performs the following steps:
     1. One-hot encodes the categorical metadata.
     2. Normalizes the one-hot encoded metadata to sum to 1 for each category.
-    3. Computes the weighted enrichment of each metadata category for each archetype using the provided weights.
+    3. Computes the weighted enrichment of each metadata category for each archetype using the weights stored in `adata.obsm["cell_weights"]`.
 
     Parameters
     ----------
-    meta : pd.Series
-        A Pandas Series of shape (n_samples,) containing categorical metadata values.
-        
-    weights : np.ndarray
-        A 2D array of shape (n_archetypes, n_samples) representing the weights for each cell-archetype pair.
+    adata : sc.AnnData
+        An AnnData object containing the metadata in `adata.obs[meta]` and weights in `adata.obsm["cell_weights"]`.
+    meta : str
+        The name of the categorical metadata column in `adata.obs` to use for enrichment analysis.
 
     Returns:
     --------
     pd.DataFrame
-        A DataFrame of shape (n_archetypes, n_categories) containing the weighted enrichment values.
+        A DataFrame of shape (n_archetypes, n_categories) containing the normalized enrichment of a metadata category for a given archetypes.
     """
-    # Validation input
-    if meta.shape[0] != weights.shape[1]:
-        raise ValueError("Number of rows in `weights` must match the length of `meta`.")
+
+    metadata = adata.obs[meta]
+    weights = adata.obsm["cell_weights"].T
     
     # One-hot encoding of metadata
-    df_encoded = pd.get_dummies(meta).astype(float)
+    df_encoded = pd.get_dummies(metadata).astype(float)
     # Normalization
     df_encoded = df_encoded / df_encoded.values.sum(axis=0, keepdims=True)
 
     # Compute weighted enrichment
-    weighted_meta = weighted_expr(weights, df_encoded)
+    weighted_meta = np.einsum('ij,jk->ik', weights, df_encoded)
+    weighted_meta /= weights.sum(axis=1, keepdims=True)
+
     # Normalization
     weighted_meta = weighted_meta / np.sum(weighted_meta, axis=1, keepdims=True)
     weighted_meta_df = pd.DataFrame(weighted_meta, columns=df_encoded.columns)

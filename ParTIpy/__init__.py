@@ -1,9 +1,9 @@
 
 from .enrichment import (
-    euclidean_distance,
     calculate_weights,
     weighted_expr,
     extract_top_processes,
+    extract_top_specific_processes,
     meta_enrichment
     )
 

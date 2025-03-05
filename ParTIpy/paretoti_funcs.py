@@ -21,7 +21,6 @@ from .const import (
 ####TODO####
 # add/fix t-ratio function
 # Function mean archetype variance for different n_archetypes
-# Functions to extract results more easily
 ############
 
 def reduce_pca(
