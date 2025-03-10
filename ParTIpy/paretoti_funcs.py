@@ -1,5 +1,5 @@
 import math
-from typing import Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,7 @@ from joblib import Parallel, delayed
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist
+from tqdm import tqdm  
 
 from .arch import AA
 from .const import (
@@ -21,23 +22,31 @@ from .const import (
 ####TODO####
 # add/fix t-ratio function
 # Function mean archetype variance for different n_archetypes
-# Functions to extract results more easily
 ############
 
 def reduce_pca(
     adata: sc.AnnData, 
-    n_pcs: int):
+    n_pcs: int
+    ) -> None:
     """
     Reduces the PCA representation in `adata.obsm["X_pca"]` to the first `n_pcs` components.
     If `adata.obsm["X_pca"]` does not exist, PCA is computed and stored in `adata.obsm["X_pca"]`.
+    The reduced PCA representation is stored in `adata.obsm["X_pca_reduced"]`.
 
     Parameters:
     -----------
     adata : sc.AnnData
-        Annotated data matrix.
+        AnnData object containing single-cell data.
     n_pcs : int
-        Number of principal components to retain.
+        The number of principal components (PCs) to retain. Must be less than or equal to the
+        number of available PCs in `adata.obsm["X_pca"]`.
+
+    Returns:
+    --------
+    None
+        The results are stored in `adata.obsm["X_pca_reduced"]`
     """
+    # Validation input
     if "X_pca" not in adata.obsm:
         print("X_pca not found in adata.obsm. Computing PCA...")
         sc.pp.pca(adata, mask_var="highly_variable")  
@@ -56,28 +65,47 @@ def var_explained_aa(
         optim: str = DEFAULT_OPTIM, 
         init: str = DEFAULT_INIT,
         n_jobs: int = -1
-    ):
+    ) -> None:
     """
-    Computes variance explained by Archetypal Analysis (AA) on `adata.obsm["X_pca_reduced"]`
-    for a range of archetypes (min_a to max_a), storing the result in `adata.uns["AA_var"]`.
-    If `adata.obsm["X_pca_reduced"]` does not exist, the variance explained is computed based on `adata.obsm["X_pca"]`.
+    Compute the variance explained by Archetypal Analysis (AA) for a range of archetypes.
+
+    This function performs Archetypal Analysis (AA) for a range of archetypes (from `min_a` to `max_a`)
+    on the PCA-reduced data stored in `adata.obsm["X_pca_reduced"]`. If the reduced PCA representation
+    is not available, it uses the full PCA representation (`adata.obsm["X_pca"]`). The results are 
+    stored in `adata.uns["AA_var"]`.
 
     Parameters:
     -----------
     adata: sc.AnnData
-        Annotated data matrix containing adata.obsm["X_pca_reduced"].
+        AnnData object containing adata.obsm["X_pca_reduced"] or
+        adata.obsm["X_pca"].
     min_a : int, optional (default=2)
         Minimum number of archetypes to test.
     max_a : int, optional (default=10)
         Maximum number of archetypes to test.
     optim : str, optional (default=DEFAULT_OPTIM)
-        optimization function to use.
+        The optimization function to use for Archetypal Analysis.
     init : str, optional (default=DEFAULT_INIT)
-        initalization function to use.
+        The initialization function to use for Archetypal Analysis.
     n_jobs : int, optional (default=-1)
-        Number of jobs for parallel computation. -1 uses all available cores.
+        Number of jobs for parallel computation. `-1` uses all available cores.
+    
+    Returns:
+    --------
+    None
+        The results are stored in `adata.uns["AA_var"]` as a DataFrame with the following columns:
+        - `k`: The number of archetypes.
+        - `varexpl`: The variance explained by the model.
+        - `varexpl_ontop`: The additional variance explained compared to the model with `k-1` archetypes.
+        - `dist_to_projected`: The distance between the variance explained and its projection on the line 
+          connecting the variance explained of first and last k.
     """
-
+    # Validation input
+    if min_a < 2:
+        raise ValueError("`min_a` must be at least 2.")
+    if max_a < min_a:
+        raise ValueError("`max_a` must be greater than or equal to `min_a`.")
+    
     if "X_pca_reduced" not in adata.obsm:
         print("No reduced PCA found. Calculating with all available PCs from X_pca")
         X = adata.obsm["X_pca"]
@@ -86,6 +114,7 @@ def var_explained_aa(
 
     k_arr = np.arange(min_a, max_a+1)
     
+    # Parallel computation of AA
     def compute_aa(k):
         A, B, Z, RSS, varexpl = AA(n_archetypes=k, optim=optim, init=init).fit(X).return_all()
         return k, {"Z": Z, "A": A, "B": B, "RSS": RSS, "varexpl": varexpl}
@@ -105,6 +134,7 @@ def var_explained_aa(
         }
     )
     
+    # Compute the distance of the explained variance to its projection
     offset_vec = plot_df[["k", "varexpl"]].iloc[0].values
     proj_vec = (plot_df[["k", "varexpl"]].values - offset_vec)[-1, :][:, None]
     proj_mtx = proj_vec @ np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T
@@ -118,25 +148,29 @@ def plot_var_explained_aa(
         adata: sc.AnnData,
         ) -> pn.ggplot:    
     """
-    Elbow plot of the explained variance by a range of archetypes, based on data from `adata.uns["AA_var"]`.
-    If `adata.uns["AA_var"]` does not exist, the explained variance is computed and stored in `adata.uns["AA_var"]`.
+    Generate an elbow plot of the variance explained by Archetypal Analysis (AA) for a range of archetypes.
+
+    This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
+    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
     
     Parameters:
     -----------
     adata : sc.AnnData
-        Annotated data object containing the variance explained data in `adata.uns["AA_var"]`.
+        AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
         
     Returns:
     --------
-    p : pn.ggplot
+    pn.ggplot
         A ggplot object showing the variance explained plot.
     """
+    # Validation input
     if "AA_var" not in adata.uns:
         print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
         var_explained_aa(adata=adata) 
     
     plot_df = adata.uns["AA_var"]
     
+    # Create data for the diagonal line
     diag_data = pd.DataFrame({
         "k": [plot_df["k"].min(), plot_df["k"].max()],
         "varexpl": [plot_df["varexpl"].min(), plot_df["varexpl"].max()]
@@ -158,19 +192,20 @@ def plot_projected_dist(
         adata: sc.AnnData,
         ) -> pn.ggplot:    
     """
-    Plot based on data from `adata.uns["AA_var"]`, showing the projected distance for a range of archetypes.
-    If `adata.uns["AA_var"]` does not exist, the explained variance is computed and stored in `adata.uns["AA_var"]`.
+    This function creates a plot showing the projected distance for a range of archetypes.
+    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
 
     Parameters:
     -----------
     adata : sc.AnnData
-        Annotated data object containing the variance explained data in `adata.uns["AA_var"]`.
+        AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
         
     Returns:
     --------
-    p : pn.ggplot
+    pn.ggplot
         A ggplot object showing the projected distance plot.
     """
+    # Validation input
     if "AA_var" not in adata.uns:
         print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
         var_explained_aa(adata=adata) 
@@ -191,19 +226,20 @@ def plot_var_on_top(
         adata: sc.AnnData,
         ) -> pn.ggplot:    
     """
-    Plot based on data from `adata.uns["AA_var"]`, showing the variance explained on top of (k-1) model for a range of archetypes.
-    If `adata.uns["AA_var"]` does not exist, the explained variance is computed and stored in `adata.uns["AA_var"]`.
-    
+    Generate a plot showing the additional variance explained by AA models when increasing the number
+    of archetypes from `k-1` to `k`    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
+
     Parameters:
     -----------
     adata : sc.AnnData
-        Annotated data object containing the variance explained data in `adata.uns["AA_var"]`.
-        
+        AnnData objectt containing the variance explained data in `adata.uns["AA_var"]`.
+
     Returns:
     --------
-    p : pn.ggplot
+    pn.ggplot
         A ggplot object showing the variance explained on top of (k-1) model plot.
     """
+    # Validation input
     if "AA_var" not in adata.uns:
         print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
         var_explained_aa(adata=adata)
@@ -231,28 +267,44 @@ def bootstrap_aa(
         optim: str = DEFAULT_OPTIM, 
         init: str = DEFAULT_INIT, 
         seed: int = 42
-    ) :
+    ) -> None:
     """
-    Computes archetypes on bootstrap samples, aligns them with reference archetypes,  
-    and returns the results along with an interactive 3D scatter plot.
+    Perform bootstrap sampling to compute archetypes and assess their stability.
+
+    This function generates bootstrap samples from the data, computes archetypes for each sample,
+    aligns them with the reference archetypes, and stores the results in `adata.uns["AA_bootstrap"]`.
 
     Parameters:
     -----------
-    adata: sc.AnnData
-        Annotated data matrix containing adata.obsm["X_pca_reduced"].
+    adata : sc.AnnData
+        AnnData object. The PCA-reduced data should be stored in `adata.obsm["X_pca_reduced"]`. If not 
+        found, the full PCA representation (`adata.obsm["X_pca"]`) is used.
     n_bootstrap : int
-        Number of bootstrap samples.
+        The number of bootstrap samples to generate.
     n_archetypes : int
-        Number of archetypes.
+        The number of archetypes to compute for each bootstrap sample.
     optim : str, optional (default=DEFAULT_OPTIM)
-        optimization function to use.
+        The optimization function to use for Archetypal Analysis.
     init : str, optional (default=DEFAULT_INIT)
-        initalization function to use.
+        The initialization function to use for Archetypal Analysis.
     seed : int, optional (default=42)
-        Random seed for reproducibility.
+        The random seed for reproducibility.
+
+    Returns:
+    --------
+    None
+        The results are stored in `adata.uns["AA_bootstrap"]` as a DataFrame with the following columns:
+        - `pc_i`: The coordinates of the archetypes in the i-th principal component.
+        - `archetype`: The archetype index.
+        - `iter`: The bootstrap iteration index (0 for the reference archetypes).
+        - `reference`: A boolean indicating whether the archetype is from the reference model.
+        - `mean_variance`: The mean variance of archetype coordinates across bootstrap samples.
     """
+    # Validation input
     if "X_pca_reduced" not in adata.obsm:
-        print("No reduced PCA found. Calculating with all available PCs from X_pca")
+        if "X_pca" not in adata.obsm:
+            raise ValueError("Neither `X_pca_reduced` nor `X_pca` found in `adata.obsm`. Please compute PCA first.")
+        print("No reduced PCA found. Calculating with all available PCs from `X_pca`.")
         X = adata.obsm["X_pca"]
     else:
         X = adata.obsm["X_pca_reduced"]
@@ -260,23 +312,28 @@ def bootstrap_aa(
     n_samples, n_features = X.shape
     rng = np.random.default_rng(seed)
     
+    # Reference archetypes
     ref_Z = AA(n_archetypes=n_archetypes, optim = optim, init = init).fit(X).Z
     
+    # Generate bootstrap samples
     idx_bootstrap = rng.choice(n_samples, size=(n_bootstrap, n_samples), replace=True)
     Z_list = [
         AA(n_archetypes=n_archetypes, optim=optim, init=init).fit(X[idx, :]).Z 
         for idx in idx_bootstrap
     ]
 
+    # Align archetypes
     Z_list = [
         align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy())
         for query_Z in Z_list
     ]
 
+    # Compute variance
     Z_stack = np.stack(Z_list)
     var_per_archetype = Z_stack.var(axis=0).mean(axis=1)
     mean_variance = var_per_archetype.mean()
 
+    # Create result dataframe
     bootstrap_data = [
         pd.DataFrame(Z, columns=[f"pc_{i}" for i in range(n_features)])
         .assign(archetype=np.arange(n_archetypes), iter=i + 1) 
@@ -300,9 +357,8 @@ def plot_bootstrap_aa(
     adata : sc.AnnData
     ) -> go.Figure:
     """
-    3D plot based on data from `adata.uns["AA_bootstrap"]`, showing the position of the archetypes from the iterations o the bootstrap.
-    If `adata.uns["AA_bootstrap"]` does not exist, the bootstrap is computed and stored in `adata.uns["AA_bootstrap"]`.
-    
+    This function creates an interactive 3D scatter plot showing the positions of archetypes
+    computed from bootstrap samples, stored in `adata.uns["AA_bootstrap"]`.
     
     Parameters:
     -----------
@@ -311,14 +367,14 @@ def plot_bootstrap_aa(
         
     Returns:
     --------
-    fig: go.Figure:
-        3D plot of bootstrap results for the archetypes
+    go.Figure:
+        3D plot of bootstrap results for the archetypes.
     """
-
+    # Validation input
     if "AA_bootstrap" not in adata.uns:
-        print("AA_bootstrap not found in adata.uns. Computing bootstrap of archetypes...")
-        bootstrap_aa(adata=adata) 
+        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
 
+    # Generate the 3D scatter plot
     bootstrap_df = adata.uns["AA_bootstrap"]
     fig = px.scatter_3d(
         bootstrap_df,
@@ -341,35 +397,181 @@ def plot_bootstrap_aa(
 
     return fig
 
+def project_on_affine_subspace(X, Z):
+    """
+    Projects a set of points X onto the affine subspace spanned by the vertices Z.
+
+    Parameters:
+    -----------
+    X : numpy.ndarray
+        A (D x n) array of n points in D-dimensional space to be projected.
+    Z : numpy.ndarray
+        A (D x k) array of k vertices (archetypes) defining the affine subspace in D-dimensional space.
+
+    Returns:
+    -----------
+    proj_coord : numpy.ndarray
+        The coordinates of the projected points in the subspace defined by Z.
+    """
+    D, k = Z.shape
+
+    # Compute the projection vectors (basis for the affine subspace)
+    if k == 2:
+        # For a line (k=2), the projection vector is simply the difference between the two vertices
+        proj_vec = (Z[:, 1] - Z[:, 0])[:, None]
+    else:
+        # For higher dimensions, compute the projection vectors relative to the first vertex
+        proj_vec = Z[:, 1:] - Z[:, 0][:, None]
+
+    # Compute the coordinates of the projected points in the subspace
+    proj_coord = np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T @ (X - Z[:, 0][:, None])
+
+    return proj_coord
+
+def compute_t_ratio(X, Z=None):
+    """
+    Computes the ratio of the volume of the polytope defined by Z to the volume of the convex hull of X.
+
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        An AnnData object containing the following attributes:
+        - `adata.obsm["X_pca_reduced"]`: A (n x D) array of n data points in D-dimensional space.
+        - `adata.uns["archetypal_analysis"]["Z"]`: A (k x D) array of k archetypes defining the polytope in D-dimensional space.
+
+    Returns:
+    -----------
+    None
+        The function stores the computed t-ratio in `adata.uns["t_ratio"]`.
+    """
+    adata=None
+    if isinstance(X, np.ndarray):
+        if Z is None:
+            raise ValueError("Z must be provided when input_data is a numpy.ndarray.")
+    else:
+        adata = X
+        X = adata.obsm["X_pca_reduced"]
+        Z = adata.uns["archetypal_analysis"]["Z"]
+
+    # Extract dimensions D (PCs), and number of archetypes
+    D, k = X.shape[1], Z.shape[0] 
+
+    # Input validation
+    if k < 2:
+        raise ValueError("k must satisfy 2 <= k, meaning you need at least 2 archetypes.")
+
+    if k < D + 1:
+        # project onto affine subspace spanned by Z
+        proj_X = project_on_affine_subspace(X.T, Z.T).T
+        proj_Z = project_on_affine_subspace(Z.T, Z.T).T
+
+        # Compute the convex hull volumes
+        convhull_volume = ConvexHull(proj_X).volume
+        polytope_volume = ConvexHull(proj_Z).volume
+    else:
+        # Compute the convex hull volumes directly
+        convhull_volume = ConvexHull(X).volume
+        polytope_volume = ConvexHull(Z).volume
+
+    t_ratio = polytope_volume / convhull_volume
+
+    if isinstance(adata, sc.AnnData):
+        adata.uns["t_ratio"] = t_ratio
+    else:
+        return t_ratio
+
+def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
+    """
+    Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
+
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        An AnnData object containing `adata.obsm["X_pca_reduced"]` and optionally `adata.uns["t_ratio"]`. If it doesnt exist it is called and computed.
+    rep : int, optional (default=1000)
+        Number of randomized datasets to generate.
+    seed : int, optional (default=42)
+        The random seed for reproducibility.
+    n_jobs : int, optional
+        Number of jobs for parallelization (default: 1). Use -1 to use all available cores.
+
+    Returns:
+    -----------
+    float
+        The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
+    """
+
+    # Input validation
+    if "X_pca_reduced" not in adata.obsm:
+        raise ValueError("adata.obsm['X_pca_reduced'] not found.")
+    if "t_ratio" not in adata.uns:
+        print("Computing t-ratio...")
+        compute_t_ratio(adata)
+
+    X = adata.obsm["X_pca_reduced"]
+    t_ratio = adata.uns["t_ratio"]
+    n_samples, n_features = X.shape
+    n_archetypes = adata.uns["archetypal_analysis"]["Z"].shape[0]
+
+    rng = np.random.default_rng(seed)  
+    
+    def compute_randomized_t_ratio():
+        # Shuffle each feature independently
+        SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
+        # Compute archetypes and t-ratio for randomized data
+        Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1).Z
+        return compute_t_ratio(SimplexRand1, Z_mix)
+
+    # Parallelize the computation of randomized t-ratios
+    RandRatio = Parallel(n_jobs=n_jobs)(
+        delayed(compute_randomized_t_ratio)() for _ in tqdm(range(iter), desc="Randomizing")
+    )
+
+    # Calculate the p-value
+    p_value = np.sum(np.array(RandRatio) > t_ratio) / iter
+    return p_value
+
 def plot_2D(
-        X: np.ndarray, 
-        Z: np.ndarray, 
-        color_vec: np.ndarray=None
+        X: Union[np.ndarray, sc.AnnData],
+        Z: Optional[np.ndarray] = None,
+        color_vec: Optional[np.ndarray] = None,
     ) -> pn.ggplot:
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
 
     Parameters:
     -----------
-    X : np.ndarray
-        Input data matrix of shape (n_samples, n_features).
-    Z : np.ndarray
-        Input archetype matrix of shape (n_samples, n_features).
-    color_vec : np.ndarray (optional)
-        Values for coloring the datapoints from X.
+    X : Union[np.ndarray, sc.AnnData]
+        The input data, which can be either:
+        - A 2D array of shape (n_samples, n_features) representing the data points.
+        - An AnnData object containing the PCA-reduced data in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+    Z : np.ndarray, optional
+        A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
+        Required if `X` is not an AnnData object.
+    color_vec : np.ndarray, optional
+        A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
 
     Returns:
     --------
-    p1: pn.ggplot
+    pn.ggplot
         2D plot of X and polytope enclosed by Z
     """
+    # Validation input
+    if isinstance(X, sc.AnnData):
+        if "archetypal_analysis" not in X.uns:
+            raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
+        Z = X.uns["archetypal_analysis"]["Z"]
+        X = X.obsm["X_pca_reduced"]
+            
+    if Z is None:
+        raise ValueError("Please add the archetypes coordinates as input Z")
+
     if X.shape[1] < 2 or Z.shape[1] < 2:
         raise ValueError("Both X and Z must have at least 2 columns (PCs).")
     
-    X_plot, Z_plot = X.copy(), Z.copy()
+    X_plot, Z_plot = X[:, :2], Z[:, :2]
 
-    X_plot, Z_plot = X_plot[:, :2], Z_plot[:, :2]
-
+    # Order archetypes for plotting the polytope
     plot_df = pd.DataFrame(X_plot, columns=["x0", "x1"])
     order = np.argsort(np.arctan2(Z_plot[:, 1] - np.mean(Z_plot[:, 1]), 
                                   Z_plot[:, 0] - np.mean(Z_plot[:, 0])))
@@ -378,6 +580,7 @@ def plot_2D(
     arch_df = arch_df.iloc[order].reset_index(drop=True)
     arch_df = pd.concat([arch_df, arch_df.iloc[:1]], ignore_index=True)
 
+    # Generate plot
     p1 = pn.ggplot()
 
     if color_vec is not None:
@@ -397,33 +600,46 @@ def plot_2D(
     return p1
 
 def plot_3D(
-        X: np.ndarray, 
-        Z: np.ndarray, 
-        color_vec: np.ndarray=None, 
-        marker_size: int = 4, 
-        color_polyhedron: str ="green"
+        X: Union[np.ndarray, sc.AnnData],
+        Z: Optional[np.ndarray] = None,
+        color_vec: Optional[np.ndarray] = None,
+        marker_size: int = 4,
+        color_polyhedron: str = "green",
     ) -> go.Figure:
     """
     3D plot of the datapoints in X and the 3D polytope enclosed by the archetypes in Z.
 
     Parameters:
     -----------
-    X : np.ndarray
-        Input data matrix of shape (n_samples, n_features).
-    Z : np.ndarray
-        Input archetype matrix of shape (n_samples, n_features).
-    color_vec : np.ndarray (optional)
-        Values for coloring the datapoints from X.
-    marker_size: int (optional)
-        Size of the dots in the scatterplot from data X
-    color_polyhedron: str
-        Color of the polyhedron from the archetypes Z
+    X : Union[np.ndarray, sc.AnnData]
+        The input data, which can be either:
+        - A 2D array of shape (n_samples, n_features) representing the data points.
+        - An AnnData object containing the PCA-reduced data in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+    Z : np.ndarray, optional
+        A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
+        Required if `X` is not an AnnData object.
+    color_vec : np.ndarray, optional
+        A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
+    marker_size : int, optional (default=4)
+        The size of the markers for the data points in `X`.
+    color_polyhedron : str, optional (default="green")
+        The color of the polytope (convex hull) defined by the archetypes.
 
     Returns:
     --------
-    fig: go.Figuret
+    go.Figuret
         3D plot of X and polytope enclosed by Z
     """
+    # Validation input
+    if isinstance(X, sc.AnnData):
+        if "archetypal_analysis" not in X.uns:
+            raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
+        
+        Z = X.uns["archetypal_analysis"]["Z"]
+        X = X.obsm["X_pca_reduced"]
+            
+    if Z is None:
+        raise ValueError("Please add the archetypes coordinates as input Z")
 
     if X.shape[1] < 3 or Z.shape[1] < 3:
         raise ValueError("Both X and Z must have at least 3 columns (PCs).")
@@ -433,6 +649,7 @@ def plot_3D(
     plot_df = pd.DataFrame(X_plot, columns=["x0", "x1", "x2"])
     plot_df["marker_size"] = np.repeat(marker_size, X_plot.shape[0])
 
+    # Create the 3D scatter plot
     if color_vec is not None:
         if len(color_vec) != len(plot_df):
             raise ValueError("color_vec must have the same length as X.")
@@ -462,8 +679,25 @@ def plot_3D(
             opacity=0.5
         )
 
+    # Compute the convex hull of the archetypes
     hull = ConvexHull(Z_plot)
 
+    # Add archetypes to the plot
+    archetype_labels = [f"Archetype {i}" for i in range(Z_plot.shape[0])]
+    fig.add_trace(
+        go.Scatter3d(
+            x=Z_plot[:, 0],
+            y=Z_plot[:, 1],
+            z=Z_plot[:, 2],
+            mode="markers",
+            marker=dict(size=4, color=color_polyhedron, symbol="circle"),  
+            text=archetype_labels, 
+            hoverinfo="text",
+            name="Archetypes"
+        )
+    )
+    
+    # Add the polytope (convex hull) to the plot
     fig.add_trace(
         go.Mesh3d(
             x=Z_plot[:, 0],
@@ -476,7 +710,8 @@ def plot_3D(
             opacity=0.1
         )
     )
-
+    
+    # Add edges of the polytope to the plot
     for simplex in hull.simplices:
         simplex = np.append(simplex, simplex[0])
         fig.add_trace(
@@ -494,25 +729,34 @@ def plot_3D(
     return fig
 
 def align_archetypes(
-    ref_arch: np.ndarray, 
-    query_arch: np.ndarray
+        ref_arch: np.ndarray, 
+        query_arch: np.ndarray
     ) -> np.ndarray:
     """
-    Arranges the archetypes of the query after the order of archetypes in the reference
+    Align the archetypes of the query to match the order of archetypes in the reference.
+
+    This function uses the Euclidean distance between archetypes in the reference and query sets
+    to determine the optimal alignment. The Hungarian algorithm (linear sum assignment) is used
+    to find the best matching pairs, and the query archetypes are reordered accordingly.
+
     Parameters:
     -----------
-    ref_arch: np.ndarray
-        Reference archtypes of shape (n_samples, n_features).
-    query_arch: np.ndarray
-        Query archtypes of shape (n_samples, n_features).
+    ref_arch : np.ndarray
+        A 2D array of shape (n_archetypes, n_features) representing the reference archetypes.
+    query_arch : np.ndarray
+        A 2D array of shape (n_archetypes, n_features) representing the query archetypes.
 
     Returns:
     --------
-    query_arch: np.ndarray
-        Sorted query archetypes
+    np.ndarray
+        A 2D array of shape (n_archetypes, n_features) containing the reordered query archetypes.
     """
+    # Compute pairwise Euclidean distances
     euclidean_d = cdist(ref_arch, query_arch.copy(), metric="euclidean")
+    
+    # Find the optimal assignment using the Hungarian algorithm
     ref_idx, query_idx = linear_sum_assignment(euclidean_d)
+    
     return query_arch[query_idx, :]
 
 # def bootstrap_variance_k_arr(X, n_bootstrap, k_arr, delta=0, seed=42, **kwargs):
@@ -534,51 +778,6 @@ def align_archetypes(
 #     )
 #     return p
 
-
-# t-ratio
-# def simplex_volume(simplex_points):
-#     pivot_point = simplex_points[0, :]
-#     k = len(pivot_point)
-#     return np.abs(np.linalg.det((simplex_points - pivot_point[None, ])[1:, :])) / math.factorial(k)
-
-# def compute_t_ratio(X, Z):
-#     D, k = X.shape[1], Z.shape[0] # number of PCs, number of archetypes
-#     if k < D + 1:
-#         convhull_volume = ConvexHull(project_on_polytope(X, Z)[0].T).volume
-#         polytope_volume = ConvexHull(project_on_polytope(Z, Z)[0].T).volume
-#     elif k == D + 1:
-#         convhull_volume = ConvexHull(X.T).volume
-#         polytope_volume = simplex_volume(Z.T)
-#     elif k > D + 1:
-#         convhull_volume = ConvexHull(X.T).volume
-#         polytope_volume = ConvexHull(Z.T).volume
-#     return polytope_volume / convhull_volume
-
-
-# def project_on_polytope(X, Z):
-#     D, k = X.shape[0], Z.shape[1]
-#     assert k < (D + 1) and k > 1
-#     if k == 2:
-#         proj_vec = (Z[:, 1] - Z[:, 0])[:, None]
-#     else:
-#         proj_vec = (Z.T - Z[:, 0])[1:].T
-#     proj_coord = (
-#         np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T @ (X - Z[:, 0][:, None])
-#     )
-#     proj_X = proj_vec @ proj_coord + Z[:, 0][:, None]
-#     # proj_mtx = proj_vec@np.linalg.inv(proj_vec.T@proj_vec)@proj_vec.T
-#     return proj_coord, proj_X
-
-
-
-# def compute_t_ratio_vitali(X, Z):
-#     # adapted from: https://github.com/vitkl/ParetoTI/blob/510990630da589101c6a8313571c96f7544879da/R/fit_pch.R#L247
-#     # NOTE: I am not fully convinced that this makes sense, since we do not consider all dimensions, but only (k-1) dimensions.
-#     # This is especially harmful if the dimensions are not ordered by variance explained
-#     k = Z.shape[1]
-#     convhull_volume = ConvexHull(X[0 : (k - 1), :].T).volume
-#     polytope_volume = simplex_volume(Z[0 : (k - 1), :].T)
-#     return polytope_volume / convhull_volume
 
 # Appendix
 
