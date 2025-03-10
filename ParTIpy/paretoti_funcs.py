@@ -11,6 +11,7 @@ from joblib import Parallel, delayed
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist
+from tqdm import tqdm  
 
 from .arch import AA
 from .const import (
@@ -396,6 +397,140 @@ def plot_bootstrap_aa(
 
     return fig
 
+def project_on_affine_subspace(X, Z):
+    """
+    Projects a set of points X onto the affine subspace spanned by the vertices Z.
+
+    Parameters:
+    -----------
+    X : numpy.ndarray
+        A (D x n) array of n points in D-dimensional space to be projected.
+    Z : numpy.ndarray
+        A (D x k) array of k vertices (archetypes) defining the affine subspace in D-dimensional space.
+
+    Returns:
+    -----------
+    proj_coord : numpy.ndarray
+        The coordinates of the projected points in the subspace defined by Z.
+    """
+    D, k = Z.shape
+
+    # Compute the projection vectors (basis for the affine subspace)
+    if k == 2:
+        # For a line (k=2), the projection vector is simply the difference between the two vertices
+        proj_vec = (Z[:, 1] - Z[:, 0])[:, None]
+    else:
+        # For higher dimensions, compute the projection vectors relative to the first vertex
+        proj_vec = Z[:, 1:] - Z[:, 0][:, None]
+
+    # Compute the coordinates of the projected points in the subspace
+    proj_coord = np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T @ (X - Z[:, 0][:, None])
+
+    return proj_coord
+
+def compute_t_ratio(X, Z=None):
+    """
+    Computes the ratio of the volume of the polytope defined by Z to the volume of the convex hull of X.
+
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        An AnnData object containing the following attributes:
+        - `adata.obsm["X_pca_reduced"]`: A (n x D) array of n data points in D-dimensional space.
+        - `adata.uns["archetypal_analysis"]["Z"]`: A (k x D) array of k archetypes defining the polytope in D-dimensional space.
+
+    Returns:
+    -----------
+    None
+        The function stores the computed t-ratio in `adata.uns["t_ratio"]`.
+    """
+    adata=None
+    if isinstance(X, np.ndarray):
+        if Z is None:
+            raise ValueError("Z must be provided when input_data is a numpy.ndarray.")
+    else:
+        adata = X
+        X = adata.obsm["X_pca_reduced"]
+        Z = adata.uns["archetypal_analysis"]["Z"]
+
+    # Extract dimensions D (PCs), and number of archetypes
+    D, k = X.shape[1], Z.shape[0] 
+
+    # Input validation
+    if k < 2:
+        raise ValueError("k must satisfy 2 <= k, meaning you need at least 2 archetypes.")
+
+    if k < D + 1:
+        # project onto affine subspace spanned by Z
+        proj_X = project_on_affine_subspace(X.T, Z.T).T
+        proj_Z = project_on_affine_subspace(Z.T, Z.T).T
+
+        # Compute the convex hull volumes
+        convhull_volume = ConvexHull(proj_X).volume
+        polytope_volume = ConvexHull(proj_Z).volume
+    else:
+        # Compute the convex hull volumes directly
+        convhull_volume = ConvexHull(X).volume
+        polytope_volume = ConvexHull(Z).volume
+
+    t_ratio = polytope_volume / convhull_volume
+
+    if isinstance(adata, sc.AnnData):
+        adata.uns["t_ratio"] = t_ratio
+    else:
+        return t_ratio
+
+def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
+    """
+    Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
+
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        An AnnData object containing `adata.obsm["X_pca_reduced"]` and optionally `adata.uns["t_ratio"]`. If it doesnt exist it is called and computed.
+    rep : int, optional (default=1000)
+        Number of randomized datasets to generate.
+    seed : int, optional (default=42)
+        The random seed for reproducibility.
+    n_jobs : int, optional
+        Number of jobs for parallelization (default: 1). Use -1 to use all available cores.
+
+    Returns:
+    -----------
+    float
+        The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
+    """
+
+    # Input validation
+    if "X_pca_reduced" not in adata.obsm:
+        raise ValueError("adata.obsm['X_pca_reduced'] not found.")
+    if "t_ratio" not in adata.uns:
+        print("Computing t-ratio...")
+        compute_t_ratio(adata)
+
+    X = adata.obsm["X_pca_reduced"]
+    t_ratio = adata.uns["t_ratio"]
+    n_samples, n_features = X.shape
+    n_archetypes = adata.uns["archetypal_analysis"]["Z"].shape[0]
+
+    rng = np.random.default_rng(seed)  
+    
+    def compute_randomized_t_ratio():
+        # Shuffle each feature independently
+        SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
+        # Compute archetypes and t-ratio for randomized data
+        Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1).Z
+        return compute_t_ratio(SimplexRand1, Z_mix)
+
+    # Parallelize the computation of randomized t-ratios
+    RandRatio = Parallel(n_jobs=n_jobs)(
+        delayed(compute_randomized_t_ratio)() for _ in tqdm(range(iter), desc="Randomizing")
+    )
+
+    # Calculate the p-value
+    p_value = np.sum(np.array(RandRatio) > t_ratio) / iter
+    return p_value
+
 def plot_2D(
         X: Union[np.ndarray, sc.AnnData],
         Z: Optional[np.ndarray] = None,
@@ -643,51 +778,6 @@ def align_archetypes(
 #     )
 #     return p
 
-
-# t-ratio
-# def simplex_volume(simplex_points):
-#     pivot_point = simplex_points[0, :]
-#     k = len(pivot_point)
-#     return np.abs(np.linalg.det((simplex_points - pivot_point[None, ])[1:, :])) / math.factorial(k)
-
-# def compute_t_ratio(X, Z):
-#     D, k = X.shape[1], Z.shape[0] # number of PCs, number of archetypes
-#     if k < D + 1:
-#         convhull_volume = ConvexHull(project_on_polytope(X, Z)[0].T).volume
-#         polytope_volume = ConvexHull(project_on_polytope(Z, Z)[0].T).volume
-#     elif k == D + 1:
-#         convhull_volume = ConvexHull(X.T).volume
-#         polytope_volume = simplex_volume(Z.T)
-#     elif k > D + 1:
-#         convhull_volume = ConvexHull(X.T).volume
-#         polytope_volume = ConvexHull(Z.T).volume
-#     return polytope_volume / convhull_volume
-
-
-# def project_on_polytope(X, Z):
-#     D, k = X.shape[0], Z.shape[1]
-#     assert k < (D + 1) and k > 1
-#     if k == 2:
-#         proj_vec = (Z[:, 1] - Z[:, 0])[:, None]
-#     else:
-#         proj_vec = (Z.T - Z[:, 0])[1:].T
-#     proj_coord = (
-#         np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T @ (X - Z[:, 0][:, None])
-#     )
-#     proj_X = proj_vec @ proj_coord + Z[:, 0][:, None]
-#     # proj_mtx = proj_vec@np.linalg.inv(proj_vec.T@proj_vec)@proj_vec.T
-#     return proj_coord, proj_X
-
-
-
-# def compute_t_ratio_vitali(X, Z):
-#     # adapted from: https://github.com/vitkl/ParetoTI/blob/510990630da589101c6a8313571c96f7544879da/R/fit_pch.R#L247
-#     # NOTE: I am not fully convinced that this makes sense, since we do not consider all dimensions, but only (k-1) dimensions.
-#     # This is especially harmful if the dimensions are not ordered by variance explained
-#     k = Z.shape[1]
-#     convhull_volume = ConvexHull(X[0 : (k - 1), :].T).volume
-#     polytope_volume = simplex_volume(Z[0 : (k - 1), :].T)
-#     return polytope_volume / convhull_volume
 
 # Appendix
 
