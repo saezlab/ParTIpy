@@ -1,527 +1,782 @@
 import math
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import plotnine as pn
 import pandas as pd
-from scipy.spatial import ConvexHull
+import plotly.express as px
+import plotly.graph_objects as go
+import plotnine as pn
+import scanpy as sc
+from joblib import Parallel, delayed
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial import ConvexHull
+from scipy.spatial.distance import cdist
+from tqdm import tqdm  
 
 from .arch import AA
+from .const import (
+    DEFAULT_INIT,
+    DEFAULT_OPTIM
+)
 
+####TODO####
+# add/fix t-ratio function
+# Function mean archetype variance for different n_archetypes
+############
 
-def hvg_vst_method(adata):
-    from scipy.sparse import issparse
-    from scipy.interpolate import UnivariateSpline
+def reduce_pca(
+    adata: sc.AnnData, 
+    n_pcs: int
+    ) -> None:
+    """
+    Reduces the PCA representation in `adata.obsm["X_pca"]` to the first `n_pcs` components.
+    If `adata.obsm["X_pca"]` does not exist, PCA is computed and stored in `adata.obsm["X_pca"]`.
+    The reduced PCA representation is stored in `adata.obsm["X_pca_reduced"]`.
 
-    if "std_variance" in adata.var.columns and "std_variance_rank" in adata.var.columns:
-        print("It seems like hvg_vst has been used before; aborting")
-        return None
-    df = pd.DataFrame(index=adata.var_names)
-    df["mean"] = adata.X.mean(axis=0).A1 if issparse(adata.X) else adata.X.mean(axis=0)
-    df = df.loc[df["mean"] > 0, :].copy()
-    adata_subset = adata[:, df.index]
-    df["variance"] = (
-        adata_subset.X.todense().var(axis=0).A1
-        if issparse(adata_subset.X)
-        else adata_subset.X.var(axis=0)
-    )
-    df["dispersion"] = df["variance"] / df["mean"]
-    df["log10_mean"] = np.log10(df["mean"])
-    df["log10_variance"] = np.log10(df["variance"])
-    df = df[np.isfinite(df["variance"])]
-    df = df[df["variance"] > 0]
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        AnnData object containing single-cell data.
+    n_pcs : int
+        The number of principal components (PCs) to retain. Must be less than or equal to the
+        number of available PCs in `adata.obsm["X_pca"]`.
 
-    x, y = df["log10_mean"].values, df["log10_variance"].values
-    order = np.argsort(x)
-    x, y = x[order], y[order]
-    cs = UnivariateSpline(x, y)
+    Returns:
+    --------
+    None
+        The results are stored in `adata.obsm["X_pca_reduced"]`
+    """
+    # Validation input
+    if "X_pca" not in adata.obsm:
+        print("X_pca not found in adata.obsm. Computing PCA...")
+        sc.pp.pca(adata, mask_var="highly_variable")  
+    
+    if n_pcs > adata.obsm["X_pca"].shape[1]:
+        raise ValueError(
+            f"Requested {n_pcs} PCs, but only {adata.obsm['X_pca'].shape[1]} PCs are available."
+        )
+    
+    adata.obsm["X_pca_reduced"] = adata.obsm["X_pca"][:, :n_pcs]
 
-    df["log10_predicted_variance"] = cs(df["log10_mean"])
-    df["predicted_variance"] = 10 ** df["log10_predicted_variance"]
+def var_explained_aa(
+        adata: sc.AnnData,
+        min_a: int = 2, 
+        max_a: int = 10,
+        optim: str = DEFAULT_OPTIM, 
+        init: str = DEFAULT_INIT,
+        n_jobs: int = -1
+    ) -> None:
+    """
+    Compute the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
-    tmp_mtx = (
-        adata_subset.X.copy().T.todense().astype(np.float64)
-        if issparse(adata_subset.X)
-        else adata_subset.X.copy().T.astype(np.float64)
-    )
-    tmp_mtx -= df["mean"].to_numpy()[:, None]
-    tmp_mtx /= (df["predicted_variance"].to_numpy() ** 0.5)[:, None]
-    clip = adata_subset.shape[0] ** 0.5
-    tmp_mtx[tmp_mtx > clip] = clip
-    df["std_variance"] = tmp_mtx.std(axis=1)
-    adata.var = adata_subset.var.join(df, how="left").copy()
-    adata.var["std_variance_rank"] = (
-        (adata.var["std_variance"] * -1).argsort().argsort()
-    )
+    This function performs Archetypal Analysis (AA) for a range of archetypes (from `min_a` to `max_a`)
+    on the PCA-reduced data stored in `adata.obsm["X_pca_reduced"]`. If the reduced PCA representation
+    is not available, it uses the full PCA representation (`adata.obsm["X_pca"]`). The results are 
+    stored in `adata.uns["AA_var"]`.
 
+    Parameters:
+    -----------
+    adata: sc.AnnData
+        AnnData object containing adata.obsm["X_pca_reduced"] or
+        adata.obsm["X_pca"].
+    min_a : int, optional (default=2)
+        Minimum number of archetypes to test.
+    max_a : int, optional (default=10)
+        Maximum number of archetypes to test.
+    optim : str, optional (default=DEFAULT_OPTIM)
+        The optimization function to use for Archetypal Analysis.
+    init : str, optional (default=DEFAULT_INIT)
+        The initialization function to use for Archetypal Analysis.
+    n_jobs : int, optional (default=-1)
+        Number of jobs for parallel computation. `-1` uses all available cores.
+    
+    Returns:
+    --------
+    None
+        The results are stored in `adata.uns["AA_var"]` as a DataFrame with the following columns:
+        - `k`: The number of archetypes.
+        - `varexpl`: The variance explained by the model.
+        - `varexpl_ontop`: The additional variance explained compared to the model with `k-1` archetypes.
+        - `dist_to_projected`: The distance between the variance explained and its projection on the line 
+          connecting the variance explained of first and last k.
+    """
+    # Validation input
+    if min_a < 2:
+        raise ValueError("`min_a` must be at least 2.")
+    if max_a < min_a:
+        raise ValueError("`max_a` must be greater than or equal to `min_a`.")
+    
+    if "X_pca_reduced" not in adata.obsm:
+        print("No reduced PCA found. Calculating with all available PCs from X_pca")
+        X = adata.obsm["X_pca"]
+    else:
+        X = adata.obsm["X_pca_reduced"]
 
-def get_var_explained_pca(X, random_state=42, max_comp=np.inf):
-    from sklearn.decomposition import PCA
+    k_arr = np.arange(min_a, max_a+1)
+    
+    # Parallel computation of AA
+    def compute_aa(k):
+        A, B, Z, RSS, varexpl = AA(n_archetypes=k, optim=optim, init=init).fit(X).return_all()
+        return k, {"Z": Z, "A": A, "B": B, "RSS": RSS, "varexpl": varexpl}
 
-    pca = PCA(random_state=random_state)
-    pca.fit(X)
-    mean_vec = X.mean(axis=0)
-    total_variance = np.sum((X - mean_vec) ** 2) / X.shape[0]
-    assert np.isclose(
-        total_variance, np.sum((X.shape[0] - 1) / X.shape[0] * pca.explained_variance_)
-    )
-    # note that n_samples - 1 degrees of freedom is used, which I don't like
-    pca.explained_variance_ = (X.shape[0] - 1) / X.shape[0] * pca.explained_variance_
-    plot_df = pd.DataFrame(
-        {
-            "component": np.arange(1, len(pca.explained_variance_) + 1),
-            "Variance Explained": pca.explained_variance_,
-            "Fraction of Variance Explained": (
-                pca.explained_variance_ / total_variance
-            ),
-            "Cumulative Fraction of Variance Explained": np.cumsum(
-                pca.explained_variance_
-            )
-            / total_variance,
-        }
-    )
-    plot_df = plot_df.melt(id_vars="component", var_name="var_type", value_name="value")
-    plot_df = plot_df.query("var_type != 'Variance Explained'").copy()
-    plot_df["var_type"] = pd.Categorical(
-        plot_df["var_type"],
-        categories=[
-            "Fraction of Variance Explained",
-            "Cumulative Fraction of Variance Explained",
-        ],
-    )
-    plot_df = plot_df.loc[plot_df["component"] < max_comp, :].copy()
-    p = (
-        pn.ggplot(plot_df)
-        + pn.geom_point(pn.aes(x="component", y="value"), color="blue")
-        + pn.labs(x="Component", y="")
-        + pn.facet_wrap("~var_type", scales="free_y", ncol=1)
-        + pn.geom_hline(yintercept=0, color="grey")
-    )
-    return p
+    results_list = Parallel(n_jobs=n_jobs)(delayed(compute_aa)(k) for k in k_arr)
 
+    results = {k: result for k, result in results_list}
+       
+    varexpl_values = np.array([results[k]["varexpl"] for k in k_arr])
 
-def get_var_explained_aa(X, k_arr=np.arange(2, 10)):
-    # see also Supplementary Figure 3 in "Inferring biological tasks using Pareto analysis of high-dimensional data"
-    # see also Vitali's code: https://github.com/vitkl/ParetoTI/blob/510990630da589101c6a8313571c96f7544879da/R/plot_arc_var.R#L31
-    results = {}
-    for k in k_arr:
-        A, B, Z, RSS, varexpl = AA(n_archetypes=k).fit(X).return_all()
-        results[k] = {"Z": Z, "A": A, "B": B, "RSS": RSS, "varexpl": varexpl}
-    varexpl = np.array([results[k]["varexpl"] for k in k_arr])
     plot_df = pd.DataFrame(
         {
             "k": k_arr,
-            "varexpl": np.array([results[k]["varexpl"] for k in k_arr]),
-            "varexpl_ontop": np.concatenate(
-                (varexpl[0][None], varexpl[1:] - varexpl[:-1])
+            "varexpl": varexpl_values,
+            "varexpl_ontop": np.insert(np.diff(varexpl_values), 0, varexpl_values[0]
             ),
         }
     )
-    diag_df = pd.concat([plot_df.head(1), plot_df.tail(1)])
-    diag_df.loc[diag_df["k"] == 1, "varexpl"] = 0
-
-    # note the projection won't look orthogonal on the plot, because the scale of the axis is so different
-    # just set pn.coord_equal() to see it
-    offset_vec = plot_df.values[:, :2][0,]
-    proj_vec = (plot_df.values[:, :2] - offset_vec)[-1, :][:, None]
+    
+    # Compute the distance of the explained variance to its projection
+    offset_vec = plot_df[["k", "varexpl"]].iloc[0].values
+    proj_vec = (plot_df[["k", "varexpl"]].values - offset_vec)[-1, :][:, None]
     proj_mtx = proj_vec @ np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T
-    proj_val = (
-        proj_mtx @ (plot_df.values[:, :2] - plot_df.values[:, :2][0,]).T
-    ).T + offset_vec
+    proj_val = (proj_mtx @ (plot_df[["k", "varexpl"]].values - offset_vec).T).T + offset_vec
     proj_df = pd.DataFrame(proj_val, columns=["k", "varexpl"])
-    dist = ((plot_df.values[:, :2] - proj_df.values[:, :2]) ** 2).sum(axis=1) ** 0.5
-    dist_df = pd.DataFrame({"k": k_arr, "dist": dist})
+    plot_df["dist_to_projected"] = np.linalg.norm(plot_df[["k", "varexpl"]].values - proj_df[["k", "varexpl"]].values, axis=1)
 
-    p1 = (
-        pn.ggplot(plot_df)
-        + pn.geom_line(data=plot_df, mapping=pn.aes(x="k", y="varexpl"), color="blue")
-        + pn.geom_point(data=plot_df, mapping=pn.aes(x="k", y="varexpl"), color="blue")
-        + pn.geom_point(data=proj_df, mapping=pn.aes(x="k", y="varexpl"), color="white")
-        + pn.geom_line(data=diag_df, mapping=pn.aes(x="k", y="varexpl"), color="white")
-        + pn.labs(x="k (Number of Archetypes)", y="Variance Explained")
-        + pn.lims(y=[0, 1])
-        + pn.scale_x_continuous(breaks=np.arange(k_arr.min(), k_arr.max() + 1))
-    )
+    adata.uns["AA_var"] = plot_df
 
-    p2 = (
-        pn.ggplot()
-        + pn.geom_point(data=dist_df, mapping=pn.aes(x="k", y="dist"), color="blue")
-        + pn.geom_segment(
-            data=dist_df,
-            mapping=pn.aes(x="k", y=0, xend="k", yend="dist"),
-            color="blue",
-        )
-        + pn.scale_x_continuous(breaks=np.arange(k_arr.min(), k_arr.max() + 1))
-        + pn.labs(x="Component (Number of Archetypes)", y="Distance to Projected Point")
-    )
+def plot_var_explained_aa(
+        adata: sc.AnnData,
+        ) -> pn.ggplot:    
+    """
+    Generate an elbow plot of the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
-    p3 = (
-        pn.ggplot(plot_df)
-        + pn.geom_point(pn.aes(x="k", y="varexpl_ontop"), color="grey")
-        + pn.geom_line(pn.aes(x="k", y="varexpl_ontop"), color="grey")
-        + pn.labs(
-            x="k (Number of Archetypes)", y="Variance Explained on Top of (k-1) Model"
-        )
-        + pn.scale_x_continuous(breaks=np.arange(k_arr.min(), k_arr.max() + 1))
-        + pn.lims(y=(0, None))
-    )
+    This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
+    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
+    
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
+        
+    Returns:
+    --------
+    pn.ggplot
+        A ggplot object showing the variance explained plot.
+    """
+    # Validation input
+    if "AA_var" not in adata.uns:
+        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
+        var_explained_aa(adata=adata) 
+    
+    plot_df = adata.uns["AA_var"]
+    
+    # Create data for the diagonal line
+    diag_data = pd.DataFrame({
+        "k": [plot_df["k"].min(), plot_df["k"].max()],
+        "varexpl": [plot_df["varexpl"].min(), plot_df["varexpl"].max()]
+    })
 
-    return p1, p2, p3
-
-
-def bootstrap_variance_single_k(X, n_bootstrap, k, seed=42, **kwargs):
-    # see Vitali's function here: ?
-
-    # compute the reference archetypes on the full dataset
-    ref_Z = AA(n_archetypes=k).fit(X).Z
-    n_samples, n_features = X.shape
-
-    # compute archetypes on bootstrap samples
-    Z_stack = []
-    rng = np.random.default_rng(seed)
-    for _ in range(n_bootstrap):
-        idx_bootstrap = rng.choice(np.arange(n_samples), size=n_samples, replace=True)
-        X_bootstrap = X[idx_bootstrap, :].copy()
-        Z_stack.append(AA(n_archetypes=k).fit(X_bootstrap).Z)
-
-    # align the archetypes to the reference archetype
-    Z_stack = np.stack(
-        [align_archetypes(ref_arch=ref_Z, query_arch=query_Z) for query_Z in Z_stack]
-    )
-
-    # stack the results from each bootstrap sample and compute the variance across all bootstrap samples
-    # resultings in [features x archetypes]
-    var_per_feature_per_arch = Z_stack.var(axis=0)
-
-    # compute mean per feature and mean per archetype
-    # var_per_feature = var_per_feature_per_arch.mean(axis=0)
-    var_per_archetype = var_per_feature_per_arch.mean(axis=1)
-
-    # normalize the mean per feature based on the total features variance in the data
-    # TODO: not sure why one should do that?
-    # total_feature_var = X.var(axis=0).sum()
-    # var_per_feature_norm = var_per_feature / total_feature_var
-
-    return var_per_archetype.mean()
-
-
-def bootstrap_variance_k_arr(X, n_bootstrap, k_arr, delta=0, seed=42, **kwargs):
-    assert k_arr.min() > 1
-    bootstrap_var = np.array(
-        [
-            bootstrap_variance_single_k(
-                X, n_bootstrap=n_bootstrap, k=k, delta=delta, seed=seed, **kwargs
-            )
-            for k in k_arr
-        ]
-    )
-    plot_df = pd.DataFrame({"k": k_arr, "var": bootstrap_var})
     p = (
-        pn.ggplot(plot_df, pn.aes(x="k", y="var"))
-        + pn.geom_point(color="blue")
-        + pn.geom_line(color="blue")
-        + pn.labs(x="Number of Archetypes", y="Mean Variance in Archetype Position")
+        pn.ggplot(plot_df)
+        + pn.geom_line(mapping=pn.aes(x="k", y="varexpl"), color="black")
+        + pn.geom_point(mapping=pn.aes(x="k", y="varexpl"), color="black")
+        + pn.geom_line(data=diag_data, mapping=pn.aes(x="k", y="varexpl"), color="gray")
+        + pn.labs(x="Number of Archetypes (k)", y="Variance Explained")
+        + pn.lims(y=[0, 1])
+        + pn.scale_x_continuous(breaks=np.arange(plot_df["k"].min(), plot_df["k"].max() + 1))
+        + pn.theme_matplotlib()
     )
     return p
 
+def plot_projected_dist(
+        adata: sc.AnnData,
+        ) -> pn.ggplot:    
+    """
+    This function creates a plot showing the projected distance for a range of archetypes.
+    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
 
-def compute_dist_mtx(mtx_1, mtx_2):
-    AB = np.dot(mtx_1, mtx_2.T)
-    AA = np.sum(np.square(mtx_1), axis=1)
-    BB = np.sum(np.square(mtx_2), axis=1)
-    dist_mtx = (BB - 2 * AB).T + AA
-    dist_mtx[np.isclose(dist_mtx, 0)] = (
-        0  # avoid problems if we get small negative numbers due to numerical inaccuracies
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
+        
+    Returns:
+    --------
+    pn.ggplot
+        A ggplot object showing the projected distance plot.
+    """
+    # Validation input
+    if "AA_var" not in adata.uns:
+        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
+        var_explained_aa(adata=adata) 
+
+    plot_df = adata.uns["AA_var"]
+    
+    p = (
+        pn.ggplot(plot_df)
+        + pn.geom_col(mapping=pn.aes(x="k", y="dist_to_projected"))
+        + pn.scale_x_continuous(breaks=np.arange(plot_df["k"].min(), plot_df["k"].max() + 1))
+        + pn.labs(x="Number of Archetypes (k)", y="Distance to Projected Point")
+        + pn.theme_matplotlib()
     )
-    dist_mtx = np.sqrt(dist_mtx)
-    return dist_mtx
 
+    return p
 
-def align_archetypes(ref_arch, query_arch):
-    # not sure if copy here is needed, compute_dist_mtx should not modify the matrices
-    euclidean_d = compute_dist_mtx(ref_arch, query_arch.copy()).T
-    ref_idx, query_idx = linear_sum_assignment(euclidean_d)
-    return query_arch[query_idx, :]
+def plot_var_on_top(
+        adata: sc.AnnData,
+        ) -> pn.ggplot:    
+    """
+    Generate a plot showing the additional variance explained by AA models when increasing the number
+    of archetypes from `k-1` to `k`    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
 
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        AnnData objectt containing the variance explained data in `adata.uns["AA_var"]`.
 
-def simplex_volume(simplex_points):
-    pivot_point = simplex_points[0, :]
-    k = len(pivot_point)
-    return np.abs(
-        np.linalg.det((simplex_points - pivot_point[None,])[1:, :])
-    ) / math.factorial(k)
+    Returns:
+    --------
+    pn.ggplot
+        A ggplot object showing the variance explained on top of (k-1) model plot.
+    """
+    # Validation input
+    if "AA_var" not in adata.uns:
+        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
+        var_explained_aa(adata=adata)
 
+    plot_df = adata.uns["AA_var"]
+    
+    p = (
+        pn.ggplot(plot_df)
+        + pn.geom_point(pn.aes(x="k", y="varexpl_ontop"), color="black")
+        + pn.geom_line(pn.aes(x="k", y="varexpl_ontop"), color="black")
+        + pn.labs(
+            x="Number of Archetypes (k)", y="Variance Explained on Top of (k-1) Model"
+        )
+        + pn.scale_x_continuous(breaks=np.arange(plot_df["k"].min(), plot_df["k"].max() + 1))
+        + pn.lims(y=(0, None))
+        + pn.theme_matplotlib()
+    )
 
-def compute_t_ratio_vitali(X, Z):
-    # adapted from: https://github.com/vitkl/ParetoTI/blob/510990630da589101c6a8313571c96f7544879da/R/fit_pch.R#L247
-    # NOTE: I am not fully convinced that this makes sense, since we do not consider all dimensions, but only (k-1) dimensions.
-    # This is especially harmful if the dimensions are not ordered by variance explained
-    k = Z.shape[1]
-    convhull_volume = ConvexHull(X[0 : (k - 1), :].T).volume
-    polytope_volume = simplex_volume(Z[0 : (k - 1), :].T)
-    return polytope_volume / convhull_volume
+    return p
 
+def bootstrap_aa(
+        adata: sc.AnnData, 
+        n_bootstrap: int,
+        n_archetypes: int, 
+        optim: str = DEFAULT_OPTIM, 
+        init: str = DEFAULT_INIT, 
+        seed: int = 42
+    ) -> None:
+    """
+    Perform bootstrap sampling to compute archetypes and assess their stability.
 
-def compute_t_ratio(X, Z):
-    D, k = X.shape[0], Z.shape[1]  # number of PCs, number of archetypes
-    if k < D + 1:
-        convhull_volume = ConvexHull(project_on_polytope(X.T, Z.T)[0].T).volume
-        polytope_volume = ConvexHull(project_on_polytope(Z.T, Z.T)[0].T).volume
-    elif k == D + 1:
-        convhull_volume = ConvexHull(X.T).volume
-        polytope_volume = simplex_volume(Z.T)
-    elif k > D + 1:
-        convhull_volume = ConvexHull(X.T).volume
-        polytope_volume = ConvexHull(Z.T).volume
-    return polytope_volume / convhull_volume
+    This function generates bootstrap samples from the data, computes archetypes for each sample,
+    aligns them with the reference archetypes, and stores the results in `adata.uns["AA_bootstrap"]`.
 
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        AnnData object. The PCA-reduced data should be stored in `adata.obsm["X_pca_reduced"]`. If not 
+        found, the full PCA representation (`adata.obsm["X_pca"]`) is used.
+    n_bootstrap : int
+        The number of bootstrap samples to generate.
+    n_archetypes : int
+        The number of archetypes to compute for each bootstrap sample.
+    optim : str, optional (default=DEFAULT_OPTIM)
+        The optimization function to use for Archetypal Analysis.
+    init : str, optional (default=DEFAULT_INIT)
+        The initialization function to use for Archetypal Analysis.
+    seed : int, optional (default=42)
+        The random seed for reproducibility.
 
-def project_on_polytope(X, Z):
-    D, k = X.shape[0], Z.shape[1]
-    assert k < (D + 1) and k > 1
-    if k == 2:
-        proj_vec = (Z[:, 1] - Z[:, 0])[:, None]
+    Returns:
+    --------
+    None
+        The results are stored in `adata.uns["AA_bootstrap"]` as a DataFrame with the following columns:
+        - `pc_i`: The coordinates of the archetypes in the i-th principal component.
+        - `archetype`: The archetype index.
+        - `iter`: The bootstrap iteration index (0 for the reference archetypes).
+        - `reference`: A boolean indicating whether the archetype is from the reference model.
+        - `mean_variance`: The mean variance of archetype coordinates across bootstrap samples.
+    """
+    # Validation input
+    if "X_pca_reduced" not in adata.obsm:
+        if "X_pca" not in adata.obsm:
+            raise ValueError("Neither `X_pca_reduced` nor `X_pca` found in `adata.obsm`. Please compute PCA first.")
+        print("No reduced PCA found. Calculating with all available PCs from `X_pca`.")
+        X = adata.obsm["X_pca"]
     else:
-        proj_vec = (Z.T - Z[:, 0])[1:].T
-    proj_coord = (
-        np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T @ (X - Z[:, 0][:, None])
-    )
-    proj_X = proj_vec @ proj_coord + +Z[:, 0][:, None]
-    # proj_mtx = proj_vec@np.linalg.inv(proj_vec.T@proj_vec)@proj_vec.T
-    return proj_coord, proj_X
+        X = adata.obsm["X_pca_reduced"]
 
-
-def plot_2D(X, Z, color_vec, opacity=0.4):
-    import plotly.graph_objects as go
-    import plotly.express as px
-
-    D, k = X.shape[0], Z.shape[1]
-    if D != 2:
-        raise ValueError("D should be 2")
-    if k not in [2, 3, 4]:
-        raise ValueError("k should be in [2, 3, 4]")
-    plot_df = pd.DataFrame(X.T, columns=[f"x{i}" for i in range(X.T.shape[1])])
-    plot_df["marker_size"] = np.repeat(4, X.shape[1])
-    if color_vec is not None:
-        plot_df["color"] = color_vec
-        fig = px.scatter(
-            plot_df, x="x0", y="x1", color="color", size="marker_size", size_max=10
-        )
-    else:
-        fig = px.scatter(plot_df, x="x0", y="x1", size="marker_size", size_max=10)
-    Z_plot = Z.copy()
-    order = np.argsort(
-        np.arctan2(
-            Z_plot[1, :] - np.mean(Z_plot[1, :]), Z_plot[0, :] - np.mean(Z_plot[0, :])
-        )
-    )
-    Z_plot = Z_plot[:, order]
-    Z_plot = np.column_stack((Z_plot, Z_plot[:, 0]))
-    fig.add_trace(
-        go.Scatter(x=Z_plot[0,], y=Z_plot[1,], fill="toself", opacity=opacity)
-    )
-
-    fig.update_layout(template="plotly_dark")
-    fig.update_yaxes(
-        scaleanchor="x",
-        scaleratio=1,
-    )
-    fig.show()
-
-
-def plot_3D(X, Z, color_vec=None, opacity=0.2):
-    import plotly.graph_objects as go
-    import plotly.express as px
-
-    X = X.T
-    Z = Z.T
-    D, k = X.shape[0], Z.shape[1]
-    if D != 3:
-        raise ValueError("D should be 3")
-    if k not in [3, 4]:
-        raise ValueError("k should be in [3, 4]")
-    plot_df = pd.DataFrame(X.T, columns=[f"x{i}" for i in range(X.T.shape[1])])
-    plot_df["marker_size"] = np.repeat(4, X.shape[1])
-    if color_vec is not None:
-        plot_df["color"] = color_vec
-        fig = px.scatter_3d(
-            plot_df,
-            x="x0",
-            y="x1",
-            z="x2",
-            color="color",
-            size="marker_size",
-            size_max=10,
-        )
-    else:
-        fig = px.scatter_3d(
-            plot_df, x="x0", y="x1", z="x2", size="marker_size", size_max=10
-        )
-
-    vertices = [[Z[0, i], Z[1, i], Z[2, i]] for i in range(k)]
-    if k == 3:
-        triangles = [[0, 1, 2]]
-        fig.add_trace(
-            go.Mesh3d(
-                x=[vertex[0] for vertex in vertices],
-                y=[vertex[1] for vertex in vertices],
-                z=[vertex[2] for vertex in vertices],
-                i=[triangle[0] for triangle in triangles],
-                j=[triangle[1] for triangle in triangles],
-                k=[triangle[2] for triangle in triangles],
-                color="green",
-                opacity=opacity,
-            )
-        )
-    elif k == 4:
-        tetrahedron = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
-        fig.add_trace(
-            go.Mesh3d(
-                x=[vertex[0] for vertex in vertices],
-                y=[vertex[1] for vertex in vertices],
-                z=[vertex[2] for vertex in vertices],
-                i=[tet[0] for tet in tetrahedron],
-                j=[tet[1] for tet in tetrahedron],
-                k=[tet[2] for tet in tetrahedron],
-                color="green",
-                opacity=opacity,
-            )
-        )
-
-    Z_plot = Z.copy()
-    order = np.argsort(
-        np.arctan2(
-            Z_plot[1, :] - np.mean(Z_plot[1, :]), Z_plot[0, :] - np.mean(Z_plot[0, :])
-        )
-    )
-    Z_plot = Z_plot[:, order]
-    Z_plot = np.column_stack((Z_plot, Z_plot[:, 0]))
-    fig.add_trace(
-        go.Scatter3d(
-            x=Z_plot[0, :],
-            y=Z_plot[1, :],
-            z=Z_plot[2, :],
-            mode="lines",
-            line=dict(color="green", width=4),
-        )
-    )
-    fig.update_layout(template="plotly_dark")
-    fig.update_yaxes(
-        scaleanchor="x",
-        scaleratio=1,
-    )
-    fig.show()
-
-
-def bootstrap_PCHA(X, n_bootstrap, k, seed=42, **kwargs):
-    # compute the reference archetypes on the full dataset
-    ref_Z = AA(n_archetypes=k).fit(X).Z
     n_samples, n_features = X.shape
-
-    # compute archetypes on bootstrap samples
-    Z_list = []
     rng = np.random.default_rng(seed)
-    for _ in range(n_bootstrap):
-        idx_bootstrap = rng.choice(np.arange(n_samples), size=n_samples, replace=True)
-        X_bootstrap = X[idx_bootstrap, :].copy()
-        Z_list.append(AA(n_archetypes=k).fit(X_bootstrap).Z)
+    
+    # Reference archetypes
+    ref_Z = AA(n_archetypes=n_archetypes, optim = optim, init = init).fit(X).Z
+    
+    # Generate bootstrap samples
+    idx_bootstrap = rng.choice(n_samples, size=(n_bootstrap, n_samples), replace=True)
+    Z_list = [
+        AA(n_archetypes=n_archetypes, optim=optim, init=init).fit(X[idx, :]).Z 
+        for idx in idx_bootstrap
+    ]
 
-    # align the archetypes to the reference archetype
+    # Align archetypes
     Z_list = [
         align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy())
         for query_Z in Z_list
     ]
 
-    bootstrap_df = []
-    for idx in range(len(Z_list)):
-        df = pd.DataFrame(Z_list[idx], columns=[f"pc_{i}" for i in range(n_features)])
-        df["archetype"] = np.arange(k)
-        df["iter"] = idx + 1  # iter=0 is reserved for the reference
-        bootstrap_df.append(df)
-    bootstrap_df = pd.concat(bootstrap_df)
-    bootstrap_df["archetype"] = pd.Categorical(bootstrap_df["archetype"])
+    # Compute variance
+    Z_stack = np.stack(Z_list)
+    var_per_archetype = Z_stack.var(axis=0).mean(axis=1)
+    mean_variance = var_per_archetype.mean()
 
+    # Create result dataframe
+    bootstrap_data = [
+        pd.DataFrame(Z, columns=[f"pc_{i}" for i in range(n_features)])
+        .assign(archetype=np.arange(n_archetypes), iter=i + 1) 
+        for i, Z in enumerate(Z_list)
+        ]
+    bootstrap_df = pd.concat(bootstrap_data)
+ 
     df = pd.DataFrame(ref_Z, columns=[f"pc_{i}" for i in range(n_features)])
-    df["archetype"] = np.arange(k)
+    df["archetype"] = np.arange(n_archetypes)
     df["iter"] = 0
 
     bootstrap_df = pd.concat((bootstrap_df, df), axis=0)
     bootstrap_df["reference"] = bootstrap_df["iter"] == 0
     bootstrap_df["archetype"] = pd.Categorical(bootstrap_df["archetype"])
 
-    # bootstrap_df["archetype_permuted"] = np.random.choice(bootstrap_df["archetype"], size=bootstrap_df.shape[0])
-    # bootstrap_df["archetype_permuted"] = pd.Categorical(bootstrap_df["archetype_permuted"])
-    return bootstrap_df
+    bootstrap_df["mean_variance"] = mean_variance
 
+    adata.uns["AA_bootstrap"] = bootstrap_df
 
-def plot_3D_bootstrap(
-    bootstrap_df, color_var="archetype", opacity=0.5, iter_filter=None, jitter=0
-):
-    import plotly.express as px
+def plot_bootstrap_aa(
+    adata : sc.AnnData
+    ) -> go.Figure:
+    """
+    This function creates an interactive 3D scatter plot showing the positions of archetypes
+    computed from bootstrap samples, stored in `adata.uns["AA_bootstrap"]`.
+    
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
+        
+    Returns:
+    --------
+    go.Figure:
+        3D plot of bootstrap results for the archetypes.
+    """
+    # Validation input
+    if "AA_bootstrap" not in adata.uns:
+        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
 
-    bootstrap_df["marker_size"] = np.repeat(4, bootstrap_df.shape[0])
-    if iter_filter is not None:
-        bootstrap_df = bootstrap_df.loc[
-            np.isin(bootstrap_df["iter"], iter_filter), :
-        ].copy()
-    if jitter > 0:
-        bootstrap_df[["pc_" + str(i) for i in range(3)]] += np.random.normal(
-            loc=0,
-            scale=jitter,
-            size=bootstrap_df[["pc_" + str(i) for i in range(3)]].shape,
-        )
+    # Generate the 3D scatter plot
+    bootstrap_df = adata.uns["AA_bootstrap"]
     fig = px.scatter_3d(
         bootstrap_df,
-        x="pc_0",
-        y="pc_1",
-        z="pc_2",
-        color=color_var,
-        size="marker_size",
+        x='pc_0', 
+        y='pc_1', 
+        z='pc_2',
+        color='archetype', 
+        symbol="reference",
+        labels={
+            "pc_0": "PC 1",
+            "pc_1": "PC 2",
+            "pc_2": "PC 3",
+        },
+        title="Archetypes on bootstrapepd data",
         size_max=10,
-        opacity=opacity,
-        # add upon hover the iteration number
         hover_data=["iter", "archetype", "reference"],
+        opacity=0.5
     )
-    fig.update_layout(template="plotly_dark")
-    fig.update_yaxes(
-        scaleanchor="x",
-        scaleratio=1,
+    fig.update_layout(template="none")
+
+    return fig
+
+def project_on_affine_subspace(X, Z):
+    """
+    Projects a set of points X onto the affine subspace spanned by the vertices Z.
+
+    Parameters:
+    -----------
+    X : numpy.ndarray
+        A (D x n) array of n points in D-dimensional space to be projected.
+    Z : numpy.ndarray
+        A (D x k) array of k vertices (archetypes) defining the affine subspace in D-dimensional space.
+
+    Returns:
+    -----------
+    proj_coord : numpy.ndarray
+        The coordinates of the projected points in the subspace defined by Z.
+    """
+    D, k = Z.shape
+
+    # Compute the projection vectors (basis for the affine subspace)
+    if k == 2:
+        # For a line (k=2), the projection vector is simply the difference between the two vertices
+        proj_vec = (Z[:, 1] - Z[:, 0])[:, None]
+    else:
+        # For higher dimensions, compute the projection vectors relative to the first vertex
+        proj_vec = Z[:, 1:] - Z[:, 0][:, None]
+
+    # Compute the coordinates of the projected points in the subspace
+    proj_coord = np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T @ (X - Z[:, 0][:, None])
+
+    return proj_coord
+
+def compute_t_ratio(X, Z=None):
+    """
+    Computes the ratio of the volume of the polytope defined by Z to the volume of the convex hull of X.
+
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        An AnnData object containing the following attributes:
+        - `adata.obsm["X_pca_reduced"]`: A (n x D) array of n data points in D-dimensional space.
+        - `adata.uns["archetypal_analysis"]["Z"]`: A (k x D) array of k archetypes defining the polytope in D-dimensional space.
+
+    Returns:
+    -----------
+    None
+        The function stores the computed t-ratio in `adata.uns["t_ratio"]`.
+    """
+    adata=None
+    if isinstance(X, np.ndarray):
+        if Z is None:
+            raise ValueError("Z must be provided when input_data is a numpy.ndarray.")
+    else:
+        adata = X
+        X = adata.obsm["X_pca_reduced"]
+        Z = adata.uns["archetypal_analysis"]["Z"]
+
+    # Extract dimensions D (PCs), and number of archetypes
+    D, k = X.shape[1], Z.shape[0] 
+
+    # Input validation
+    if k < 2:
+        raise ValueError("k must satisfy 2 <= k, meaning you need at least 2 archetypes.")
+
+    if k < D + 1:
+        # project onto affine subspace spanned by Z
+        proj_X = project_on_affine_subspace(X.T, Z.T).T
+        proj_Z = project_on_affine_subspace(Z.T, Z.T).T
+
+        # Compute the convex hull volumes
+        convhull_volume = ConvexHull(proj_X).volume
+        polytope_volume = ConvexHull(proj_Z).volume
+    else:
+        # Compute the convex hull volumes directly
+        convhull_volume = ConvexHull(X).volume
+        polytope_volume = ConvexHull(Z).volume
+
+    t_ratio = polytope_volume / convhull_volume
+
+    if isinstance(adata, sc.AnnData):
+        adata.uns["t_ratio"] = t_ratio
+    else:
+        return t_ratio
+
+def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
+    """
+    Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
+
+    Parameters:
+    -----------
+    adata : sc.AnnData
+        An AnnData object containing `adata.obsm["X_pca_reduced"]` and optionally `adata.uns["t_ratio"]`. If it doesnt exist it is called and computed.
+    rep : int, optional (default=1000)
+        Number of randomized datasets to generate.
+    seed : int, optional (default=42)
+        The random seed for reproducibility.
+    n_jobs : int, optional
+        Number of jobs for parallelization (default: 1). Use -1 to use all available cores.
+
+    Returns:
+    -----------
+    float
+        The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
+    """
+
+    # Input validation
+    if "X_pca_reduced" not in adata.obsm:
+        raise ValueError("adata.obsm['X_pca_reduced'] not found.")
+    if "t_ratio" not in adata.uns:
+        print("Computing t-ratio...")
+        compute_t_ratio(adata)
+
+    X = adata.obsm["X_pca_reduced"]
+    t_ratio = adata.uns["t_ratio"]
+    n_samples, n_features = X.shape
+    n_archetypes = adata.uns["archetypal_analysis"]["Z"].shape[0]
+
+    rng = np.random.default_rng(seed)  
+    
+    def compute_randomized_t_ratio():
+        # Shuffle each feature independently
+        SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
+        # Compute archetypes and t-ratio for randomized data
+        Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1).Z
+        return compute_t_ratio(SimplexRand1, Z_mix)
+
+    # Parallelize the computation of randomized t-ratios
+    RandRatio = Parallel(n_jobs=n_jobs)(
+        delayed(compute_randomized_t_ratio)() for _ in tqdm(range(iter), desc="Randomizing")
     )
-    fig.show()
 
+    # Calculate the p-value
+    p_value = np.sum(np.array(RandRatio) > t_ratio) / iter
+    return p_value
 
-def plot_2D_bootstrap(
-    bootstrap_df, color_var="archetype", opacity=0.5, iter_filter=None, jitter=0
-):
-    import plotly.express as px
+def plot_2D(
+        X: Union[np.ndarray, sc.AnnData],
+        Z: Optional[np.ndarray] = None,
+        color_vec: Optional[np.ndarray] = None,
+    ) -> pn.ggplot:
+    """
+    2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
 
-    bootstrap_df["marker_size"] = np.repeat(1, bootstrap_df.shape[0])
-    if iter_filter is not None:
-        bootstrap_df = bootstrap_df.loc[
-            np.isin(bootstrap_df["iter"], iter_filter), :
-        ].copy()
-    if jitter > 0:
-        bootstrap_df[["pc_" + str(i) for i in range(3)]] += np.random.normal(
-            loc=0,
-            scale=jitter,
-            size=bootstrap_df[["pc_" + str(i) for i in range(3)]].shape,
+    Parameters:
+    -----------
+    X : Union[np.ndarray, sc.AnnData]
+        The input data, which can be either:
+        - A 2D array of shape (n_samples, n_features) representing the data points.
+        - An AnnData object containing the PCA-reduced data in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+    Z : np.ndarray, optional
+        A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
+        Required if `X` is not an AnnData object.
+    color_vec : np.ndarray, optional
+        A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
+
+    Returns:
+    --------
+    pn.ggplot
+        2D plot of X and polytope enclosed by Z
+    """
+    # Validation input
+    if isinstance(X, sc.AnnData):
+        if "archetypal_analysis" not in X.uns:
+            raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
+        Z = X.uns["archetypal_analysis"]["Z"]
+        X = X.obsm["X_pca_reduced"]
+            
+    if Z is None:
+        raise ValueError("Please add the archetypes coordinates as input Z")
+
+    if X.shape[1] < 2 or Z.shape[1] < 2:
+        raise ValueError("Both X and Z must have at least 2 columns (PCs).")
+    
+    X_plot, Z_plot = X[:, :2], Z[:, :2]
+
+    # Order archetypes for plotting the polytope
+    plot_df = pd.DataFrame(X_plot, columns=["x0", "x1"])
+    order = np.argsort(np.arctan2(Z_plot[:, 1] - np.mean(Z_plot[:, 1]), 
+                                  Z_plot[:, 0] - np.mean(Z_plot[:, 0])))
+    
+    arch_df = pd.DataFrame(Z_plot, columns=["x0", "x1"])
+    arch_df = arch_df.iloc[order].reset_index(drop=True)
+    arch_df = pd.concat([arch_df, arch_df.iloc[:1]], ignore_index=True)
+
+    # Generate plot
+    p1 = pn.ggplot()
+
+    if color_vec is not None:
+        if len(color_vec) != len(plot_df):
+            raise ValueError("color_vec must have the same length as X.")
+        plot_df["color_vec"] = np.array(color_vec)  
+        p1 += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1", color="color_vec"), alpha=0.5)
+    else:
+        p1 += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1"), color="black", alpha=0.5)
+
+    p1 += pn.geom_point(data=arch_df, mapping=pn.aes(x="x0", y="x1"), color="red", size=1)
+    p1 += pn.geom_path(data=arch_df, mapping=pn.aes(x="x0", y="x1"), color="red", size=1)
+
+    p1 += pn.labs(x="PC 1", y="PC 2")
+    p1 += pn.theme_matplotlib()
+
+    return p1
+
+def plot_3D(
+        X: Union[np.ndarray, sc.AnnData],
+        Z: Optional[np.ndarray] = None,
+        color_vec: Optional[np.ndarray] = None,
+        marker_size: int = 4,
+        color_polyhedron: str = "green",
+    ) -> go.Figure:
+    """
+    3D plot of the datapoints in X and the 3D polytope enclosed by the archetypes in Z.
+
+    Parameters:
+    -----------
+    X : Union[np.ndarray, sc.AnnData]
+        The input data, which can be either:
+        - A 2D array of shape (n_samples, n_features) representing the data points.
+        - An AnnData object containing the PCA-reduced data in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+    Z : np.ndarray, optional
+        A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
+        Required if `X` is not an AnnData object.
+    color_vec : np.ndarray, optional
+        A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
+    marker_size : int, optional (default=4)
+        The size of the markers for the data points in `X`.
+    color_polyhedron : str, optional (default="green")
+        The color of the polytope (convex hull) defined by the archetypes.
+
+    Returns:
+    --------
+    go.Figuret
+        3D plot of X and polytope enclosed by Z
+    """
+    # Validation input
+    if isinstance(X, sc.AnnData):
+        if "archetypal_analysis" not in X.uns:
+            raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
+        
+        Z = X.uns["archetypal_analysis"]["Z"]
+        X = X.obsm["X_pca_reduced"]
+            
+    if Z is None:
+        raise ValueError("Please add the archetypes coordinates as input Z")
+
+    if X.shape[1] < 3 or Z.shape[1] < 3:
+        raise ValueError("Both X and Z must have at least 3 columns (PCs).")
+
+    X_plot, Z_plot = X[:, :3], Z[:, :3]
+
+    plot_df = pd.DataFrame(X_plot, columns=["x0", "x1", "x2"])
+    plot_df["marker_size"] = np.repeat(marker_size, X_plot.shape[0])
+
+    # Create the 3D scatter plot
+    if color_vec is not None:
+        if len(color_vec) != len(plot_df):
+            raise ValueError("color_vec must have the same length as X.")
+        plot_df["color_vec"] = np.array(color_vec)
+        fig = px.scatter_3d(
+            plot_df,
+            x="x0",
+            y="x1",
+            z="x2",
+            labels={"x0": "PC 1", "x1": "PC 2", "x2": "PC 3"},
+            title="3D polytope",
+            color="color_vec",
+            size="marker_size",
+            size_max=10,
+            opacity=0.5
         )
-    fig = px.scatter(
-        bootstrap_df,
-        x="pc_0",
-        y="pc_1",
-        color=color_var,
-        size="marker_size",
-        size_max=10,
-        opacity=opacity,
-        hover_data=["iter", "archetype", "reference"],
+    else:
+        fig = px.scatter_3d(
+            plot_df,
+            x="x0",
+            y="x1",
+            z="x2",
+            labels={"x0": "PC 1", "x1": "PC 2", "x2": "PC 3"},
+            title="3D polytope",
+            size="marker_size",
+            size_max=10,
+            opacity=0.5
+        )
+
+    # Compute the convex hull of the archetypes
+    hull = ConvexHull(Z_plot)
+
+    # Add archetypes to the plot
+    archetype_labels = [f"Archetype {i}" for i in range(Z_plot.shape[0])]
+    fig.add_trace(
+        go.Scatter3d(
+            x=Z_plot[:, 0],
+            y=Z_plot[:, 1],
+            z=Z_plot[:, 2],
+            mode="markers",
+            marker=dict(size=4, color=color_polyhedron, symbol="circle"),  
+            text=archetype_labels, 
+            hoverinfo="text",
+            name="Archetypes"
+        )
     )
-    fig.update_layout(template="plotly_dark")
-    fig.update_yaxes(
-        scaleanchor="x",
-        scaleratio=1,
+    
+    # Add the polytope (convex hull) to the plot
+    fig.add_trace(
+        go.Mesh3d(
+            x=Z_plot[:, 0],
+            y=Z_plot[:, 1],
+            z=Z_plot[:, 2],
+            i=hull.simplices[:, 0],
+            j=hull.simplices[:, 1],
+            k=hull.simplices[:, 2],
+            color=color_polyhedron,
+            opacity=0.1
+        )
     )
-    fig.show()
+    
+    # Add edges of the polytope to the plot
+    for simplex in hull.simplices:
+        simplex = np.append(simplex, simplex[0])
+        fig.add_trace(
+            go.Scatter3d(
+                x=Z_plot[simplex, 0],
+                y=Z_plot[simplex, 1],
+                z=Z_plot[simplex, 2],
+                mode="lines",
+                line=dict(color=color_polyhedron, width=4),
+                showlegend=False,
+            )
+        )
+
+    fig.update_layout(template="none")
+    return fig
+
+def align_archetypes(
+        ref_arch: np.ndarray, 
+        query_arch: np.ndarray
+    ) -> np.ndarray:
+    """
+    Align the archetypes of the query to match the order of archetypes in the reference.
+
+    This function uses the Euclidean distance between archetypes in the reference and query sets
+    to determine the optimal alignment. The Hungarian algorithm (linear sum assignment) is used
+    to find the best matching pairs, and the query archetypes are reordered accordingly.
+
+    Parameters:
+    -----------
+    ref_arch : np.ndarray
+        A 2D array of shape (n_archetypes, n_features) representing the reference archetypes.
+    query_arch : np.ndarray
+        A 2D array of shape (n_archetypes, n_features) representing the query archetypes.
+
+    Returns:
+    --------
+    np.ndarray
+        A 2D array of shape (n_archetypes, n_features) containing the reordered query archetypes.
+    """
+    # Compute pairwise Euclidean distances
+    euclidean_d = cdist(ref_arch, query_arch.copy(), metric="euclidean")
+    
+    # Find the optimal assignment using the Hungarian algorithm
+    ref_idx, query_idx = linear_sum_assignment(euclidean_d)
+    
+    return query_arch[query_idx, :]
+
+# def bootstrap_variance_k_arr(X, n_bootstrap, k_arr, delta=0, seed=42, **kwargs):
+#     assert k_arr.min() > 1
+#     bootstrap_var = np.array(
+#         [
+#             bootstrap_variance_single_k(
+#                 X, n_bootstrap=n_bootstrap, k=k, delta=delta, seed=seed, **kwargs
+#             )
+#             for k in k_arr
+#         ]
+#     )
+#     plot_df = pd.DataFrame({"k": k_arr, "var": bootstrap_var})
+#     p = (
+#         pn.ggplot(plot_df, pn.aes(x="k", y="var"))
+#         + pn.geom_point(color="blue")
+#         + pn.geom_line(color="blue")
+#         + pn.labs(x="Number of Archetypes", y="Mean Variance in Archetype Position")
+#     )
+#     return p
 
 
 # Appendix

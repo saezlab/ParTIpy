@@ -9,6 +9,7 @@ Code adapted from https://github.com/atmguille/archetypal-analysis (by Guillermo
 from typing import Union, List
 
 import numpy as np
+import scanpy as sc
 
 from .const import (
     OPTIM_ALGS,
@@ -41,7 +42,7 @@ class AA(object):
         optim: str = DEFAULT_OPTIM,
         weight: Union[None, str] = DEFAULT_WEIGHT,
         max_iter: int = 100,
-        derivative_max_iter: int = 10,
+        derivative_max_iter: int = 100,
         tol: float = 1e-6,
         verbose: bool = False,
     ):
@@ -61,6 +62,7 @@ class AA(object):
         self.RSS = None
         self.RSS_trace: List[float] = []
         self.varexpl = None
+        self.adata = None
 
         # checks
         assert self.init in INIT_ALGS
@@ -74,6 +76,14 @@ class AA(object):
         :param X: data matrix, with shape (n_samples, n_features)
         :return: self
         """
+        if isinstance(X, sc.AnnData):
+            if "X_pca_reduced" not in X.obsm:
+                raise ValueError(
+                    "X_pca_reduced not in AnnData object. Please use reduce_pca() to add it to the AnnData object."
+                )
+            self.adata = X
+            X = X.obsm["X_pca_reduced"]
+
         self.n_samples, self.n_features = X.shape
 
         # ensure C-contiguous format for numba
@@ -92,11 +102,11 @@ class AA(object):
             compute_A = compute_A_regularized_nnls
             compute_B = compute_B_regularized_nnls
         elif self.optim == "projected_gradients":
-            compute_A = compute_A_projected_gradients
-            compute_B = compute_B_projected_gradients
+            compute_A = compute_A_projected_gradients  # type: ignore[assignment]
+            compute_B = compute_B_projected_gradients  # type: ignore[assignment]
         elif self.optim == "frank_wolfe":
-            compute_A = compute_A_frank_wolfe
-            compute_B = compute_B_frank_wolfe
+            compute_A = compute_A_frank_wolfe  # type: ignore[assignment]
+            compute_B = compute_B_frank_wolfe  # type: ignore[assignment]
         else:
             raise NotImplementedError()
 
@@ -172,13 +182,34 @@ class AA(object):
         elif self.optim == "projected_gradients":
             from .optim import compute_A_projected_gradients
 
-            return compute_A_projected_gradients(X, self.Z)
+            A_random = -np.log(np.random.random((self.n_samples, self.n_archetypes)))
+            A_random /= np.sum(A_random, axis=1, keepdims=True)
+            return compute_A_projected_gradients(X=X, Z=self.Z, A=A_random)
         elif self.optim == "frank_wolfe":
             from .optim import compute_A_frank_wolfe
 
-            return compute_A_frank_wolfe(X, self.Z)
+            A_random = -np.log(np.random.random((self.n_samples, self.n_archetypes)))
+            A_random /= np.sum(A_random, axis=1, keepdims=True)
+            return compute_A_frank_wolfe(X, self.Z, A=A_random)
         else:
             raise NotImplementedError()
 
     def return_all(self):
         return self.A, self.B, self.Z, self.RSS, self.varexpl
+
+    def save_to_anndata(self):
+        """
+        Saves the results (A, B, Z, RSS, varexpl) to the AnnData object provided in fit().
+        """
+        if self.adata is None:
+            raise ValueError(
+                "No AnnData object found. Please provide an AnnData object to fit()."
+            )
+
+        self.adata.uns["archetypal_analysis"] = {
+            "A": self.A,
+            "B": self.B,
+            "Z": self.Z,
+            "RSS": self.RSS,
+            "varexpl": self.varexpl,
+        }
