@@ -1,6 +1,7 @@
 """
 Functions to calculate the genes enriched at an archetype
 """
+
 from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
@@ -8,12 +9,13 @@ import scanpy as sc
 import pandas as pd
 from scipy.spatial.distance import cdist
 
+
 def calculate_weights(
-        X: Union[np.ndarray, sc.AnnData],
-        Z: Optional[np.ndarray] = None,
-        mode: str = "automatic",
-        length_scale: Optional[float] = None,
-    ) -> Tuple[np.ndarray, Optional[float]]:
+    X: Union[np.ndarray, sc.AnnData],
+    Z: Optional[np.ndarray] = None,
+    mode: str = "automatic",
+    length_scale: None | float = None,
+) -> None | Tuple[np.ndarray, Optional[float]]:
     """
     Calculate weights for cells based on their distance to archetypes using a squared exponential kernel.
 
@@ -44,11 +46,12 @@ def calculate_weights(
     if isinstance(X, sc.AnnData):
         adata = X
         if "archetypal_analysis" not in X.uns:
-            raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
-        
+            raise ValueError(
+                "Result from Archetypal Analysis not found in adata.uns. Please run AA()"
+            )
         Z = X.uns["archetypal_analysis"]["Z"]
         X = X.obsm["X_pca_reduced"]
-            
+
     if Z is None:
         raise ValueError("Please add the archetypes coordinates as input Z")
 
@@ -56,29 +59,25 @@ def calculate_weights(
     if mode == "automatic":
         centroid = np.mean(X, axis=0).reshape(1, -1)
         length_scale = np.median(cdist(centroid, Z)) / 2
-
     elif mode == "manual":
         if length_scale is None:
             raise ValueError("For 'manual' mode, 'length_scale' must be provided.")
-        
     else:
         raise ValueError("Mode must be either 'automatic' or 'manual'.")
-
     print(f"Applied length scale is {length_scale}.")
-    
+
     # Weight calculation
     euclidean_dist = cdist(X, Z)
-    weights = np.exp(-(euclidean_dist**2) / (2 * length_scale**2))
+    weights = np.exp(-(euclidean_dist**2) / (2 * length_scale**2))  # type: ignore[operator]
 
     if isinstance(adata, sc.AnnData):
         adata.obsm["cell_weights"] = weights
+        return None
     else:
         return weights
 
-def weighted_expr(
-        adata: sc.AnnData,
-        layer: Optional[str] = None
-    ) -> np.ndarray:
+
+def weighted_expr(adata: sc.AnnData, layer: Optional[str] = None) -> np.ndarray:
     """
     Calculate a weighted pseudobulk expression profile for each archetype.
 
@@ -104,25 +103,26 @@ def weighted_expr(
         expr = adata.X
     else:
         expr = adata.layers[layer]
-    pseudobulk = np.einsum('ij,jk->ik', weights, expr)
+    pseudobulk = np.einsum("ij,jk->ik", weights, expr)
     pseudobulk /= weights.sum(axis=1, keepdims=True)
 
     pseudobulk_df = pd.DataFrame(pseudobulk, columns=adata.var_names)
-    
+
     return pseudobulk_df
 
+
 def extract_top_processes(
-        est: pd.DataFrame,
-        pval: pd.DataFrame,
-        order: str = "desc",
-        n: int = 20,
-        p_threshold: float = 0.05,
-    ) -> Dict[str, pd.DataFrame]:
+    est: pd.DataFrame,
+    pval: pd.DataFrame,
+    order: str = "desc",
+    n: int = 20,
+    p_threshold: float = 0.05,
+) -> Dict[str, pd.DataFrame]:
     """
     Extract the top enriched biological processes based on statistical significance.
 
     This function filters and ranks the most enriched biological processes from the decoupler output
-    based on estimated enrichment scores (`est`) and corresponding p-values (`pval`) below the 
+    based on estimated enrichment scores (`est`) and corresponding p-values (`pval`) below the
     specified threshold (`p_treshold`).
 
     Parameters:
@@ -152,44 +152,46 @@ def extract_top_processes(
         - "Process": The name of the biological process.
         - "Score": The enrichment score for the process.
     """
-    # Validate input 
+    # Validate input
     if est.shape != pval.shape:
         raise ValueError("`est` and `pval` must have the same shape.")
 
     if order not in ["desc", "asc"]:
         raise ValueError("`order` must be either 'desc' or 'asc'.")
 
-    results = {}  
+    results = {}
     for archetype in range(est.shape[0]):
         # Filter processes based on p-value threshold
-        significant_processes  = pval.iloc[archetype] < p_threshold
-        filtered_scores  = est.iloc[archetype, list(significant_processes )]
+        significant_processes = pval.iloc[archetype] < p_threshold
+        filtered_scores = est.iloc[archetype, list(significant_processes)]
 
         # Sort and select top processes
         if order == "desc":
             top_processes = filtered_scores.nlargest(n).reset_index()
-        else: 
+        else:
             top_processes = filtered_scores.nsmallest(n).reset_index()
 
         top_processes.columns = ["Process", "Score"]
-        results[f"archetype_{archetype}"] = top_processes  
+        results[f"archetype_{archetype}"] = top_processes
 
     return results
 
+
 def extract_top_specific_processes(
-      est: pd.DataFrame,
-      pval: pd.DataFrame,
-      drop_threshold: int = 0,
-      n: int = 20,
-      p_threshold: float = 0.05):
+    est: pd.DataFrame,
+    pval: pd.DataFrame,
+    drop_threshold: int = 0,
+    n: int = 20,
+    p_threshold: float = 0.05,
+):
     """
     Extract the top enriched biological processes that are specific to each archetype.
 
     This function identifies the most enriched biological processes for each archetype based on
-    estimated enrichment scores (`est`) and corresponding p-values (`pval`) from the decoupler output below the 
-    specified threshold (`p_treshold`). It ensures that the selected processes are specific to the archetype by 
+    estimated enrichment scores (`est`) and corresponding p-values (`pval`) from the decoupler output below the
+    specified threshold (`p_treshold`). It ensures that the selected processes are specific to the archetype by
     enforcing that their enrichment scores are below a specified threshold (`drop_threshold`) in all other archetypes.
-    
+
     Parameters:
     -----------
     est : pd.DataFrame
@@ -220,21 +222,23 @@ def extract_top_specific_processes(
     for archetype in range(est.shape[0]):
         # Filter processes based on p-value threshold
         significant_processes = pval.iloc[archetype] < p_threshold
-        top_processes = est.iloc[archetype, list(significant_processes )].nlargest(n).index
+        top_processes = (
+            est.iloc[archetype, list(significant_processes)].nlargest(n).index
+        )
 
         # Filter processes based on drop threshold
         subset = est.loc[:, top_processes]
         subset.index = subset.index.astype(int)
-        filtered_processes = top_processes[(subset.drop(index=archetype) < drop_threshold).all(axis=0)]
+        filtered_processes = top_processes[
+            (subset.drop(index=archetype) < drop_threshold).all(axis=0)
+        ]
 
-        results[f"archetype_{archetype}"] = est.loc[:, filtered_processes].copy()  
+        results[f"archetype_{archetype}"] = est.loc[:, filtered_processes].copy()
 
     return results
 
-def meta_enrichment(
-        adata: sc.AnnData,
-        meta: str
-    ) -> pd.DataFrame:
+
+def meta_enrichment(adata: sc.AnnData, meta: str) -> pd.DataFrame:
     """
     Compute the weighted enrichment of metadata categories across archetypes.
 
@@ -258,18 +262,18 @@ def meta_enrichment(
 
     metadata = adata.obs[meta]
     weights = adata.obsm["cell_weights"].T
-    
+
     # One-hot encoding of metadata
     df_encoded = pd.get_dummies(metadata).astype(float)
     # Normalization
     df_encoded = df_encoded / df_encoded.values.sum(axis=0, keepdims=True)
 
     # Compute weighted enrichment
-    weighted_meta = np.einsum('ij,jk->ik', weights, df_encoded)
+    weighted_meta = np.einsum("ij,jk->ik", weights, df_encoded)
     weighted_meta /= weights.sum(axis=1, keepdims=True)
 
     # Normalization
     weighted_meta = weighted_meta / np.sum(weighted_meta, axis=1, keepdims=True)
     weighted_meta_df = pd.DataFrame(weighted_meta, columns=df_encoded.columns)
-    
+
     return weighted_meta_df

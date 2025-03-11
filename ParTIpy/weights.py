@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def compute_bisquare_weights(R: np.array) -> np.array:
+def compute_bisquare_weights(R: np.ndarray) -> np.ndarray:
     """
     Compute the weights using the residuals per data point
     :param R: residual vector, with shape (n_samples, n_features)
@@ -15,7 +15,7 @@ def compute_bisquare_weights(R: np.array) -> np.array:
 
 
 # TODO
-def compute_huber_weights(R: np.array) -> np.array:
+def compute_huber_weights(R: np.ndarray) -> np.ndarray:
     """
     Compute the weights using the residuals per data point
     :param R: residual vector, with shape (n_samples, n_features)
