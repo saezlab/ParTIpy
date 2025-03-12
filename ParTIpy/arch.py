@@ -197,19 +197,29 @@ class AA(object):
     def return_all(self):
         return self.A, self.B, self.Z, self.RSS, self.varexpl
 
-    def save_to_anndata(self):
+    def save_to_anndata(self, archetypes_only: bool = True):
         """
-        Saves the results (A, B, Z, RSS, varexpl) to the AnnData object provided in fit().
+        Saves the results to the AnnData object provided in fit().
+
+        Parameters:
+        -----------
+        archetypes_only: bool
+          If True, only the archetypes (Z) are saved. Otherwise, all results (A, B, Z, RSS, varexpl) are saved.
         """
         if self.adata is None:
             raise ValueError(
                 "No AnnData object found. Please provide an AnnData object to fit()."
             )
 
-        self.adata.uns["archetypal_analysis"] = {
-            "A": self.A,
-            "B": self.B,
-            "Z": self.Z,
-            "RSS": self.RSS,
-            "varexpl": self.varexpl,
-        }
+        if archetypes_only:
+            self.adata.uns["archetypal_analysis"] = {
+                "Z": self.Z,
+            }
+        else:
+            self.adata.uns["archetypal_analysis"] = {
+                "A": self.A,
+                "B": self.B,
+                "Z": self.Z,
+                "RSS": self.RSS,
+                "varexpl": self.varexpl,
+            }
