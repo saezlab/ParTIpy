@@ -16,17 +16,12 @@ from tqdm import tqdm
 from .arch import AA
 from .const import DEFAULT_INIT, DEFAULT_OPTIM
 
-####TODO####
-# add/fix t-ratio function
-# Function mean archetype variance for different n_archetypes
-############
 
-
-def reduce_pca(adata: sc.AnnData, n_pcs: int) -> None:
+def set_dimension(adata: sc.AnnData, n_pcs: int) -> None:
     """
-    Reduces the PCA representation in `adata.obsm["X_pca"]` to the first `n_pcs` components.
+    Sets the number of PCs used for subsetting the PCA in `adata.obsm["X_pca"]`.
     If `adata.obsm["X_pca"]` does not exist, PCA is computed and stored in `adata.obsm["X_pca"]`.
-    The reduced PCA representation is stored in `adata.obsm["X_pca_reduced"]`.
+    The number of PCs are stored in `adata.uns["PCs"]`
 
     Parameters:
     -----------
@@ -39,11 +34,13 @@ def reduce_pca(adata: sc.AnnData, n_pcs: int) -> None:
     Returns:
     --------
     None
-        The results are stored in `adata.obsm["X_pca_reduced"]`
+        The number of PCs are stored in `adata.uns["PCs"]`
     """
     # Validation input
     if "X_pca" not in adata.obsm:
-        print("X_pca not found in adata.obsm. Computing PCA...")
+        print(
+            "X_pca not found in adata.obsm. Computing PCA on highly variable genes..."
+        )
         sc.pp.pca(adata, mask_var="highly_variable")
 
     if n_pcs > adata.obsm["X_pca"].shape[1]:
@@ -51,7 +48,7 @@ def reduce_pca(adata: sc.AnnData, n_pcs: int) -> None:
             f"Requested {n_pcs} PCs, but only {adata.obsm['X_pca'].shape[1]} PCs are available."
         )
 
-    adata.obsm["X_pca_reduced"] = adata.obsm["X_pca"][:, :n_pcs]
+    adata.uns["PCs"] = n_pcs
 
 
 def var_explained_aa(
@@ -66,15 +63,13 @@ def var_explained_aa(
     Compute the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
     This function performs Archetypal Analysis (AA) for a range of archetypes (from `min_a` to `max_a`)
-    on the PCA-reduced data stored in `adata.obsm["X_pca_reduced"]`. If the reduced PCA representation
-    is not available, it uses the full PCA representation (`adata.obsm["X_pca"]`). The results are
+    on the PCA data stored in `adata.obsm["X_pca"]`. The results are
     stored in `adata.uns["AA_var"]`.
 
     Parameters:
     -----------
     adata: sc.AnnData
-        AnnData object containing adata.obsm["X_pca_reduced"] or
-        adata.obsm["X_pca"].
+        AnnData object containing adata.obsm["X_pca"].
     min_a : int, optional (default=2)
         Minimum number of archetypes to test.
     max_a : int, optional (default=10)
@@ -102,11 +97,12 @@ def var_explained_aa(
     if max_a < min_a:
         raise ValueError("`max_a` must be greater than or equal to `min_a`.")
 
-    if "X_pca_reduced" not in adata.obsm:
-        print("No reduced PCA found. Calculating with all available PCs from X_pca")
-        X = adata.obsm["X_pca"]
-    else:
-        X = adata.obsm["X_pca_reduced"]
+    if "PCs" not in adata.uns:
+        raise ValueError(
+            "PCs not found in adata.uns. Please set the dimension for archetypal analysis with set_dimension()"
+        )
+
+    X = adata.obsm["X_pca"][:, : adata.uns["PCs"]]
 
     k_arr = np.arange(min_a, max_a + 1)
 
@@ -296,8 +292,7 @@ def bootstrap_aa(
     Parameters:
     -----------
     adata : sc.AnnData
-        AnnData object. The PCA-reduced data should be stored in `adata.obsm["X_pca_reduced"]`. If not
-        found, the full PCA representation (`adata.obsm["X_pca"]`) is used.
+        AnnData object. The PCA data should be stored in `adata.obsm["X_pca"]`.
     n_bootstrap : int
         The number of bootstrap samples to generate.
     n_archetypes : int
@@ -320,15 +315,12 @@ def bootstrap_aa(
         - `mean_variance`: The mean variance of archetype coordinates across bootstrap samples.
     """
     # Validation input
-    if "X_pca_reduced" not in adata.obsm:
-        if "X_pca" not in adata.obsm:
-            raise ValueError(
-                "Neither `X_pca_reduced` nor `X_pca` found in `adata.obsm`. Please compute PCA first."
-            )
-        print("No reduced PCA found. Calculating with all available PCs from `X_pca`.")
-        X = adata.obsm["X_pca"]
-    else:
-        X = adata.obsm["X_pca_reduced"]
+    if "PCs" not in adata.uns:
+        raise ValueError(
+            "PCs not found in adata.uns. Please set the dimension for archetypal analysis with set_dimension()"
+        )
+
+    X = adata.obsm["X_pca"][:, : adata.uns["PCs"]]
 
     n_samples, n_features = X.shape
     rng = np.random.default_rng(seed)
@@ -455,21 +447,31 @@ def project_on_affine_subspace(X, Z):
     return proj_coord
 
 
-def compute_t_ratio(X, Z=None):
+def compute_t_ratio(
+    X: Union[sc.AnnData, np.ndarray],
+    Z: Optional[np.ndarray] = None,
+) -> Optional[float]:
     """
-    Computes the ratio of the volume of the polytope defined by Z to the volume of the convex hull of X.
+    Compute the t-ratio, which is the ratio of the volume of the polytope defined by the archetypes (Z)
+    to the volume of the convex hull of the data points (X).
 
     Parameters:
     -----------
-    adata : sc.AnnData
-        An AnnData object containing the following attributes:
-        - `adata.obsm["X_pca_reduced"]`: A (n x D) array of n data points in D-dimensional space.
-        - `adata.uns["archetypal_analysis"]["Z"]`: A (k x D) array of k archetypes defining the polytope in D-dimensional space.
+    X : Union[sc.AnnData, np.ndarray]
+        The input data, which can be either:
+        - An AnnData object containing the following attributes:
+            - `adata.obsm["X_pca"]`: A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the data.
+            - `adata.uns["PCs"]`: The number of principal components used for AA.
+            - `adata.uns["archetypal_analysis"]["Z"]`: A 2D array of shape (n_archetypes, n_features) representing the archetypes.
+        - A 2D numpy array of shape (n_samples, n_features) representing the data matrix. In this case, `Z` must be provided.
+    Z : np.ndarray, optional
+        A 2D array of shape (n_archetypes, n_features) representing the archetypes. Required if `X` is a numpy array.
 
     Returns:
-    -----------
-    None
-        The function stores the computed t-ratio in `adata.uns["t_ratio"]`.
+    --------
+    Optional[float]
+        - If `X` is an AnnData object, the t-ratio is stored in `X.uns["t_ratio"]` and nothing is returned.
+        - If `X` is a numpy array, the t-ratio is returned as a float.
     """
     adata = None
     if isinstance(X, np.ndarray):
@@ -477,7 +479,7 @@ def compute_t_ratio(X, Z=None):
             raise ValueError("Z must be provided when input_data is a numpy.ndarray.")
     else:
         adata = X
-        X = adata.obsm["X_pca_reduced"]
+        X = adata.obsm["X_pca"][:, : adata.uns["PCs"]]
         Z = adata.uns["archetypal_analysis"]["Z"]
 
     # Extract dimensions D (PCs), and number of archetypes
@@ -506,6 +508,7 @@ def compute_t_ratio(X, Z=None):
 
     if isinstance(adata, sc.AnnData):
         adata.uns["t_ratio"] = t_ratio
+        return None
     else:
         return t_ratio
 
@@ -517,7 +520,7 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     Parameters:
     -----------
     adata : sc.AnnData
-        An AnnData object containing `adata.obsm["X_pca_reduced"]` and optionally `adata.uns["t_ratio"]`. If it doesnt exist it is called and computed.
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["PCs"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
     rep : int, optional (default=1000)
         Number of randomized datasets to generate.
     seed : int, optional (default=42)
@@ -532,13 +535,13 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     """
 
     # Input validation
-    if "X_pca_reduced" not in adata.obsm:
-        raise ValueError("adata.obsm['X_pca_reduced'] not found.")
+    if "X_pca" not in adata.obsm:
+        raise ValueError("adata.obsm['X_pca'] not found.")
     if "t_ratio" not in adata.uns:
         print("Computing t-ratio...")
         compute_t_ratio(adata)
 
-    X = adata.obsm["X_pca_reduced"]
+    X = adata.obsm["X_pca"][:, : adata.uns["PCs"]]
     t_ratio = adata.uns["t_ratio"]
     n_samples, n_features = X.shape
     n_archetypes = adata.uns["archetypal_analysis"]["Z"].shape[0]
@@ -576,7 +579,7 @@ def plot_2D(
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the data points.
-        - An AnnData object containing the PCA-reduced data in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+        - An AnnData object containing the PCA data in `X.obsm["X_pca"]` and archetypes in `X.uns["archetypal_analysis"]["Z"]`.
     Z : np.ndarray, optional
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
         Required if `X` is not an AnnData object.
@@ -595,7 +598,7 @@ def plot_2D(
                 "Result from Archetypal Analysis not found in adata.uns. Please run AA()"
             )
         Z = X.uns["archetypal_analysis"]["Z"]
-        X = X.obsm["X_pca_reduced"]
+        X = X.obsm["X_pca"][:, : X.uns["PCs"]]
 
     if Z is None:
         raise ValueError("Please add the archetypes coordinates as input Z")
@@ -660,7 +663,7 @@ def plot_3D(
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the data points.
-        - An AnnData object containing the PCA-reduced data in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+        - An AnnData object containing the PCA data in `X.obsm["X_pca"]` and archetypes in `X.uns["archetypal_analysis"]["Z"]`.
     Z : np.ndarray, optional
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
         Required if `X` is not an AnnData object.
@@ -684,7 +687,7 @@ def plot_3D(
             )
 
         Z = X.uns["archetypal_analysis"]["Z"]
-        X = X.obsm["X_pca_reduced"]
+        X = X.obsm["X_pca"][:, : X.uns["PCs"]]
 
     if Z is None:
         raise ValueError("Please add the archetypes coordinates as input Z")
@@ -832,7 +835,7 @@ def compute_AA(
     -----------
     adata : Union[sc.AnnData, np.ndarray]
         The input data, which can be either:
-        - An AnnData object containing the data in `.X` or `.obsm["X_pca_reduced"]`.
+        - An AnnData object containing data in `adata.obsm["X_pca"]`.
         - A 2D numpy array of shape (n_samples, n_features) representing the data matrix.
     n_archetypes : int
         The number of archetypes to compute.

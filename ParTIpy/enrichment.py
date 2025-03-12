@@ -24,7 +24,7 @@ def calculate_weights(
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the cells.
-        - An AnnData object containing the PCA coordinates in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+        - An AnnData object containing the PCA coordinates in `.obsm["X_pca"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
     Z : np.ndarray, optional
         A 2D array of shape (n_archetypes, n_features) representing the PCA coordinates of the archetypes.
         Required if `X` is not an AnnData object.
@@ -50,7 +50,7 @@ def calculate_weights(
                 "Result from Archetypal Analysis not found in adata.uns. Please run AA()"
             )
         Z = X.uns["archetypal_analysis"]["Z"]
-        X = X.obsm["X_pca_reduced"]
+        X = X.obsm["X_pca"][:, : X.uns["PCs"]]
 
     if Z is None:
         raise ValueError("Please add the archetypes coordinates as input Z")
