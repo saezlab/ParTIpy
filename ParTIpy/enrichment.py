@@ -4,9 +4,12 @@ Functions to calculate the genes enriched at an archetype
 
 from typing import Dict, Optional, Tuple, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
 import pandas as pd
+import plotnine as pn
+from math import pi
 from scipy.spatial.distance import cdist
 
 
@@ -277,3 +280,149 @@ def meta_enrichment(adata: sc.AnnData, meta: str) -> pd.DataFrame:
     weighted_meta_df = pd.DataFrame(weighted_meta, columns=df_encoded.columns)
 
     return weighted_meta_df
+
+
+def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
+    """
+    Parameters:
+    -----------
+    meta_enrich: pd.DataFrame
+        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+    meta: str, optional
+        The name for the metadata.
+
+    Returns:
+    --------
+    pn.ggplot.ggplot
+        A stacked bar plot.
+    """
+    # Prepare data
+    meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
+    meta_enrich_long = meta_enrich.melt(
+        id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment"
+    )
+
+    # Create plot
+    plot = (
+        pn.ggplot(
+            meta_enrich_long,
+            pn.aes(x="factor(archetype)", y="Normalized_Enrichment", fill="Meta"),
+        )
+        + pn.geom_bar(stat="identity", position="stack")
+        + pn.theme_matplotlib()
+        + pn.scale_fill_brewer(type="qual", palette="Dark2")
+        + pn.labs(
+            title="Meta Enrichment Across Archetypes",
+            x="Archetype",
+            y="Normalized Enrichment",
+            fill=meta,
+        )
+    )
+    return plot
+
+
+def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: Optional[str] = "Meta"):
+    """
+    Parameters:
+    -----------
+    meta_enrich: pd.DataFrame
+        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+    meta: str, optional
+        The name for the metadata.
+    Returns:
+    --------
+    pn.ggplot.ggplot
+        A heatmap.
+    """
+
+    # Prepare data
+    meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
+    meta_enrich_long = meta_enrich.melt(
+        id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment"
+    )
+
+    # Create plot
+    plot = (
+        pn.ggplot(
+            meta_enrich_long, pn.aes("archetype", "Meta", fill="Normalized_Enrichment")
+        )
+        + pn.geom_tile()
+        + pn.scale_fill_continuous(cmap_name="bwr")
+        + pn.theme_matplotlib()
+        + pn.labs(
+            title="Heatmap", x="Archetype", y=meta, fill=" Normalized \nEnrichment"
+        )
+    )
+    return plot
+
+
+def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
+    """
+    Parameters:
+    -----------
+    meta_enrich: pd.DataFrame
+        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+
+    Returns:
+    --------
+    plt.pyplot.Figure
+        Radar plots for all archetypes.
+    """
+    # Prepare data
+    meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
+
+    # Function to create a radar plot for a given row
+    def make_radar(row, title, color):
+        # Set number of meta categories
+        categories = list(meta_enrich)[1:]
+        N = len(categories)
+
+        # Calculate angles for the radar plot
+        angles = [n / float(N) * 2 * pi for n in range(N)]
+        angles += angles[:1]
+
+        # Initialise the radar plot
+        ax = plt.subplot(int(np.round(len(meta_enrich) / 2)), 2, row + 1, polar=True)
+
+        # Put first axis on top:
+        ax.set_theta_offset(pi / 2)
+        ax.set_theta_direction(-1)
+
+        # One axe per variable and add labels
+        plt.xticks(angles[:-1], categories, color="grey", size=8)
+
+        # Draw ylabels
+        ax.set_rlabel_position(0)
+        plt.yticks(
+            [0, 0.25, 0.5, 0.75, 1],
+            ["0%", "25%", "50%", "75%", "100%"],
+            color="grey",
+            size=7,
+        )
+        plt.ylim(0, 1)
+
+        # Draw plot
+        values = meta_enrich.loc[row].drop("archetype").values.flatten().tolist()
+        values += values[:1]
+        ax.plot(angles, values, color=color, linewidth=2, linestyle="solid")
+        ax.fill(angles, values, color=color, alpha=0.4)
+
+        # Add a title
+        plt.title(title, size=11, color=color, y=1.065)
+
+    # Initialize the figure
+    my_dpi = 96
+    plt.figure(figsize=(1000 / my_dpi, 1000 / my_dpi), dpi=my_dpi)
+
+    # Create a color palette:
+    my_palette = plt.colormaps.get_cmap("Dark2")
+
+    # Loop to plot
+    for row in range(0, len(meta_enrich.index)):
+        make_radar(
+            row=row,
+            title=f"Archetype {meta_enrich['archetype'][row]}",
+            color=my_palette(row),
+        )
+
+    return plt
