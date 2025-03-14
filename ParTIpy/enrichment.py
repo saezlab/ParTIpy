@@ -426,3 +426,93 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
         )
 
     return plt
+
+
+def plot_functional_enrichment(top_features, show: bool = True):
+    """
+    Generate bar plots for functional enrichment data across archetypes.
+
+    Parameters:
+    -----------
+    top_features : dict
+        A dictionary where keys are archetype names ('archetype_0', 'archetype_1',...) and values are pd.DataFrames
+        containing the data to plot. Each DataFrame should have a column for the feature ('Process') and a column
+        for the score ('Score')."
+    show: bool, optional
+        If the plots should be printed.
+
+    Returns:
+    --------
+    list
+        A list of `plotnine.ggplot` objects, one for each archetype.
+    """
+    plots = []
+    # Loop through archetypes
+    for i in range(len(top_features)):
+        key = f"archetype_{i}"  # Construct the key dynamically
+        data = top_features[key]
+
+        # Create plot
+        plot = (
+            pn.ggplot(data, pn.aes(x="reorder(Process, Score)", y="Score"))
+            + pn.geom_bar(stat="identity")
+            + pn.labs(
+                title=f"Enrichment at archetype {i}",
+                x="Feature",
+                y="Enrichment score",
+                fill="Process",
+            )
+            + pn.theme_matplotlib()
+            + pn.theme(axis_text_x=pn.element_text(angle=45, hjust=1))
+        )
+        if show:
+            plot.show()
+        plots.append(plot)
+
+    # Return the list of plots
+    return plots
+
+
+def plot_enrichment_comparison(
+    est: pd.DataFrame, features: Union[str, list[str], pd.Series]
+):
+    """
+    Plots a grouped bar plot comparing enrichment scores across archetypes for a given set of features.
+
+    Parameters:
+    -----------
+    est : pandas.DataFrame
+        A DataFrame containing enrichment scores. Rows represent archetypes, and columns represent features.
+    features : str, list of str, or pd.Series
+        A list of feature names (columns in `est`) to include in the plot.
+
+    Returns:
+    --------
+    plot : plotnine.ggplot.ggplot
+        A grouped bar plot visualizing the enrichment scores for the specified features across archetypes."
+    """
+    # Subset the DataFrame to include only the specified features
+    enrich_subset = est[features].reset_index().rename(columns={"index": "archetype"})
+
+    # Convert the DataFrame from wide to long format for plotting
+    enrich_long = enrich_subset.melt(
+        id_vars=["archetype"], var_name="Feature", value_name="Enrichment"
+    )
+
+    # Create plot
+    plot = (
+        pn.ggplot(
+            enrich_long, pn.aes(x="Feature", y="Enrichment", fill="factor(archetype)")
+        )
+        + pn.geom_bar(stat="identity", position=pn.position_dodge())
+        + pn.theme_matplotlib()
+        + pn.theme(axis_text_x=pn.element_text(rotation=45, hjust=1))
+        + pn.scale_fill_brewer(type="qual", palette="Dark2")
+        + pn.labs(
+            x="Features",
+            y="Enrichment score",
+            fill="Archetype",
+            title="Enrichment Comparison",
+        )
+    )
+    return plot
