@@ -1,5 +1,5 @@
 import inspect
-from typing import Optional, Tuple, Union
+from typing import Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -23,16 +23,16 @@ def set_dimension(adata: sc.AnnData, n_pcs: int) -> None:
     If `adata.obsm["X_pca"]` does not exist, PCA is computed and stored in `adata.obsm["X_pca"]`.
     The number of PCs are stored in `adata.uns["PCs"]`
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     adata : sc.AnnData
         AnnData object containing single-cell data.
     n_pcs : int
         The number of principal components (PCs) to retain. Must be less than or equal to the
         number of available PCs in `adata.obsm["X_pca"]`.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
         The number of PCs are stored in `adata.uns["PCs"]`
     """
@@ -51,6 +51,7 @@ def set_dimension(adata: sc.AnnData, n_pcs: int) -> None:
     adata.uns["PCs"] = n_pcs
 
 
+
 def var_explained_aa(
     adata: sc.AnnData,
     min_a: int = 2,
@@ -66,8 +67,8 @@ def var_explained_aa(
     on the PCA data stored in `adata.obsm["X_pca"]`. The results are
     stored in `adata.uns["AA_var"]`.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     adata: sc.AnnData
         AnnData object containing adata.obsm["X_pca"].
     min_a : int, optional (default=2)
@@ -115,7 +116,8 @@ def var_explained_aa(
 
     results_list = Parallel(n_jobs=n_jobs)(delayed(compute_aa)(k) for k in k_arr)
 
-    results = {k: result for k, result in results_list}
+    # results = {k: result for k, result in results_list}
+    results = dict(results_list)  # faster, and see https://docs.astral.sh/ruff/rules/unnecessary-comprehension/
 
     varexpl_values = np.array([results[k]["varexpl"] for k in k_arr])
 
@@ -197,11 +199,11 @@ def plot_projected_dist(
     adata: sc.AnnData,
 ) -> pn.ggplot:
     """
-    This function creates a plot showing the projected distance for a range of archetypes.
+    Create a plot showing the projected distance for a range of archetypes.
     The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     adata : sc.AnnData
         AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
 
@@ -239,13 +241,13 @@ def plot_var_on_top(
     Generate a plot showing the additional variance explained by AA models when increasing the number
     of archetypes from `k-1` to `k`    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     adata : sc.AnnData
         AnnData objectt containing the variance explained data in `adata.uns["AA_var"]`.
 
-    Returns:
-    --------
+    Returns
+    -------
     pn.ggplot
         A ggplot object showing the variance explained on top of (k-1) model plot.
     """
@@ -289,8 +291,8 @@ def bootstrap_aa(
     This function generates bootstrap samples from the data, computes archetypes for each sample,
     aligns them with the reference archetypes, and stores the results in `adata.uns["AA_bootstrap"]`.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     adata : sc.AnnData
         AnnData object. The PCA data should be stored in `adata.obsm["X_pca"]`.
     n_bootstrap : int
@@ -304,8 +306,8 @@ def bootstrap_aa(
     seed : int, optional (default=42)
         The random seed for reproducibility.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
         The results are stored in `adata.uns["AA_bootstrap"]` as a DataFrame with the following columns:
         - `pc_i`: The coordinates of the archetypes in the i-th principal component.
@@ -336,10 +338,7 @@ def bootstrap_aa(
     ]
 
     # Align archetypes
-    Z_list = [
-        align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy())
-        for query_Z in Z_list
-    ]
+    Z_list = [align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]
 
     # Compute variance
     Z_stack = np.stack(Z_list)
@@ -370,9 +369,9 @@ def bootstrap_aa(
 
 def plot_bootstrap_aa(adata: sc.AnnData) -> go.Figure:
     """
-    This function creates an interactive 3D scatter plot showing the positions of archetypes
+    Create an interactive 3D scatter plot showing the positions of archetypes
     computed from bootstrap samples, stored in `adata.uns["AA_bootstrap"]`.
-
+    
     Parameters:
     -----------
     adata : sc.AnnData
@@ -417,15 +416,15 @@ def project_on_affine_subspace(X, Z):
     """
     Projects a set of points X onto the affine subspace spanned by the vertices Z.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     X : numpy.ndarray
         A (D x n) array of n points in D-dimensional space to be projected.
     Z : numpy.ndarray
         A (D x k) array of k vertices (archetypes) defining the affine subspace in D-dimensional space.
 
-    Returns:
-    -----------
+    Returns
+    -------
     proj_coord : numpy.ndarray
         The coordinates of the projected points in the subspace defined by Z.
     """
@@ -517,8 +516,8 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     """
     Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     adata : sc.AnnData
         An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["PCs"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
     rep : int, optional (default=1000)
@@ -528,12 +527,11 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     n_jobs : int, optional
         Number of jobs for parallelization (default: 1). Use -1 to use all available cores.
 
-    Returns:
-    -----------
+    Returns
+    -------
     float
         The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
     """
-
     # Input validation
     if "X_pca" not in adata.obsm:
         raise ValueError("adata.obsm['X_pca'] not found.")
@@ -574,8 +572,8 @@ def plot_2D(
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the data points.
@@ -586,8 +584,8 @@ def plot_2D(
     color_vec : np.ndarray, optional
         A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
 
-    Returns:
-    --------
+    Returns
+    -------
     pn.ggplot
         2D plot of X and polytope enclosed by Z
     """
@@ -658,8 +656,8 @@ def plot_3D(
     """
     3D plot of the datapoints in X and the 3D polytope enclosed by the archetypes in Z.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the data points.
@@ -674,8 +672,8 @@ def plot_3D(
     color_polyhedron : str, optional (default="green")
         The color of the polytope (convex hull) defined by the archetypes.
 
-    Returns:
-    --------
+    Returns
+    -------
     go.Figuret
         3D plot of X and polytope enclosed by Z
     """
@@ -743,6 +741,8 @@ def plot_3D(
             mode="markers",
             marker=dict(size=4, color=color_polyhedron, symbol="circle"),
             text=archetype_labels,
+            marker={"size": 4, "color": color_polyhedron, "symbol": "circle"},
+            text=archetype_labels,
             hoverinfo="text",
             name="Archetypes",
         )
@@ -771,7 +771,7 @@ def plot_3D(
                 y=Z_plot[simplex, 1],
                 z=Z_plot[simplex, 2],
                 mode="lines",
-                line=dict(color=color_polyhedron, width=4),
+                line={"color": color_polyhedron, "width": 4},
                 showlegend=False,
             )
         )
@@ -788,15 +788,15 @@ def align_archetypes(ref_arch: np.ndarray, query_arch: np.ndarray) -> np.ndarray
     to determine the optimal alignment. The Hungarian algorithm (linear sum assignment) is used
     to find the best matching pairs, and the query archetypes are reordered accordingly.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     ref_arch : np.ndarray
         A 2D array of shape (n_archetypes, n_features) representing the reference archetypes.
     query_arch : np.ndarray
         A 2D array of shape (n_archetypes, n_features) representing the query archetypes.
 
-    Returns:
-    --------
+    Returns
+    -------
     np.ndarray
         A 2D array of shape (n_archetypes, n_features) containing the reordered query archetypes.
     """

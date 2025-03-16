@@ -18,13 +18,13 @@ a) https://github.com/nichohelmut/football_results/blob/master/clustering/cluste
 b) https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 """
 
-import scipy.optimize
 import numpy as np
+import scipy.optimize
 
 from .const import LAMBDA
 
 
-def compute_A_regularized_nnls(
+def _compute_A_regularized_nnls(
     X: np.ndarray,
     Z: np.ndarray,
     A: np.ndarray = None,
@@ -35,16 +35,11 @@ def compute_A_regularized_nnls(
     Zt_padded = np.vstack([Z.T, LAMBDA * np.ones(Z.shape[0])])
 
     # Use non-negative least squares to solve the optimization problem
-    A = np.array(
-        [
-            scipy.optimize.nnls(A=Zt_padded, b=X_padded[n, :])[0]
-            for n in range(X.shape[0])
-        ]
-    )
+    A = np.array([scipy.optimize.nnls(A=Zt_padded, b=X_padded[n, :])[0] for n in range(X.shape[0])])
     return A
 
 
-def compute_B_regularized_nnls(
+def _compute_B_regularized_nnls(
     X: np.ndarray,
     A: np.ndarray,
     B: np.ndarray = None,
@@ -53,17 +48,12 @@ def compute_B_regularized_nnls(
     Z = np.linalg.lstsq(a=A, b=X, rcond=None)[0]
     Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
     Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
-    B = np.array(
-        [
-            scipy.optimize.nnls(A=Xt_padded, b=Z_padded[k, :])[0]
-            for k in range(Z.shape[0])
-        ]
-    )
+    B = np.array([scipy.optimize.nnls(A=Xt_padded, b=Z_padded[k, :])[0] for k in range(Z.shape[0])])
     return B
 
 
 # @njit(cache=True)
-def compute_A_projected_gradients(
+def _compute_A_projected_gradients(
     X: np.ndarray,
     Z: np.ndarray,
     A: np.ndarray,
@@ -99,17 +89,13 @@ def compute_A_projected_gradients(
         # brackets are VERY important to save time
         # [G] ~ N x K
         G = 2.0 * (A @ (Z @ Z.T) - X @ Z.T)
-        G = (
-            G - np.sum(A * G, axis=1)[:, None]
-        )  # chain rule of projection, check broadcasting
+        G = G - np.sum(A * G, axis=1)[:, None]  # chain rule of projection, check broadcasting
 
         prev_A = A
         # NOTE: original implementation has a while True
         for _ in range(derivative_max_iter * 100):
             A = (prev_A - muA * G).clip(0)
-            A = A / (
-                np.sum(A, axis=1)[:, None] + np.finfo(np.float64).eps
-            )  # Avoid division by zero
+            A = A / (np.sum(A, axis=1)[:, None] + np.finfo(np.float64).eps)  # Avoid division by zero
             RSS = np.linalg.norm(X - A @ Z) ** 2
             if RSS <= (prev_RSS * (1 + rel_tol)):
                 muA *= 1.2
@@ -120,7 +106,7 @@ def compute_A_projected_gradients(
 
 
 # @njit(cache=True)
-def compute_B_projected_gradients(
+def _compute_B_projected_gradients(
     X: np.ndarray,
     A: np.ndarray,
     B: np.ndarray,
@@ -154,17 +140,13 @@ def compute_B_projected_gradients(
         # brackets are VERY important to save time
         # [G] ~ K x N
         G = 2.0 * (((A.T @ A) @ (B @ X) @ X.T) - ((A.T @ X) @ X.T))
-        G = (
-            G - np.sum(B * G, axis=1)[:, None]
-        )  # chain rule of projection, check broadcasting
+        G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection, check broadcasting
 
         prev_B = B
         # NOTE: original implementation has a while True
         for _ in range(derivative_max_iter * 100):
             B = (prev_B - muB * G).clip(0)
-            B = B / (
-                np.sum(B, axis=1)[:, None] + np.finfo(np.float64).eps
-            )  # Avoid division by zero
+            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float64).eps)  # Avoid division by zero
             RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
             if RSS <= (prev_RSS * (1 + rel_tol)):
                 muB *= 1.2
@@ -175,7 +157,7 @@ def compute_B_projected_gradients(
 
 
 # @njit(cache=True)
-def compute_A_frank_wolfe(
+def _compute_A_frank_wolfe(
     X: np.ndarray,
     Z: np.ndarray,
     # A: np.ndarray = None,
@@ -189,11 +171,11 @@ def compute_A_frank_wolfe(
     # # is this just a simplest way to create a matrix A that satisfies the constraints?
     # A[:, 0] = 1.0
     e = np.zeros(A.shape)
-    for t in range(derivative_max_iter):
+    for _t in range(derivative_max_iter):
         # Define the objective function and its gradient
-        def f(A_flat):
-            A_mat = A_flat.reshape((n_samples, n_archetypes))
-            return np.linalg.norm(X - A_mat @ Z) ** 2
+        # def f(A_flat):
+        #    A_mat = A_flat.reshape((n_samples, n_archetypes))
+        #    return np.linalg.norm(X - A_mat @ Z) ** 2
 
         def grad_f(A_flat):
             A_mat = A_flat.reshape((n_samples, n_archetypes))
@@ -229,7 +211,7 @@ def compute_A_frank_wolfe(
 
 
 # @njit(cache=True)
-def compute_B_frank_wolfe(
+def _compute_B_frank_wolfe(
     X: np.ndarray,
     A: np.ndarray,
     # B=None,
@@ -242,11 +224,11 @@ def compute_B_frank_wolfe(
     # # is this just a simplest way to create a matrix B that satisfies the constraints?
     # B[:, 0] = 1.0
     e = np.zeros(B.shape)
-    for t in range(derivative_max_iter):
+    for _t in range(derivative_max_iter):
         # Define the objective function and its gradient
-        def f(B_flat):
-            B_mat = B_flat.reshape((n_archetypes, n_samples))
-            return np.linalg.norm(X - A @ (B_mat @ X)) ** 2
+        # def f(B_flat):
+        #    B_mat = B_flat.reshape((n_archetypes, n_samples))
+        #    return np.linalg.norm(X - A @ (B_mat @ X)) ** 2
 
         def grad_f(B_flat):
             B_mat = B_flat.reshape((n_archetypes, n_samples))

@@ -1,29 +1,27 @@
-"""
-Functions to calculate the genes enriched at an archetype
-"""
+"""Functions to calculate which features (e.g. genes or covariates) are enriched at each archetype."""
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scanpy as sc
 import pandas as pd
+import scanpy as sc
 import plotnine as pn
 from math import pi
 from scipy.spatial.distance import cdist
 
 
 def calculate_weights(
-    X: Union[np.ndarray, sc.AnnData],
-    Z: Optional[np.ndarray] = None,
+    X: np.ndarray | sc.AnnData,
+    Z: np.ndarray | None = None,
     mode: str = "automatic",
     length_scale: None | float = None,
-) -> None | Tuple[np.ndarray, Optional[float]]:
+) -> None | tuple[np.ndarray, float | None]:
     """
     Calculate weights for cells based on their distance to archetypes using a squared exponential kernel.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the cells.
@@ -38,8 +36,8 @@ def calculate_weights(
     length_scale : float, optional
         The length scale of the kernel. Required if `mode="manual"`.
 
-    Returns:
-    --------
+    Returns
+    -------
     np.ndarray
         - If `X` is an AnnData object, the weights are added to `X.obsm["cell_weights"]` and nothing is returned.
         - If `X` is a numpy array, a 2D array of shape (n_samples, n_archetypes) representing the weights for each cell-archetype pair.
@@ -49,9 +47,7 @@ def calculate_weights(
     if isinstance(X, sc.AnnData):
         adata = X
         if "archetypal_analysis" not in X.uns:
-            raise ValueError(
-                "Result from Archetypal Analysis not found in adata.uns. Please run AA()"
-            )
+            raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
         Z = X.uns["archetypal_analysis"]["Z"]
         X = X.obsm["X_pca"][:, : X.uns["PCs"]]
 
@@ -80,15 +76,15 @@ def calculate_weights(
         return weights
 
 
-def weighted_expr(adata: sc.AnnData, layer: Optional[str] = None) -> np.ndarray:
+def weighted_expr(adata: sc.AnnData, layer: str | None = None) -> np.ndarray:
     """
     Calculate a weighted pseudobulk expression profile for each archetype.
 
     This function computes the weighted average of gene expression across cells for each archetype.
     The weights should be based on the distance of cells to the archetypes, as computed by `calculate_weights`.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     adata : sc.AnnData
         An AnnData object containing the gene expression data and weights. The weights should be stored in
         `adata.obsm["cell_weights"]` as a 2D array of shape (n_samples, n_archetypes).
@@ -96,8 +92,8 @@ def weighted_expr(adata: sc.AnnData, layer: Optional[str] = None) -> np.ndarray:
         The layer of the AnnData object to use for gene expression. If `None`, `adata.X` is used. For Pareto analysis of AA data,
         z-scaled data is recommended.
 
-    Returns:
-    --------
+    Returns
+    -------
     np.ndarray
         A 2D array of shape (n_archetypes, n_genes) representing the weighted pseudobulk expression profiles.
     """
@@ -120,7 +116,7 @@ def extract_top_processes(
     order: str = "desc",
     n: int = 20,
     p_threshold: float = 0.05,
-) -> Dict[str, pd.DataFrame]:
+) -> dict[str, pd.DataFrame]:
     """
     Extract the top enriched biological processes based on statistical significance.
 
@@ -128,8 +124,8 @@ def extract_top_processes(
     based on estimated enrichment scores (`est`) and corresponding p-values (`pval`) below the
     specified threshold (`p_treshold`).
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     est : pd.DataFrame
         A DataFrame of shape (n_archetypes, n_processes) containing the estimated enrichment scores
         for each process and archetype.
@@ -146,8 +142,8 @@ def extract_top_processes(
         The p-value threshold for filtering processes. Only processes with p-values below this
         threshold are considered.
 
-    Returns:
-    --------
+    Returns
+    -------
     Dict[str, pd.DataFrame]
         A dictionary where keys are of the form "archetype_X" and values are
         DataFrames containing the top `n` enriched processes for each archetype. Each DataFrame
@@ -195,8 +191,8 @@ def extract_top_specific_processes(
     specified threshold (`p_treshold`). It ensures that the selected processes are specific to the archetype by
     enforcing that their enrichment scores are below a specified threshold (`drop_threshold`) in all other archetypes.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     est : pd.DataFrame
         A DataFrame of shape (n_archetypes, n_processes) containing the estimated enrichment scores
         for each process and archetype.
@@ -211,8 +207,8 @@ def extract_top_specific_processes(
         The p-value threshold for filtering processes. Only processes with p-values below this
         threshold are considered.
 
-    Returns:
-    --------
+    Returns
+    -------
     Dict[str, pd.DataFrame]
         A dictionary where keys are of the form "archetype_X" and values are
         DataFrames containing the top `n` enriched processes for each archetype that are below a score of
@@ -225,16 +221,12 @@ def extract_top_specific_processes(
     for archetype in range(est.shape[0]):
         # Filter processes based on p-value threshold
         significant_processes = pval.iloc[archetype] < p_threshold
-        top_processes = (
-            est.iloc[archetype, list(significant_processes)].nlargest(n).index
-        )
+        top_processes = est.iloc[archetype, list(significant_processes)].nlargest(n).index
 
         # Filter processes based on drop threshold
         subset = est.loc[:, top_processes]
         subset.index = subset.index.astype(int)
-        filtered_processes = top_processes[
-            (subset.drop(index=archetype) < drop_threshold).all(axis=0)
-        ]
+        filtered_processes = top_processes[(subset.drop(index=archetype) < drop_threshold).all(axis=0)]
 
         results[f"archetype_{archetype}"] = est.loc[:, filtered_processes].copy()
 
@@ -257,12 +249,11 @@ def meta_enrichment(adata: sc.AnnData, meta: str) -> pd.DataFrame:
     meta : str
         The name of the categorical metadata column in `adata.obs` to use for enrichment analysis.
 
-    Returns:
-    --------
+    Returns
+    -------
     pd.DataFrame
         A DataFrame of shape (n_archetypes, n_categories) containing the normalized enrichment of a metadata category for a given archetypes.
     """
-
     metadata = adata.obs[meta]
     weights = adata.obsm["cell_weights"].T
 

@@ -1,7 +1,8 @@
+fail_fast: false # do not stop after failure (can still interupt manually...)
 repos:
   # Add some general purpose useful hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       # Make sure that contained YAML files are well-formed
       - id: check-yaml
@@ -11,9 +12,20 @@ repos:
       - id: check-toml
       # Unify file endings
       - id: end-of-file-fixer
+      # Normalize to LF line endings (Unix-style)
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      # Prevent committing private keys
+      - id: detect-private-key
+      # Ensure no merge conflict markers are committed
+      - id: check-merge-conflict
+      # Detect case conflicts in filenames, on macOS/Windows filenames are case-insensitive, but not on Linux
+      - id: check-case-conflict
+      # Check for python syntax errors
+      - id: check-ast
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.4
+    rev: v0.9.9
     hooks:
       - id: ruff
         types_or: [python] # ignore jupyter for now [python, jupyter]
@@ -26,7 +38,7 @@ repos:
     hooks:
       - id: pytest
         name: Run pytest
-        entry: pytest
+        entry: pytest --cov partipy --cov-report=html
         language: system
         types: [python]
         pass_filenames: false
@@ -34,6 +46,6 @@ repos:
 
   # type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.5.1
+    rev: v1.15.0
     hooks:
       - id: mypy
