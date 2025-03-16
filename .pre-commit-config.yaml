@@ -38,7 +38,8 @@ repos:
     hooks:
       - id: pytest
         name: Run pytest
-        entry: pytest --cov partipy --cov-report=html
+        #entry: pytest --cov partipy --cov-report=html
+        entry: pytest
         language: system
         types: [python]
         pass_filenames: false

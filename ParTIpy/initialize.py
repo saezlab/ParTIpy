@@ -68,7 +68,7 @@ def _furthest_sum_init(X: np.ndarray, n_archetypes: int, exclude: None | list = 
         if D != N or np.sum(K - K.T) != 0:  # Generate kernel if K not one
             Kt = K
             K = Kt.T @ Kt
-            K = np.lib.scimath.sqrt(np.matlib.repmat(np.diag(K), N, 1) - 2 * K + np.matlib.repmat((np.diag(K)).T, 1, N))
+            K = np.lib.scimath.sqrt(np.matlib.repmat(np.diag(K), N, 1) - 2 * K + np.matlib.repmat((np.diag(K)).T, 1, N))  # type: ignore[attr-defined]
 
         Kt2 = np.diag(K)  # Horizontal
         for k in range(1, n_archetypes + 11):

@@ -1,13 +1,12 @@
 """Functions to calculate which features (e.g. genes or covariates) are enriched at each archetype."""
 
-from typing import Optional, Union
+from math import pi
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scanpy as sc
 import plotnine as pn
-from math import pi
+import scanpy as sc
 from scipy.spatial.distance import cdist
 
 
@@ -275,23 +274,21 @@ def meta_enrichment(adata: sc.AnnData, meta: str) -> pd.DataFrame:
 
 def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
     """
-    Parameters:
-    -----------
+    Parameters
+    ----------
     meta_enrich: pd.DataFrame
         Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
     meta: str, optional
         The name for the metadata.
 
-    Returns:
-    --------
+    Returns
+    -------
     pn.ggplot.ggplot
         A stacked bar plot.
     """
     # Prepare data
     meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
-    meta_enrich_long = meta_enrich.melt(
-        id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment"
-    )
+    meta_enrich_long = meta_enrich.melt(id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment")
 
     # Create plot
     plot = (
@@ -312,50 +309,44 @@ def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
     return plot
 
 
-def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: Optional[str] = "Meta"):
+def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: str | None = "Meta"):
     """
-    Parameters:
-    -----------
+    Parameters
+    ----------
     meta_enrich: pd.DataFrame
         Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
     meta: str, optional
         The name for the metadata.
-    Returns:
-    --------
+
+    Returns
+    -------
     pn.ggplot.ggplot
         A heatmap.
     """
-
     # Prepare data
     meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
-    meta_enrich_long = meta_enrich.melt(
-        id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment"
-    )
+    meta_enrich_long = meta_enrich.melt(id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment")
 
     # Create plot
     plot = (
-        pn.ggplot(
-            meta_enrich_long, pn.aes("archetype", "Meta", fill="Normalized_Enrichment")
-        )
+        pn.ggplot(meta_enrich_long, pn.aes("archetype", "Meta", fill="Normalized_Enrichment"))
         + pn.geom_tile()
         + pn.scale_fill_continuous(cmap_name="bwr")
         + pn.theme_matplotlib()
-        + pn.labs(
-            title="Heatmap", x="Archetype", y=meta, fill=" Normalized \nEnrichment"
-        )
+        + pn.labs(title="Heatmap", x="Archetype", y=meta, fill=" Normalized \nEnrichment")
     )
     return plot
 
 
 def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
     """
-    Parameters:
-    -----------
+    Parameters
+    ----------
     meta_enrich: pd.DataFrame
         Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
 
-    Returns:
-    --------
+    Returns
+    -------
     plt.pyplot.Figure
         Radar plots for all archetypes.
     """
@@ -423,8 +414,8 @@ def plot_functional_enrichment(top_features, show: bool = True):
     """
     Generate bar plots for functional enrichment data across archetypes.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     top_features : dict
         A dictionary where keys are archetype names ('archetype_0', 'archetype_1',...) and values are pd.DataFrames
         containing the data to plot. Each DataFrame should have a column for the feature ('Process') and a column
@@ -432,8 +423,8 @@ def plot_functional_enrichment(top_features, show: bool = True):
     show: bool, optional
         If the plots should be printed.
 
-    Returns:
-    --------
+    Returns
+    -------
     list
         A list of `plotnine.ggplot` objects, one for each archetype.
     """
@@ -464,21 +455,19 @@ def plot_functional_enrichment(top_features, show: bool = True):
     return plots
 
 
-def plot_enrichment_comparison(
-    est: pd.DataFrame, features: Union[str, list[str], pd.Series]
-):
+def plot_enrichment_comparison(est: pd.DataFrame, features: str | list[str] | pd.Series):
     """
     Plots a grouped bar plot comparing enrichment scores across archetypes for a given set of features.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     est : pandas.DataFrame
         A DataFrame containing enrichment scores. Rows represent archetypes, and columns represent features.
     features : str, list of str, or pd.Series
         A list of feature names (columns in `est`) to include in the plot.
 
-    Returns:
-    --------
+    Returns
+    -------
     plot : plotnine.ggplot.ggplot
         A grouped bar plot visualizing the enrichment scores for the specified features across archetypes."
     """
@@ -486,15 +475,11 @@ def plot_enrichment_comparison(
     enrich_subset = est[features].reset_index().rename(columns={"index": "archetype"})
 
     # Convert the DataFrame from wide to long format for plotting
-    enrich_long = enrich_subset.melt(
-        id_vars=["archetype"], var_name="Feature", value_name="Enrichment"
-    )
+    enrich_long = enrich_subset.melt(id_vars=["archetype"], var_name="Feature", value_name="Enrichment")
 
     # Create plot
     plot = (
-        pn.ggplot(
-            enrich_long, pn.aes(x="Feature", y="Enrichment", fill="factor(archetype)")
-        )
+        pn.ggplot(enrich_long, pn.aes(x="Feature", y="Enrichment", fill="factor(archetype)"))
         + pn.geom_bar(stat="identity", position=pn.position_dodge())
         + pn.theme_matplotlib()
         + pn.theme(axis_text_x=pn.element_text(rotation=45, hjust=1))

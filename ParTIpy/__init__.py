@@ -9,13 +9,12 @@ from .enrichment import (
 from .paretoti_funcs import (
     align_archetypes,
     bootstrap_aa,
-    project_on_affine_subspace,
+    compute_AA,
     compute_t_ratio,
-    t_ratio_significance,
     plot_2D,
     plot_3D,
-    align_archetypes,
-    compute_AA,
+    project_on_affine_subspace,
+    t_ratio_significance,
 )
 
 # what is exposed when running 'from ParTIpy import *'

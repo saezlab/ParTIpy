@@ -27,7 +27,7 @@ from .const import LAMBDA
 def _compute_A_regularized_nnls(
     X: np.ndarray,
     Z: np.ndarray,
-    A: np.ndarray = None,
+    A: np.ndarray | None = None,
     derivative_max_iter=None,
 ) -> np.ndarray:
     # huge_constant is added as a new column to account for w norm constraint
@@ -42,7 +42,7 @@ def _compute_A_regularized_nnls(
 def _compute_B_regularized_nnls(
     X: np.ndarray,
     A: np.ndarray,
-    B: np.ndarray = None,
+    B: np.ndarray | None = None,
     derivative_max_iter=None,
 ) -> np.ndarray:
     Z = np.linalg.lstsq(a=A, b=X, rcond=None)[0]

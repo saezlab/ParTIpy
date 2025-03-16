@@ -23,8 +23,9 @@ dependencies = [
     "scanpy"
 ]
 optional-dependencies.dev = [
-    "pre-commit",
-    "ruff"
+    "ruff",
+    "mypy",
+    "pre-commit"
 ]
 # dependencies to run the tests
 optional-dependencies.tests = [
@@ -121,3 +122,7 @@ filterwarnings = [
 source = [ "partipy" ]
 # ignore all files that start with "test_" and enc with ".py"
 omit = [ "**/test_*.py" ]
+
+[tool.mypy]
+disable_error_code = ["import-untyped"]
+#disable_error_code = ["import-untyped", "attr-defined", "union-attr"]

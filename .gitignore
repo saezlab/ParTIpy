@@ -18,6 +18,7 @@ data/*
 
 # package stuff
 partipy.egg-info/
+build/*
 .coverage
 
 # others

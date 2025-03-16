@@ -54,13 +54,16 @@ class AA:
         self.deriv_max_iter = derivative_max_iter
         self.tol = tol
         self.verbose = verbose
-        self.A = None
-        self.B = None
-        self.Z = None  # Archetypes
+        # NOTE: I don't want to use here type annotation np.ndarray: None | np.ndarray
+        # because it makes little sense for downstream type checking
+        self.A: np.ndarray = None  # type: ignore[assignment]
+        self.B: np.ndarray = None  # type: ignore[assignment]
+        self.Z: np.ndarray = None  # type: ignore[assignment]
+        self.n_samples: int = None  # type: ignore[assignment]
+        self.n_features: int = None  # type: ignore[assignment]
         self.muA, self.muB = None, None
-        self.n_samples, self.n_features = None, None
-        self.RSS = None
-        self.RSS_trace: list[float] = []
+        self.RSS: float | None = None
+        self.RSS_trace: list[float | None] | np.ndarray = []
         self.varexpl = None
         self.adata = None
 
@@ -131,7 +134,7 @@ class AA:
         W = np.ones(X.shape[0]) if self.weight else None
 
         for _ in range(self.max_iter):
-            X_w = np.diag(W) @ X if self.weight else X
+            X_w = np.diag(W) @ X if self.weight else X  # type: ignore[arg-type]
             A = compute_A(X_w, Z, A, self.deriv_max_iter)
             B = compute_B(X_w, A, B, self.deriv_max_iter)
             Z = B @ X_w
@@ -145,7 +148,7 @@ class AA:
             if (prev_RSS is not None) and ((abs(prev_RSS - RSS) / prev_RSS) < self.tol):
                 break
             prev_RSS = RSS
-            self.RSS_trace.append(float(RSS))
+            self.RSS_trace.append(float(RSS))  # type: ignore[union-attr]
 
         # Recalculate A and B using the unweighted data
         if self.weight:
@@ -157,12 +160,12 @@ class AA:
         self.Z = Z
         self.A = A
         self.B = B
-        self.RSS = RSS
+        self.RSS = float(RSS)
         self.RSS_trace = np.array(self.RSS_trace)
         self.varexpl = (TSS - RSS) / TSS
         return self
 
-    def archetypes(self) -> np.ndarray:
+    def archetypes(self) -> None | np.ndarray:
         """
         Returns the archetypes' matrix
         :return: archetypes matrix, with shape (n_archetypes, n_features)
@@ -196,8 +199,8 @@ class AA:
         """
         Saves the results to the AnnData object provided in fit().
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         archetypes_only: bool
           If True, only the archetypes (Z) are saved. Otherwise, all results (A, B, Z, RSS, varexpl) are saved.
         """
