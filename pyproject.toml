@@ -3,7 +3,7 @@ requires = ["setuptools>=64.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ParTIpy"
+name = "partipy"
 version = "0.0.1"
 description = "Pareto Task Inference in Python"
 readme = "README.md"
@@ -55,17 +55,17 @@ optional-dependencies.doc = [
   "sphinxext-opengraph",
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
-urls.Homepage = "https://github.com/saezlab/ParTIpy"
-urls.Bug = "https://github.com/saezlab/ParTIpy/issues"
-urls.Changelog = "https://github.com/saezlab/ParTIpy/CHANGELOG.md"
-#urls.Documentation = "https://github.com/saezlab/ParTIpy/issues" TODO
+urls.Homepage = "https://github.com/saezlab/partipy"
+urls.Bug = "https://github.com/saezlab/partipy/issues"
+urls.Changelog = "https://github.com/saezlab/partipy/CHANGELOG.md"
+#urls.Documentation = "https://github.com/saezlab/partipy/issues" TODO
 
 [tool.setuptools.packages.find]
-include = ["ParTIpy*"]
+include = ["partipy*"]
 
 [tool.ruff]
 line-length = 120 # more generous that standard 79
-src = ["ParTIpy"]
+src = ["partipy"]
 # for now we will exclude the jupyter notebooks!
 exclude = ["*.ipynb"]
 format.docstring-code-format = true
@@ -118,6 +118,6 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = [ "ParTIpy" ]
+source = [ "partipy" ]
 # ignore all files that start with "test_" and enc with ".py"
 omit = [ "**/test_*.py" ]
