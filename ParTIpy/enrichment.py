@@ -4,9 +4,12 @@ Functions to calculate the genes enriched at an archetype
 
 from typing import Dict, Optional, Tuple, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
 import pandas as pd
+import plotnine as pn
+from math import pi
 from scipy.spatial.distance import cdist
 
 
@@ -24,7 +27,7 @@ def calculate_weights(
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the cells.
-        - An AnnData object containing the PCA coordinates in `.obsm["X_pca_reduced"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+        - An AnnData object containing the PCA coordinates in `.obsm["X_pca"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
     Z : np.ndarray, optional
         A 2D array of shape (n_archetypes, n_features) representing the PCA coordinates of the archetypes.
         Required if `X` is not an AnnData object.
@@ -50,7 +53,7 @@ def calculate_weights(
                 "Result from Archetypal Analysis not found in adata.uns. Please run AA()"
             )
         Z = X.uns["archetypal_analysis"]["Z"]
-        X = X.obsm["X_pca_reduced"]
+        X = X.obsm["X_pca"][:, : X.uns["PCs"]]
 
     if Z is None:
         raise ValueError("Please add the archetypes coordinates as input Z")
@@ -277,3 +280,239 @@ def meta_enrichment(adata: sc.AnnData, meta: str) -> pd.DataFrame:
     weighted_meta_df = pd.DataFrame(weighted_meta, columns=df_encoded.columns)
 
     return weighted_meta_df
+
+
+def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
+    """
+    Parameters:
+    -----------
+    meta_enrich: pd.DataFrame
+        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+    meta: str, optional
+        The name for the metadata.
+
+    Returns:
+    --------
+    pn.ggplot.ggplot
+        A stacked bar plot.
+    """
+    # Prepare data
+    meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
+    meta_enrich_long = meta_enrich.melt(
+        id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment"
+    )
+
+    # Create plot
+    plot = (
+        pn.ggplot(
+            meta_enrich_long,
+            pn.aes(x="factor(archetype)", y="Normalized_Enrichment", fill="Meta"),
+        )
+        + pn.geom_bar(stat="identity", position="stack")
+        + pn.theme_matplotlib()
+        + pn.scale_fill_brewer(type="qual", palette="Dark2")
+        + pn.labs(
+            title="Meta Enrichment Across Archetypes",
+            x="Archetype",
+            y="Normalized Enrichment",
+            fill=meta,
+        )
+    )
+    return plot
+
+
+def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: Optional[str] = "Meta"):
+    """
+    Parameters:
+    -----------
+    meta_enrich: pd.DataFrame
+        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+    meta: str, optional
+        The name for the metadata.
+    Returns:
+    --------
+    pn.ggplot.ggplot
+        A heatmap.
+    """
+
+    # Prepare data
+    meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
+    meta_enrich_long = meta_enrich.melt(
+        id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment"
+    )
+
+    # Create plot
+    plot = (
+        pn.ggplot(
+            meta_enrich_long, pn.aes("archetype", "Meta", fill="Normalized_Enrichment")
+        )
+        + pn.geom_tile()
+        + pn.scale_fill_continuous(cmap_name="bwr")
+        + pn.theme_matplotlib()
+        + pn.labs(
+            title="Heatmap", x="Archetype", y=meta, fill=" Normalized \nEnrichment"
+        )
+    )
+    return plot
+
+
+def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
+    """
+    Parameters:
+    -----------
+    meta_enrich: pd.DataFrame
+        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+
+    Returns:
+    --------
+    plt.pyplot.Figure
+        Radar plots for all archetypes.
+    """
+    # Prepare data
+    meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
+
+    # Function to create a radar plot for a given row
+    def make_radar(row, title, color):
+        # Set number of meta categories
+        categories = list(meta_enrich)[1:]
+        N = len(categories)
+
+        # Calculate angles for the radar plot
+        angles = [n / float(N) * 2 * pi for n in range(N)]
+        angles += angles[:1]
+
+        # Initialise the radar plot
+        ax = plt.subplot(int(np.round(len(meta_enrich) / 2)), 2, row + 1, polar=True)
+
+        # Put first axis on top:
+        ax.set_theta_offset(pi / 2)
+        ax.set_theta_direction(-1)
+
+        # One axe per variable and add labels
+        plt.xticks(angles[:-1], categories, color="grey", size=8)
+
+        # Draw ylabels
+        ax.set_rlabel_position(0)
+        plt.yticks(
+            [0, 0.25, 0.5, 0.75, 1],
+            ["0%", "25%", "50%", "75%", "100%"],
+            color="grey",
+            size=7,
+        )
+        plt.ylim(0, 1)
+
+        # Draw plot
+        values = meta_enrich.loc[row].drop("archetype").values.flatten().tolist()
+        values += values[:1]
+        ax.plot(angles, values, color=color, linewidth=2, linestyle="solid")
+        ax.fill(angles, values, color=color, alpha=0.4)
+
+        # Add a title
+        plt.title(title, size=11, color=color, y=1.065)
+
+    # Initialize the figure
+    my_dpi = 96
+    plt.figure(figsize=(1000 / my_dpi, 1000 / my_dpi), dpi=my_dpi)
+
+    # Create a color palette:
+    my_palette = plt.colormaps.get_cmap("Dark2")
+
+    # Loop to plot
+    for row in range(0, len(meta_enrich.index)):
+        make_radar(
+            row=row,
+            title=f"Archetype {meta_enrich['archetype'][row]}",
+            color=my_palette(row),
+        )
+
+    return plt
+
+
+def plot_functional_enrichment(top_features, show: bool = True):
+    """
+    Generate bar plots for functional enrichment data across archetypes.
+
+    Parameters:
+    -----------
+    top_features : dict
+        A dictionary where keys are archetype names ('archetype_0', 'archetype_1',...) and values are pd.DataFrames
+        containing the data to plot. Each DataFrame should have a column for the feature ('Process') and a column
+        for the score ('Score')."
+    show: bool, optional
+        If the plots should be printed.
+
+    Returns:
+    --------
+    list
+        A list of `plotnine.ggplot` objects, one for each archetype.
+    """
+    plots = []
+    # Loop through archetypes
+    for i in range(len(top_features)):
+        key = f"archetype_{i}"  # Construct the key dynamically
+        data = top_features[key]
+
+        # Create plot
+        plot = (
+            pn.ggplot(data, pn.aes(x="reorder(Process, Score)", y="Score"))
+            + pn.geom_bar(stat="identity")
+            + pn.labs(
+                title=f"Enrichment at archetype {i}",
+                x="Feature",
+                y="Enrichment score",
+                fill="Process",
+            )
+            + pn.theme_matplotlib()
+            + pn.theme(axis_text_x=pn.element_text(angle=45, hjust=1))
+        )
+        if show:
+            plot.show()
+        plots.append(plot)
+
+    # Return the list of plots
+    return plots
+
+
+def plot_enrichment_comparison(
+    est: pd.DataFrame, features: Union[str, list[str], pd.Series]
+):
+    """
+    Plots a grouped bar plot comparing enrichment scores across archetypes for a given set of features.
+
+    Parameters:
+    -----------
+    est : pandas.DataFrame
+        A DataFrame containing enrichment scores. Rows represent archetypes, and columns represent features.
+    features : str, list of str, or pd.Series
+        A list of feature names (columns in `est`) to include in the plot.
+
+    Returns:
+    --------
+    plot : plotnine.ggplot.ggplot
+        A grouped bar plot visualizing the enrichment scores for the specified features across archetypes."
+    """
+    # Subset the DataFrame to include only the specified features
+    enrich_subset = est[features].reset_index().rename(columns={"index": "archetype"})
+
+    # Convert the DataFrame from wide to long format for plotting
+    enrich_long = enrich_subset.melt(
+        id_vars=["archetype"], var_name="Feature", value_name="Enrichment"
+    )
+
+    # Create plot
+    plot = (
+        pn.ggplot(
+            enrich_long, pn.aes(x="Feature", y="Enrichment", fill="factor(archetype)")
+        )
+        + pn.geom_bar(stat="identity", position=pn.position_dodge())
+        + pn.theme_matplotlib()
+        + pn.theme(axis_text_x=pn.element_text(rotation=45, hjust=1))
+        + pn.scale_fill_brewer(type="qual", palette="Dark2")
+        + pn.labs(
+            x="Features",
+            y="Enrichment score",
+            fill="Archetype",
+            title="Enrichment Comparison",
+        )
+    )
+    return plot
