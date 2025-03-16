@@ -1,3 +1,5 @@
+__version__ = "0.0.1"
+
 from .arch import AA
 from .enrichment import (
     calculate_weights,

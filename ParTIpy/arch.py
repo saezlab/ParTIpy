@@ -85,7 +85,7 @@ class AA:
                     "X_pca not in AnnData object. Please use run PCA and set_dimension() to add both to the AnnData object."
                 )
             self.adata = X
-            X = X.obsm["X_pca"][:, : X.uns["PCs"]]
+            X = X.obsm["X_pca"][:, : X.uns["n_pcs"]]
 
         self.n_samples, self.n_features = X.shape
 

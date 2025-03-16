@@ -48,7 +48,7 @@ def calculate_weights(
         if "archetypal_analysis" not in X.uns:
             raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
         Z = X.uns["archetypal_analysis"]["Z"]
-        X = X.obsm["X_pca"][:, : X.uns["PCs"]]
+        X = X.obsm["X_pca"][:, : X.uns["n_pcs"]]
 
     if Z is None:
         raise ValueError("Please add the archetypes coordinates as input Z")

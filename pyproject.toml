@@ -68,7 +68,7 @@ include = ["partipy*"]
 line-length = 120 # more generous that standard 79
 src = ["partipy"]
 # for now we will exclude the jupyter notebooks!
-exclude = ["*.ipynb"]
+exclude = ["*.ipynb", "docs/source/conf.py"]
 format.docstring-code-format = true
 lint.select = [
   "B",      # flake8-bugbear
@@ -124,5 +124,6 @@ source = [ "partipy" ]
 omit = [ "**/test_*.py" ]
 
 [tool.mypy]
+exclude = "build/"
 disable_error_code = ["import-untyped"]
 #disable_error_code = ["import-untyped", "attr-defined", "union-attr"]
