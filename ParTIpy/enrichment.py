@@ -347,7 +347,7 @@ def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: Optional[str] = "Me
             meta_enrich_long, pn.aes("archetype", "Meta", fill="Normalized_Enrichment")
         )
         + pn.geom_tile()
-        + pn.scale_fill_continuous(cmap_name="bwr")
+        + pn.scale_fill_continuous(cmap_name="Blues")
         + pn.theme_matplotlib()
         + pn.labs(
             title="Heatmap", x="Archetype", y=meta, fill=" Normalized \nEnrichment"
@@ -369,7 +369,7 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
         Radar plots for all archetypes.
     """
     # Prepare data
-    meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
+    meta_enrich = meta_enrich.T.reset_index().rename(columns={"index": "Meta_feature"})
 
     # Function to create a radar plot for a given row
     def make_radar(row, title, color):
@@ -382,27 +382,28 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
         angles += angles[:1]
 
         # Initialise the radar plot
-        ax = plt.subplot(int(np.round(len(meta_enrich) / 2)), 2, row + 1, polar=True)
+        ax = plt.subplot(int(np.ceil(len(meta_enrich) / 2)), 2, row + 1, polar=True)
 
         # Put first axis on top:
         ax.set_theta_offset(pi / 2)
         ax.set_theta_direction(-1)
 
         # One axe per variable and add labels
-        plt.xticks(angles[:-1], categories, color="grey", size=8)
+        archetype_label = [f"A{i}" for i in range(len(list(meta_enrich)[1:]))]
+        plt.xticks(angles[:-1], archetype_label, color="grey", size=8)
 
         # Draw ylabels
         ax.set_rlabel_position(0)
         plt.yticks(
             [0, 0.25, 0.5, 0.75, 1],
-            ["0%", "25%", "50%", "75%", "100%"],
+            ["0", "0.25", "0.50", "0.75", "1.0"],
             color="grey",
             size=7,
         )
         plt.ylim(0, 1)
 
         # Draw plot
-        values = meta_enrich.loc[row].drop("archetype").values.flatten().tolist()
+        values = meta_enrich.loc[row].drop("Meta_feature").values.flatten().tolist()
         values += values[:1]
         ax.plot(angles, values, color=color, linewidth=2, linestyle="solid")
         ax.fill(angles, values, color=color, alpha=0.4)
@@ -421,7 +422,7 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
     for row in range(0, len(meta_enrich.index)):
         make_radar(
             row=row,
-            title=f"Archetype {meta_enrich['archetype'][row]}",
+            title=f"Feature: {meta_enrich['Meta_feature'][row]}",
             color=my_palette(row),
         )
 
@@ -452,9 +453,14 @@ def plot_functional_enrichment(top_features, show: bool = True):
         key = f"archetype_{i}"  # Construct the key dynamically
         data = top_features[key]
 
+        # Order column
+        data["Process"] = pd.Categorical(
+            data["Process"], categories=data["Process"].tolist(), ordered=True
+        )
+
         # Create plot
         plot = (
-            pn.ggplot(data, pn.aes(x="reorder(Process, Score)", y="Score"))
+            pn.ggplot(data, pn.aes(x="Process", y="Score", fill="Score"))
             + pn.geom_bar(stat="identity")
             + pn.labs(
                 title=f"Enrichment at archetype {i}",
@@ -463,7 +469,15 @@ def plot_functional_enrichment(top_features, show: bool = True):
                 fill="Process",
             )
             + pn.theme_matplotlib()
-            + pn.theme(axis_text_x=pn.element_text(angle=45, hjust=1))
+            + pn.theme(figure_size=(15, 5))
+            + pn.coord_flip()
+            + pn.scale_fill_gradient2(
+                low="blue",
+                mid="lightgrey",
+                high="red",
+                midpoint=0,
+            )
+            + pn.labs(fill="Enrichment score")
         )
         if show:
             plot.show()
@@ -506,7 +520,6 @@ def plot_enrichment_comparison(
         )
         + pn.geom_bar(stat="identity", position=pn.position_dodge())
         + pn.theme_matplotlib()
-        + pn.theme(axis_text_x=pn.element_text(rotation=45, hjust=1))
         + pn.scale_fill_brewer(type="qual", palette="Dark2")
         + pn.labs(
             x="Features",
@@ -514,5 +527,7 @@ def plot_enrichment_comparison(
             fill="Archetype",
             title="Enrichment Comparison",
         )
+        + pn.theme(figure_size=(10, 5))
+        + pn.coord_flip()
     )
     return plot
