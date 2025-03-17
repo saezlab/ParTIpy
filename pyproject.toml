@@ -15,20 +15,30 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "tqdm",
+    "joblib",
     "numpy",
     "numba",
     "pandas",
     "scipy",
     "plotnine",
+    "matplotlib",
     "scanpy"
 ]
-optional-dependencies.dev = [
+
+[project.urls]
+# https://docs.pypi.org/project_metadata/#project-urls
+Homepage = "https://github.com/saezlab/partipy"
+Bug = "https://github.com/saezlab/partipy/issues"
+Changelog = "https://github.com/saezlab/partipy/CHANGELOG.md"
+#Documentation = "https://github.com/saezlab/partipy/issues" # TODO
+
+[project.optional-dependencies]
+dev = [
     "ruff",
     "mypy",
     "pre-commit"
 ]
-# dependencies to run the tests
-optional-dependencies.tests = [
+tests = [
     "pytest",
     "coverage",
     "pytest-cov",
@@ -38,28 +48,21 @@ optional-dependencies.tests = [
     "ipytest",
     "hypothesis",
 ]
-# dependencies to build the documentation
-optional-dependencies.doc = [
-  "docutils>=0.8,!=0.18.*,!=0.19.*",
-  "ipykernel",
-  "ipython",
-  "myst-nb>=1.1",
-  "pandas",
-  # Until pybtex >0.23.0 releases: https://bitbucket.org/pybtex-devs/pybtex/issues/169/
-  "setuptools",
-  "sphinx>=4",
-  "sphinx-autodoc-typehints",
-  "sphinx-book-theme>=1",
-  "sphinx-copybutton",
-  "sphinx-tabs",
-  "sphinxcontrib-bibtex>=1",
-  "sphinxext-opengraph",
+doc = [
+    "docutils>=0.8,!=0.18.*,!=0.19.*",
+    "ipykernel",
+    "ipython",
+    "myst-nb>=1.1",
+    "setuptools",
+    "sphinx>=4",
+    "sphinx-autodoc-typehints",
+    "sphinx-book-theme>=1",
+    "sphinx-copybutton",
+    "sphinx-tabs",
+    "sphinxcontrib-bibtex>=1",
+    "sphinxext-opengraph",
 ]
-# https://docs.pypi.org/project_metadata/#project-urls
-urls.Homepage = "https://github.com/saezlab/partipy"
-urls.Bug = "https://github.com/saezlab/partipy/issues"
-urls.Changelog = "https://github.com/saezlab/partipy/CHANGELOG.md"
-#urls.Documentation = "https://github.com/saezlab/partipy/issues" TODO
+
 
 [tool.setuptools.packages.find]
 include = ["partipy*"]

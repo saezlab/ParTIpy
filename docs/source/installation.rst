@@ -6,7 +6,7 @@ Installation
 Stable Version
 -------------------
 
-Note, ``partipy`` is not available on Python Package Index (PyPI).
+``partipy`` is not yet available on Python Package Index (PyPI).
 
 Development Version
 -------------------
