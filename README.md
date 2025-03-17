@@ -1,1 +1,1 @@
-# ParTIpy
+# partipy

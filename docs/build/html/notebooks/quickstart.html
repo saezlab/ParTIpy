@@ -1,0 +1,732 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quickstart &mdash; partipy  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../_static/nbsphinx-code-cells.css?v=2aa19091" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=73eadeab" />
+
+
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Release notes" href="../release_notes.html" />
+</head>
+
+<body class="wy-body-for-nav">
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+
+
+          <a href="../index.html" class="icon icon-home">
+            partipy
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Main</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../release_notes.html">Release notes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Vignettes</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#Packages">Packages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#Data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#Preprocessing">Preprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#Choosing-the-Number-of-Archetypes">Choosing the Number of Archetypes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#Archetypal-Analysis">Archetypal Analysis</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#Advanced-Topics">Advanced Topics</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#Accessing-the-Stability-of-the-Archetypes">Accessing the Stability of the Archetypes</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">partipy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Quickstart</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/saezlab/ParTIpy/blob/master/docs/source/notebooks/quickstart.ipynb" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+
+  <section id="Quickstart">
+<h1>Quickstart<a class="headerlink" href="#Quickstart" title="Link to this heading"></a></h1>
+<section id="Packages">
+<h2>Packages<a class="headerlink" href="#Packages" title="Link to this heading"></a></h2>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">scanpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sc</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">plotnine</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pn</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">decoupler</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dc</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">liana.resource</span><span class="w"> </span><span class="kn">import</span> <span class="n">translate_column</span><span class="p">,</span> <span class="n">get_hcop_orthologs</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">partipy.paretoti_funcs</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">set_dimension</span><span class="p">,</span>
+    <span class="n">var_explained_aa</span><span class="p">,</span>
+    <span class="n">plot_var_explained_aa</span><span class="p">,</span>
+    <span class="n">bootstrap_aa</span><span class="p">,</span>
+    <span class="n">plot_bootstrap_aa</span><span class="p">,</span>
+    <span class="n">compute_AA</span><span class="p">,</span>
+    <span class="n">plot_2D_adata</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">partipy.enrichment</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">calculate_weights</span><span class="p">,</span>
+    <span class="n">weighted_expr</span><span class="p">,</span>
+    <span class="n">extract_top_processes</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+/Users/pschafer/miniforge3/envs/partipy/lib/python3.11/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
+</pre></div></div>
+</div>
+</section>
+<section id="Data">
+<h2>Data<a class="headerlink" href="#Data" title="Link to this heading"></a></h2>
+<p>First, we need to download some single-cell data. Here, we will use mouse hepatocyte profiles by scRNA-seq from [1]. In this study, the authors found that approximately 50% of liver genes exhibit significant zonation, including non-monotonic expression patterns that peak in mid-lobule layers.</p>
+<div class="line-block">
+<div class="line"><strong>References</strong></div>
+<div class="line">[1] Halpern, K. B. et al. Single-cell spatial reconstruction reveals global division of labour in the mammalian liver. <em>Nature</em> <strong>542</strong>, 352–356 (2017).</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">download_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">use_cache</span> <span class="ow">and</span> <span class="n">filename</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;File already exists, skipping: </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">filename</span>
+
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">iter_content</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">8192</span><span class="p">):</span>
+            <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Downloaded: </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">filename</span>
+
+<span class="n">data_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span>
+<span class="n">data_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">file_urls</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;https://ftp.ncbi.nlm.nih.gov/geo/series/GSE84nnn/GSE84498/suppl/GSE84498</span><span class="si">%5F</span><span class="s2">experimental</span><span class="si">%5F</span><span class="s2">design.txt.gz&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;https://ftp.ncbi.nlm.nih.gov/geo/series/GSE84nnn/GSE84498/suppl/GSE84498</span><span class="si">%5F</span><span class="s2">umitab.txt.gz&quot;</span>
+<span class="p">]</span>
+
+<span class="k">for</span> <span class="n">url</span> <span class="ow">in</span> <span class="n">file_urls</span><span class="p">:</span>
+    <span class="n">download_file</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">url</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="n">data_dir</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+File already exists, skipping: data/GSE84498%5Fexperimental%5Fdesign.txt.gz
+File already exists, skipping: data/GSE84498%5Fumitab.txt.gz
+</pre></div></div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">obs</span> <span class="o">=</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">/</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_urls</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
+       <span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s2">&quot;well&quot;</span><span class="p">))</span>
+<span class="n">count_df</span> <span class="o">=</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">/</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_urls</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s2">&quot;gene&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">obs</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="p">:])</span>
+<span class="n">adata</span> <span class="o">=</span> <span class="n">sc</span><span class="o">.</span><span class="n">AnnData</span><span class="p">(</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">count_df</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">obs</span> <span class="o">=</span> <span class="n">obs</span><span class="p">,</span>
+    <span class="n">var</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;;&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">count_df</span><span class="o">.</span><span class="n">columns</span><span class="p">])</span>
+<span class="p">)</span>
+<span class="n">adata</span> <span class="o">=</span> <span class="n">adata</span><span class="p">[:,</span> <span class="n">adata</span><span class="o">.</span><span class="n">X</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">20</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="c1"># remove batches of different cells (probably non-hepatocytes)</span>
+<span class="n">adata</span> <span class="o">=</span> <span class="n">adata</span><span class="p">[</span><span class="o">~</span><span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">&quot;batch&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">([</span><span class="s2">&quot;AB630&quot;</span><span class="p">,</span> <span class="s2">&quot;AB631&quot;</span><span class="p">])]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">adata</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+AnnData object with n_obs × n_vars = 1534 × 10400
+    obs: &#39;batch&#39;, &#39;seq_batch_ID&#39;, &#39;plate_coordinates&#39;, &#39;pool_barcode&#39;, &#39;cell_barcode&#39;, &#39;plate&#39;, &#39;subject&#39;
+</pre></div></div>
+</div>
+</section>
+<section id="Preprocessing">
+<h2>Preprocessing<a class="headerlink" href="#Preprocessing" title="Link to this heading"></a></h2>
+<p>Before conducting archetypal analysis (AA) on single-cell RNA-seq data, it is benefical to reduce the dimensionality of the data. To achieve this, we first scale the counts across all cells to a common value, followed by log normalization. Next, we identify highly variable genes and then apply principal component analysis using only those highly variable genes. We use <code class="docutils literal notranslate"><span class="pre">scanpy</span></code> for all these steps.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sc</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">normalize_total</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+<span class="n">sc</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">log1p</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+<span class="n">sc</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">highly_variable_genes</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+<span class="n">sc</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">pca</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">mask_var</span><span class="o">=</span><span class="s2">&quot;highly_variable&quot;</span><span class="p">)</span>
+<span class="n">adata</span><span class="o">.</span><span class="n">layers</span><span class="p">[</span><span class="s2">&quot;z_scaled&quot;</span><span class="p">]</span><span class="o">=</span> <span class="n">sc</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">scale</span><span class="p">(</span><span class="n">adata</span><span class="o">.</span><span class="n">X</span><span class="p">,</span> <span class="n">max_value</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="c1"># save this for later</span>
+<span class="n">sc</span><span class="o">.</span><span class="n">pl</span><span class="o">.</span><span class="n">pca_scatter</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Alb&quot;</span><span class="p">,</span> <span class="s2">&quot;Cyp2e1&quot;</span><span class="p">,</span> <span class="s2">&quot;Apoa2&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+... storing &#39;batch&#39; as categorical
+... storing &#39;seq_batch_ID&#39; as categorical
+... storing &#39;plate_coordinates&#39; as categorical
+... storing &#39;pool_barcode&#39; as categorical
+... storing &#39;cell_barcode&#39; as categorical
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_9_1.png" src="../_images/notebooks_quickstart_9_1.png" />
+</div>
+</div>
+<p>To determine the number of principal components to use for fitting the archetypes, we will examine the scree plot from the PCA. The plot indicates that the gain in explained variance becomes negligible beyond the sixth principal component.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sc</span><span class="o">.</span><span class="n">pl</span><span class="o">.</span><span class="n">pca_variance_ratio</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_pcs</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_11_0.png" src="../_images/notebooks_quickstart_11_0.png" />
+</div>
+</div>
+<p>We store this setting in the adata.uns slot using the utility function <code class="docutils literal notranslate"><span class="pre">set_dimension</span></code>.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">set_dimension</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_pcs</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</section>
+<section id="Choosing-the-Number-of-Archetypes">
+<h2>Choosing the Number of Archetypes<a class="headerlink" href="#Choosing-the-Number-of-Archetypes" title="Link to this heading"></a></h2>
+<p>Now, we are ready to perform archetypal analysis, but the key question remains: how many archetypes should be used?</p>
+<p>There is no definitive ground truth for this choice, but several heuristics can guide the decision. One approach is to evaluate how much variance is explained by different numbers of archetypes.</p>
+<p>The function <code class="docutils literal notranslate"><span class="pre">var_explained_aa()</span></code> takes the reduced PCA data and computes the explained variance across a range of archetypes (from <code class="docutils literal notranslate"><span class="pre">min_a</span></code> to <code class="docutils literal notranslate"><span class="pre">max_a</span></code>). By default, this function utilizes all available CPU cores, as indicated by the <code class="docutils literal notranslate"><span class="pre">n_jobs</span></code> argument, which is set to <code class="docutils literal notranslate"><span class="pre">-1</span></code>.</p>
+<p>The results are stored in <code class="docutils literal notranslate"><span class="pre">adata.uns[&quot;AA_var&quot;]</span></code> and can be effectively visualized using plot_var_explained_aa(). The plot suggests that a reasonable choice for the number of archetypes is 3, 4, 5, or 6, as the additional explained variance becomes negligible beyond this point.</p>
+<p>For this analysis, we will proceed with 4 archetypes.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">var_explained_aa</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">min_a</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">max_a</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">plot_var_explained_aa</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_16_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_16_0.png" style="width: 640px; height: 480px;" />
+</div>
+</div>
+</section>
+<section id="Archetypal-Analysis">
+<h2>Archetypal Analysis<a class="headerlink" href="#Archetypal-Analysis" title="Link to this heading"></a></h2>
+<p>To compute the archetypes, we can simply use the <code class="docutils literal notranslate"><span class="pre">compute_AA</span></code> function. There are many optimization parameters which we describe in more detail in the vignette TODO.</p>
+<p>To get a feeling for the archetypes we might plot the</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">compute_AA</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_archetypes</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="s2">&quot;furthest_sum&quot;</span><span class="p">)</span>
+<span class="n">plot_2D_adata</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_19_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_19_0.png" style="width: 640px; height: 480px;" />
+</div>
+</div>
+<p>To better understand the archetypes, we aim to obtain the characteristic gene expression profile for each one.</p>
+<p>We begin by computing the archetypal weights using the <code class="docutils literal notranslate"><span class="pre">calculate_weights()</span></code> function, which assigns each cell a weight for each archetype based on its proximity to the archetype in the reduced space.</p>
+<p>Next, we generate a pseudobulk expression profile for each archetype using weighted averaging. This is achieved with the <code class="docutils literal notranslate"><span class="pre">weighted_expr()</span></code> function, which aggregates expression data across cells according to their archetypal contributions.</p>
+<p>To better illustrate this, we visualize the weights for archetype 4 using the <code class="docutils literal notranslate"><span class="pre">plot_2D_adata()</span></code> function, highlighting the extent to which each cell is associated with it.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[9]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">calculate_weights</span><span class="p">(</span><span class="n">X</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;automatic&quot;</span><span class="p">)</span>
+<span class="n">pseudobulk</span> <span class="o">=</span> <span class="n">weighted_expr</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">layer</span><span class="o">=</span><span class="s2">&quot;z_scaled&quot;</span><span class="p">)</span>
+
+<span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">&quot;weights_archetype_4&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obsm</span><span class="p">[</span><span class="s2">&quot;cell_weights&quot;</span><span class="p">][:,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">plot_2D_adata</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;weights_archetype_4&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Applied length scale is 4.160508202027831.
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_21_1.png" class="no-scaled-link" src="../_images/notebooks_quickstart_21_1.png" style="width: 640px; height: 480px;" />
+</div>
+</div>
+<p>Now we can use the characteristic gene expression profile to see which genes are relatively important for each archetype. Here we will focus on archetype 3.</p>
+<p>This reveals many Cytochrome P450 enzymes, as well as genes involved in amino-acid metabolism such as Oat (Ornithine aminotransferase)</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pseudobulk</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+</pre></div>
+</div>
+<div class="output_area rendered_html docutils container">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>0</th>
+      <th>1</th>
+      <th>2</th>
+      <th>3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Cyp2a5</th>
+      <td>-0.244505</td>
+      <td>-0.355785</td>
+      <td>-0.539601</td>
+      <td>1.237683</td>
+    </tr>
+    <tr>
+      <th>Oat</th>
+      <td>-0.314369</td>
+      <td>-0.286266</td>
+      <td>-0.439738</td>
+      <td>1.180190</td>
+    </tr>
+    <tr>
+      <th>Cyp2c29</th>
+      <td>-0.197813</td>
+      <td>-0.356917</td>
+      <td>-0.622412</td>
+      <td>1.144445</td>
+    </tr>
+    <tr>
+      <th>Cyp1a2</th>
+      <td>-0.331320</td>
+      <td>-0.238511</td>
+      <td>-0.668692</td>
+      <td>1.067805</td>
+    </tr>
+    <tr>
+      <th>Lect2</th>
+      <td>-0.349000</td>
+      <td>-0.227938</td>
+      <td>-0.483560</td>
+      <td>1.064875</td>
+    </tr>
+    <tr>
+      <th>Cyp2e1</th>
+      <td>-0.354307</td>
+      <td>-0.274553</td>
+      <td>-0.628890</td>
+      <td>1.032290</td>
+    </tr>
+    <tr>
+      <th>Cyp2c37</th>
+      <td>-0.194175</td>
+      <td>-0.316099</td>
+      <td>-0.397677</td>
+      <td>1.031174</td>
+    </tr>
+    <tr>
+      <th>Aldh3a2</th>
+      <td>-0.375230</td>
+      <td>-0.246598</td>
+      <td>-0.537613</td>
+      <td>1.009613</td>
+    </tr>
+    <tr>
+      <th>Gulo</th>
+      <td>-0.234113</td>
+      <td>-0.280211</td>
+      <td>-0.442193</td>
+      <td>1.006185</td>
+    </tr>
+    <tr>
+      <th>Lhpp</th>
+      <td>-0.254370</td>
+      <td>-0.224964</td>
+      <td>-0.308826</td>
+      <td>1.001450</td>
+    </tr>
+  </tbody>
+</table>
+</div></div>
+</div>
+<p>We can also use the characteristic gene expression profiles of each archetype to perform enrichment analysis with decoupler. Here, we focus on GO Biological Process (GO BP) terms.</p>
+<p>Since our dataset contains mouse genes, we first translate human gene symbols to their mouse equivalents using liana.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">map_df</span> <span class="o">=</span> <span class="n">get_hcop_orthologs</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s2">&quot;https://ftp.ebi.ac.uk/pub/databases/genenames/hcop/human_mouse_hcop_fifteen_column.txt.gz&quot;</span><span class="p">)</span>
+<span class="n">map_df</span> <span class="o">=</span> <span class="n">map_df</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;human_symbol&quot;</span><span class="p">:</span> <span class="s2">&quot;source&quot;</span><span class="p">,</span> <span class="s2">&quot;mouse_symbol&quot;</span><span class="p">:</span> <span class="s2">&quot;target&quot;</span><span class="p">})</span>
+<span class="n">map_df</span> <span class="o">=</span> <span class="n">map_df</span><span class="p">[[</span><span class="s2">&quot;source&quot;</span><span class="p">,</span> <span class="s2">&quot;target&quot;</span><span class="p">]]</span>
+
+<span class="n">msigdb_raw</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">get_resource</span><span class="p">(</span><span class="s2">&quot;MSigDB&quot;</span><span class="p">)</span>
+<span class="n">msigdb</span> <span class="o">=</span> <span class="n">msigdb_raw</span><span class="p">[</span><span class="n">msigdb_raw</span><span class="p">[</span><span class="s2">&quot;collection&quot;</span><span class="p">]</span><span class="o">==</span><span class="s2">&quot;go_biological_process&quot;</span><span class="p">]</span>
+<span class="n">msigdb</span> <span class="o">=</span> <span class="n">msigdb</span><span class="p">[</span><span class="o">~</span><span class="n">msigdb</span><span class="o">.</span><span class="n">duplicated</span><span class="p">([</span><span class="s2">&quot;geneset&quot;</span><span class="p">,</span> <span class="s2">&quot;genesymbol&quot;</span><span class="p">])]</span>
+<span class="n">msigdb_mouse</span> <span class="o">=</span> <span class="n">translate_column</span><span class="p">(</span><span class="n">resource</span><span class="o">=</span><span class="n">msigdb</span><span class="p">,</span>
+                                <span class="n">map_df</span><span class="o">=</span><span class="n">map_df</span><span class="p">,</span>
+                                <span class="n">column</span><span class="o">=</span><span class="s2">&quot;genesymbol&quot;</span><span class="p">)</span>
+<span class="n">msigdb_mouse</span> <span class="o">=</span> <span class="n">msigdb_mouse</span><span class="o">.</span><span class="n">drop_duplicates</span><span class="p">()</span>
+
+<span class="c1"># check how many genes from the gene set are in our andata object</span>
+<span class="n">pk_genes_in_adata</span> <span class="o">=</span> <span class="p">(</span><span class="n">msigdb_mouse</span><span class="p">[[</span><span class="s2">&quot;genesymbol&quot;</span><span class="p">]]</span>
+                     <span class="o">.</span><span class="n">drop_duplicates</span><span class="p">()</span>
+                     <span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="s2">&quot;genesymbol&quot;</span><span class="p">]</span>
+                     <span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">adata</span><span class="o">.</span><span class="n">var</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">to_list</span><span class="p">())</span>
+                     <span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">pk_genes_in_adata</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="n">acts_ulm_est</span><span class="p">,</span> <span class="n">acts_ulm_est_p</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">run_ulm</span><span class="p">(</span><span class="n">mat</span> <span class="o">=</span> <span class="n">pseudobulk</span><span class="p">,</span>
+                                          <span class="n">net</span> <span class="o">=</span> <span class="n">msigdb_mouse</span><span class="p">,</span>
+                                          <span class="n">weight</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                          <span class="n">source</span><span class="o">=</span><span class="s2">&quot;geneset&quot;</span><span class="p">,</span>
+                                          <span class="n">target</span><span class="o">=</span><span class="s2">&quot;genesymbol&quot;</span><span class="p">,</span>
+                                          <span class="n">verbose</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span>
+
+<span class="n">acts_ulm_est</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:</span><span class="mi">4</span><span class="p">,</span> <span class="p">:</span><span class="mi">4</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+/Users/pschafer/miniforge3/envs/partipy/lib/python3.11/site-packages/liana/resource/_orthology.py:199: DtypeWarning: Columns (0) have mixed types. Specify dtype option on import or set low_memory=False.
+</pre></div></div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+pk_genes_in_adata=np.float64(0.5118753432180121)
+12 features of mat are empty, they will be removed.
+Running ulm on mat with 4 samples and 10388 targets for 5769 sources.
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+</pre></div>
+</div>
+<div class="output_area rendered_html docutils container">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>GOBP_10_FORMYLTETRAHYDROFOLATE_METABOLIC_PROCESS</th>
+      <th>GOBP_2FE_2S_CLUSTER_ASSEMBLY</th>
+      <th>GOBP_2_OXOGLUTARATE_METABOLIC_PROCESS</th>
+      <th>GOBP_3_PHOSPHOADENOSINE_5_PHOSPHOSULFATE_METABOLIC_PROCESS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0.695756</td>
+      <td>-0.851369</td>
+      <td>1.210461</td>
+      <td>1.257224</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1.219775</td>
+      <td>0.646358</td>
+      <td>-1.189453</td>
+      <td>-0.665868</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1.812730</td>
+      <td>0.297720</td>
+      <td>-1.352038</td>
+      <td>-0.383927</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>-1.388551</td>
+      <td>0.485648</td>
+      <td>2.564778</td>
+      <td>0.722032</td>
+    </tr>
+  </tbody>
+</table>
+</div></div>
+</div>
+<p>We can then extract the top <span class="math notranslate nohighlight">\(x\)</span> (here <span class="math notranslate nohighlight">\(x=25\)</span>) processes per archetype using <code class="docutils literal notranslate"><span class="pre">extract_top_processes()</span></code>.</p>
+<p>Focusing on Archetype 3 this reveals…</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[12]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">top_processes</span> <span class="o">=</span> <span class="n">extract_top_processes</span><span class="p">(</span><span class="n">est</span><span class="o">=</span><span class="n">acts_ulm_est</span><span class="p">,</span>
+                                      <span class="n">pval</span><span class="o">=</span><span class="n">acts_ulm_est_p</span><span class="p">,</span>
+                                      <span class="n">order</span><span class="o">=</span><span class="s2">&quot;desc&quot;</span><span class="p">,</span>
+                                      <span class="n">n</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span>
+                                      <span class="n">p_threshold</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[13]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">][</span><span class="s2">&quot;Process&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="p">(</span>
+    <span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">][</span><span class="s2">&quot;Process&quot;</span><span class="p">],</span>
+    <span class="n">categories</span><span class="o">=</span><span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;Score&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="s2">&quot;Process&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+<span class="p">)</span>
+
+<span class="p">(</span><span class="n">pn</span><span class="o">.</span><span class="n">ggplot</span><span class="p">(</span><span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">])</span>
+ <span class="o">+</span> <span class="n">pn</span><span class="o">.</span><span class="n">geom_col</span><span class="p">(</span><span class="n">pn</span><span class="o">.</span><span class="n">aes</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="s2">&quot;Process&quot;</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="s2">&quot;Score&quot;</span><span class="p">))</span>
+ <span class="o">+</span> <span class="n">pn</span><span class="o">.</span><span class="n">coord_flip</span><span class="p">()</span>
+ <span class="o">+</span> <span class="n">pn</span><span class="o">.</span><span class="n">theme</span><span class="p">(</span><span class="n">figure_size</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">5</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_28_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_28_0.png" style="width: 800px; height: 500px;" />
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+<section id="Advanced-Topics">
+<h3>Advanced Topics<a class="headerlink" href="#Advanced-Topics" title="Link to this heading"></a></h3>
+</section>
+</section>
+<section id="Accessing-the-Stability-of-the-Archetypes">
+<h2>Accessing the Stability of the Archetypes<a class="headerlink" href="#Accessing-the-Stability-of-the-Archetypes" title="Link to this heading"></a></h2>
+<p>To assess the stability of the archetypes, we apply bootstrapping. For efficiency, we generate five resampled datasets and perform Archetypal Analysis (AA) on each. By default, this function utilizes all available CPU cores, as indicated by the <code class="docutils literal notranslate"><span class="pre">n_jobs</span></code> argument, which is set to <code class="docutils literal notranslate"><span class="pre">-1</span></code>.</p>
+<p>The results are stored in <code class="docutils literal notranslate"><span class="pre">adata.uns[&quot;AA_bootstrap&quot;]</span></code> and can be visualized (at least for the first 3 principal components) using plotly.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[14]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">bootstrap_aa</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_bootstrap</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">n_archetypes</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+
+<span class="n">plot_bootstrap</span> <span class="o">=</span> <span class="n">plot_bootstrap_aa</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+<span class="n">plot_bootstrap</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="admonition warning">
+<p>Data type cannot be displayed: application/vnd.plotly.v1+json</p>
+</div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../release_notes.html" class="btn btn-neutral float-left" title="Release notes" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Saezlab.</p>
+  </div>
+
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+</body>
+</html>

@@ -8,6 +8,10 @@ def simulate(
     noise_std: float,
     seed: int = 42,
 ):
+    """
+    TODO: Write docstring
+    ...
+    """
     assert noise_std >= 0
 
     rng = np.random.default_rng(seed=seed)

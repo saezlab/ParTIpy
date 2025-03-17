@@ -1,14 +1,13 @@
-import sys
 import os
+import sys
 from pathlib import Path
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
-from ParTIpy.arch import AA
+from partipy.arch import AA
 
 X = np.array(pd.read_csv(Path("benchmarking") / "aa_toy_data.csv").values)
 

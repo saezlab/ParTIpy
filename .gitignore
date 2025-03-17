@@ -1,11 +1,25 @@
-__pycache__/
+# compiled code
 *.pyc
-.DS_Store
+
+# IDE stuff
 .vscode/
 
+# caches
+__pycache__/
+.mypy_cache
+.ruff_cache
+.pytest_cache
+
+# data directory
 data/*
 
-ParTIpy.egg-info/
+# mac stuff
+.DS_Store
+
+# package stuff
+partipy.egg-info/
+build/*
 .coverage
 
+# others
 spams

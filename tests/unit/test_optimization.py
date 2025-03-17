@@ -1,10 +1,9 @@
-import pytest
 import numpy as np
+import pytest
+from partipy.arch import AA
+from partipy.const import INIT_ALGS, OPTIM_ALGS, WEIGHT_ALGS
+from partipy.generate_test_data import simulate
 from scipy.optimize import linear_sum_assignment
-
-from ParTIpy.arch import AA
-from ParTIpy.generate_test_data import simulate
-from ParTIpy.const import OPTIM_ALGS, WEIGHT_ALGS, INIT_ALGS
 
 
 def compute_dist_mtx(mtx_1, mtx_2):
@@ -53,9 +52,7 @@ def test_that_archetypes_can_be_identified(
         seed=111,
     )
 
-    A_hat, B_hat, Z_hat, RSS, varexpl = (
-        AA(n_archetypes=n_archetypes, optim=optim_str).fit(X).return_all()
-    )
+    A_hat, B_hat, Z_hat, RSS, varexpl = AA(n_archetypes=n_archetypes, optim=optim_str).fit(X).return_all()
 
     Z_hat = align_archetypes(Z, Z_hat)
 
@@ -80,9 +77,7 @@ def test_that_input_to_AA_is_not_modfied(optim_str, weight_str, init_str) -> Non
     X_in = X.copy()
 
     A_hat, B_hat, Z_hat, RSS, varexpl = (
-        AA(n_archetypes=N_ARCHETYPES, optim=optim_str, weight=weight_str, init=init_str)
-        .fit(X)
-        .return_all()
+        AA(n_archetypes=N_ARCHETYPES, optim=optim_str, weight=weight_str, init=init_str).fit(X).return_all()
     )
 
     assert np.all(np.isclose(X_in, X))

@@ -2,16 +2,14 @@ import numpy as np
 from scipy.sparse import csr_matrix
 
 
-def random_init(
-    X: np.ndarray, n_archetypes: int, exclude: list = [], seed: int = 42
-) -> np.ndarray:
+def _random_init(X: np.ndarray, n_archetypes: int, exclude: None | list = None, seed: int = 42) -> np.ndarray:
+    if exclude is None:
+        exclude = []
     B = np.eye(N=n_archetypes, M=X.shape[0])
     return B
 
 
-def furthest_sum_init(
-    X: np.ndarray, n_archetypes: int, exclude: list = [], seed: int = 42
-) -> np.ndarray:
+def _furthest_sum_init(X: np.ndarray, n_archetypes: int, exclude: None | list = None, seed: int = 42) -> np.ndarray:
     """Furthest sum algorithm, to efficiently generat initial archetypes.
 
     Parameters
@@ -35,8 +33,11 @@ def furthest_sum_init(
     """
     np.random.seed(seed)
 
+    if exclude is None:
+        exclude = []
+
     def max_ind_val(input_list):
-        return max(zip(range(len(input_list)), input_list), key=lambda x: x[1])
+        return max(zip(range(len(input_list)), input_list, strict=False), key=lambda x: x[1])
 
     K = X.T
     D, N = K.shape
@@ -67,11 +68,7 @@ def furthest_sum_init(
         if D != N or np.sum(K - K.T) != 0:  # Generate kernel if K not one
             Kt = K
             K = Kt.T @ Kt
-            K = np.lib.scimath.sqrt(
-                np.matlib.repmat(np.diag(K), N, 1)
-                - 2 * K
-                + np.matlib.repmat((np.diag(K)).T, 1, N)
-            )
+            K = np.lib.scimath.sqrt(np.matlib.repmat(np.diag(K), N, 1) - 2 * K + np.matlib.repmat((np.diag(K)).T, 1, N))  # type: ignore[attr-defined]
 
         Kt2 = np.diag(K)  # Horizontal
         for k in range(1, n_archetypes + 11):
@@ -86,10 +83,6 @@ def furthest_sum_init(
             i.append(ind_t)  # type: ignore
             index[ind_t] = -1
 
-    B = (
-        csr_matrix((np.ones(len(i)), (i, range(n_archetypes))), shape=(N, n_archetypes))
-        .toarray()
-        .T
-    )
+    B = csr_matrix((np.ones(len(i)), (i, range(n_archetypes))), shape=(N, n_archetypes)).toarray().T
     B = np.ascontiguousarray(B)
     return B

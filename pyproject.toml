@@ -3,51 +3,44 @@ requires = ["setuptools>=64.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ParTIpy"
+name = "partipy"
 version = "0.0.1"
 description = "Pareto Task Inference in Python"
 readme = "README.md"
-
-license = {text = "Apache License (2.0)"}
+license = { file = "LICENSE" }
 authors = [
     { name = "Philipp Sven Lars Schäfer", email = "philipp.schaefer@uni-heidelberg.de" },
     { name = "Leoni Zimmermann", email = "leoni.zimmermann@stud.uni-heidelberg.de" }
 ]
+requires-python = ">=3.10"
 dependencies = [
     "tqdm",
+    "joblib",
     "numpy",
     "numba",
     "pandas",
     "scipy",
     "plotnine",
+    "matplotlib",
     "scanpy"
 ]
-requires-python = ">=3.10"
 
 [project.urls]
-homepage = "https://github.com/saezlab/ParTIpy"
-repository = "https://github.com/saezlab/ParTIpy"
-bug-tracker = "https://github.com/saezlab/ParTIpy/issues"
-
-[tool.setuptools.packages.find]
-include = ["ParTIpy*"]
-
-
-[tool.pytest.ini_options]
-pythonpath = [
-  "."
-]
-filterwarnings = [
-    "error",
-    "ignore::UserWarning",
-    # note the use of single quote below to denote "raw" strings in TOML
-    'ignore:function ham\(\) is deprecated:DeprecationWarning',
-
-]
+# https://docs.pypi.org/project_metadata/#project-urls
+Homepage = "https://github.com/saezlab/partipy"
+Bug = "https://github.com/saezlab/partipy/issues"
+Changelog = "https://github.com/saezlab/partipy/CHANGELOG.md"
+#Documentation = "https://github.com/saezlab/partipy/issues" # TODO
 
 [project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pre-commit"
+]
 tests = [
     "pytest",
+    "coverage",
     "pytest-cov",
     "pytest-randomly",
     "pytest-qt",
@@ -55,3 +48,85 @@ tests = [
     "ipytest",
     "hypothesis",
 ]
+doc = [
+    "docutils>=0.8,!=0.18.*,!=0.19.*",
+    "ipykernel",
+    "ipython",
+    "myst-nb>=1.1",
+    "setuptools",
+    "sphinx>=4",
+    "sphinx-autodoc-typehints",
+    "sphinx-book-theme>=1",
+    "sphinx-copybutton",
+    "sphinx-tabs",
+    "sphinxcontrib-bibtex>=1",
+    "sphinxext-opengraph",
+]
+
+
+[tool.setuptools.packages.find]
+include = ["partipy*"]
+
+[tool.ruff]
+line-length = 120 # more generous that standard 79
+src = ["partipy"]
+# for now we will exclude the jupyter notebooks!
+exclude = ["*.ipynb", "docs/source/conf.py"]
+format.docstring-code-format = true
+lint.select = [
+  "B",      # flake8-bugbear
+  "BLE",    # flake8-blind-except
+  "C4",     # flake8-comprehensions
+  "D",      # pydocstyle
+  "E",      # Error detected by Pycodestyle
+  "F",      # Errors detected by Pyflakes
+  "I",      # isort
+  "RUF100", # Report unused noqa directives
+  "TID",    # flake8-tidy-imports
+  "UP",     # pyupgrade
+  "W",      # Warning detected by Pycodestyle
+]
+lint.ignore = [
+  "B008", # Errors from function calls in argument defaults. These are fine when the result is immutable.
+  "D100", # Missing docstring in public module
+  "D104", # Missing docstring in public package
+  "D105", # __magic__ methods are often self-explanatory, allow missing docstrings
+  "D107", # Missing docstring in __init__
+  # Disable one in each pair of mutually incompatible rules
+  "D203", # We don’t want a blank line before a class docstring
+  "D204", #  I do not want to require blank line after docstring of class
+  "D205", # I do not want to require blank line after docstring of function
+  "D213", # <> We want docstrings to start immediately after the opening triple quote
+  "D400", # first line should end with a period [Bug: doesn’t work with single-line docstrings]
+  "D401", # First line should be in imperative mood; try rephrasing
+  "E501", # line too long -> we accept long comment lines; formatter gets rid of long code lines
+  "E731", # Do not assign a lambda expression, use a def -> lambda expression assignments are convenient
+  "E741", # allow I, O, l as variable names -> I is the identity matrix
+]
+lint.per-file-ignores."*/__init__.py" = [ "F401" ]
+lint.per-file-ignores."docs/*" = [ "I" ]
+lint.per-file-ignores."tests/*" = [ "D" ]
+lint.pydocstyle.convention = "numpy"
+
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+# tests that should fail (marked by @pytest.mark.xfail) but actually pass should be considered failures
+xfail_strict = true
+pythonpath = [
+  "."
+]
+filterwarnings = [
+    "error",
+    # ignore UserWarnings for now?
+    "ignore::UserWarning"
+]
+
+[tool.coverage.run]
+source = [ "partipy" ]
+# ignore all files that start with "test_" and enc with ".py"
+omit = [ "**/test_*.py" ]
+
+[tool.mypy]
+exclude = "build/"
+disable_error_code = ["import-untyped"]
+#disable_error_code = ["import-untyped", "attr-defined", "union-attr"]

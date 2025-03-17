@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # NOTE: this is a tempory solution, when this project is more mature
 # we will rather use pip install -e
