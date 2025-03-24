@@ -22,7 +22,8 @@ dependencies = [
     "scipy",
     "plotnine",
     "matplotlib",
-    "scanpy"
+    "scanpy",
+    "plotly"
 ]
 
 [project.urls]
