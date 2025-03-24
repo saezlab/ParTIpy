@@ -233,7 +233,7 @@ class AA:
 
     def return_all(self) -> tuple:
         """Return optimized matrices: A, B, Z, and fitting stats: RSS, varexpl."""
-        return self.A, self.B, self.Z, self.RSS, self.varexpl
+        return self.A, self.B, self.Z, self.RSS_trace, self.varexpl
 
     def save_to_anndata(self, archetypes_only: bool = True):
         """
@@ -256,6 +256,6 @@ class AA:
                 "A": self.A,
                 "B": self.B,
                 "Z": self.Z,
-                "RSS": self.RSS,
+                "RSS": self.RSS_trace,
                 "varexpl": self.varexpl,
             }
