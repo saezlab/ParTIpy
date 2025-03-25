@@ -73,6 +73,8 @@ class AA:
         falls below this threshold.
     verbose : bool, optional (default: False)
         If True, print progress during optimization.
+    seed : int, optional (default: 42)
+        Random seed
     """
 
     def __init__(
@@ -85,6 +87,7 @@ class AA:
         derivative_max_iter: int = 100,
         tol: float = 1e-6,
         verbose: bool = False,
+        seed: int = 42,
     ):
         self.n_archetypes = n_archetypes
         self.init = init
@@ -94,6 +97,7 @@ class AA:
         self.deriv_max_iter = derivative_max_iter
         self.tol = tol
         self.verbose = verbose
+        self.seed = seed
         # NOTE: I don't want to use here type annotation np.ndarray: None | np.ndarray
         # because it makes little sense for downstream type checking
         self.A: np.ndarray = None  # type: ignore[assignment]
@@ -161,11 +165,12 @@ class AA:
                 raise NotImplementedError()
 
         # initialize B and the archetypes Z
-        B = initialize_B(X=X, n_archetypes=self.n_archetypes)
+        B = initialize_B(X=X, n_archetypes=self.n_archetypes, seed=self.seed)
         Z = B @ X
 
         # randomly initialize A
-        A = -np.log(np.random.random((self.n_samples, self.n_archetypes)))
+        rng = np.random.default_rng(self.seed)  # Use a fixed seed
+        A = -np.log(rng.random((self.n_samples, self.n_archetypes)))
         A /= np.sum(A, axis=1, keepdims=True)
 
         TSS = np.sum(X * X)

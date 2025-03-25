@@ -777,6 +777,7 @@ def compute_AA(
     derivative_max_iter: int | None = None,
     tol: float | None = None,
     verbose: bool | None = None,
+    seed: int = 42,
     save_to_anndata: bool = True,
     archetypes_only: bool = True,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, float, float] | None:
@@ -818,6 +819,8 @@ def compute_AA(
         The tolerance for convergence. If not provided, the default from the AA class is used.
     verbose : bool, optional
         Whether to print verbose output during fitting. If not provided, the default from the AA class is used.
+    seed : int, optional
+        Random seed
     save_to_anndata : bool, optional (default=True)
         Whether to save the results to the AnnData object. If `adata` is not an AnnData object, this is ignored.
     archetypes_only : bool, optional (default=True)
@@ -871,6 +874,7 @@ def compute_AA(
         derivative_max_iter=derivative_max_iter,
         tol=tol,
         verbose=verbose,
+        seed=seed,
     )
 
     # Fit the model to the data
