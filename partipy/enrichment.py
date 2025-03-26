@@ -15,7 +15,7 @@ def calculate_weights(
     Z: np.ndarray | None = None,
     mode: str = "automatic",
     length_scale: None | float = None,
-) -> None | tuple[np.ndarray, float | None]:
+) -> None | tuple[np.ndarray | None]:
     """
     Calculate weights for cells based on their distance to archetypes using a squared exponential kernel.
 
@@ -446,7 +446,7 @@ def plot_functional_enrichment(top_features, show: bool = True):
                 title=f"Enrichment at archetype {i}",
                 x="Feature",
                 y="Enrichment score",
-                fill="ProEnrichment scorecess",
+                fill="Enrichment score",
             )
             + pn.theme_matplotlib()
             + pn.theme(figure_size=(15, 5))

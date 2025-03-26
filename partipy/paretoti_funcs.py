@@ -537,6 +537,58 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     return p_value
 
 
+def t_ratio_significance_shuffled(adata, iter=1000, seed=42, n_jobs=-1):
+    """
+    Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["n_pcs"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
+    rep : int, optional (default=1000)
+        Number of randomized datasets to generate.
+    seed : int, optional (default=42)
+        The random seed for reproducibility.
+    n_jobs : int, optional
+        Number of jobs for parallelization (default: 1). Use -1 to use all available cores.
+
+    Returns
+    -------
+    float
+        The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
+    """
+    # Input validation
+    if "X_pca" not in adata.obsm:
+        raise ValueError("adata.obsm['X_pca'] not found.")
+    if "t_ratio" not in adata.uns:
+        print("Computing t-ratio...")
+        compute_t_ratio(adata)
+
+    X = adata[:, adata.var["highly_variable"]].copy().X.toarray()
+    t_ratio = adata.uns["t_ratio"]
+    n_samples, n_features = X.shape
+    n_archetypes = adata.uns["archetypal_analysis"]["Z"].shape[0]
+
+    rng = np.random.default_rng(seed)
+
+    def compute_randomized_t_ratio():
+        # Shuffle each feature independently
+        SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
+        SimplexRand1_pca = sc.pp.pca(SimplexRand1, n_comps=adata.uns["n_pcs"])
+        # Compute archetypes and t-ratio for randomized data
+        Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1_pca).Z
+        return compute_t_ratio(SimplexRand1_pca, Z_mix)
+
+    # Parallelize the computation of randomized t-ratios
+    RandRatio = Parallel(n_jobs=n_jobs)(
+        delayed(compute_randomized_t_ratio)() for _ in tqdm(range(iter), desc="Randomizing")
+    )
+
+    # Calculate the p-value
+    p_value = np.sum(np.array(RandRatio) > t_ratio) / iter
+    return p_value
+
+
 def plot_2D_adata(adata: sc.AnnData, color: str | None = None) -> pn.ggplot:
     """TODO"""
     if "archetypal_analysis" not in adata.uns:
