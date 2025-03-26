@@ -21,5 +21,11 @@ partipy.egg-info/
 build/*
 .coverage
 
+# documentation
+docs/source/notebooks/data
+docs/source/notebooks/*.txt
+docs/source/notebooks/*.txt.gz
+docs/source/notebooks/*.sqlite
+
 # others
 spams
