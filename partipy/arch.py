@@ -7,7 +7,6 @@ Code adapted from https://github.com/atmguille/archetypal-analysis (by Guillermo
 """
 
 import numpy as np
-import scanpy as sc
 
 from .const import (
     DEFAULT_INIT,
@@ -84,8 +83,8 @@ class AA:
         optim: str = DEFAULT_OPTIM,
         weight: None | str = DEFAULT_WEIGHT,
         max_iter: int = 100,
-        derivative_max_iter: int = 100,
-        tol: float = 1e-6,
+        derivative_max_iter: int = 10,
+        tol: float = 1e-6,  # TODO: Which tolerance should we be using?
         verbose: bool = False,
         seed: int = 42,
     ):
@@ -105,11 +104,9 @@ class AA:
         self.Z: np.ndarray = None  # type: ignore[assignment]
         self.n_samples: int = None  # type: ignore[assignment]
         self.n_features: int = None  # type: ignore[assignment]
-        self.muA, self.muB = None, None
         self.RSS: float | None = None
         self.RSS_trace: list[float | None] | np.ndarray = []
-        self.varexpl = None
-        self.adata = None
+        self.varexpl: float = None  # type: ignore[assignment]
 
         # checks
         assert self.init in INIT_ALGS
@@ -123,18 +120,10 @@ class AA:
         :param X: data matrix, with shape (n_samples, n_features)
         :return: self
         """
-        if isinstance(X, sc.AnnData):
-            if "X_pca" not in X.obsm:
-                raise ValueError(
-                    "X_pca not in AnnData object. Please use run PCA and set_dimension() to add both to the AnnData object."
-                )
-            self.adata = X
-            X = X.obsm["X_pca"][:, : X.uns["n_pcs"]]
-
         self.n_samples, self.n_features = X.shape
 
         # ensure C-contiguous format for numba
-        X = np.ascontiguousarray(X)
+        X = np.ascontiguousarray(X, dtype=np.float32)
 
         # set the initalization function
         if self.init == "random":
@@ -170,15 +159,16 @@ class AA:
 
         # randomly initialize A
         rng = np.random.default_rng(self.seed)  # Use a fixed seed
-        A = -np.log(rng.random((self.n_samples, self.n_archetypes)))
+        A = -np.log(rng.random((self.n_samples, self.n_archetypes), dtype=np.float32))
         A /= np.sum(A, axis=1, keepdims=True)
 
         TSS = np.sum(X * X)
         prev_RSS = None
 
-        W = np.ones(X.shape[0]) if self.weight else None
+        W = np.ones(X.shape[0], dtype=np.float32) if self.weight else None
 
-        for _ in range(self.max_iter):
+        convergence_flag = False
+        for _n_iter in range(self.max_iter):
             X_w = np.diag(W) @ X if self.weight else X  # type: ignore[arg-type]
             A = compute_A(X_w, Z, A, self.deriv_max_iter)
             B = compute_B(X_w, A, B, self.deriv_max_iter)
@@ -191,9 +181,16 @@ class AA:
 
             RSS = np.linalg.norm(R) ** 2
             if (prev_RSS is not None) and ((abs(prev_RSS - RSS) / prev_RSS) < self.tol):
+                convergence_flag = True
                 break
             prev_RSS = RSS
             self.RSS_trace.append(float(RSS))  # type: ignore[union-attr]
+        if self.verbose:
+            print(
+                f"Algorithm converged after {_n_iter} iterations."
+                if convergence_flag
+                else f"Algorithm did not converge after {_n_iter} iterations."
+            )
 
         # Recalculate A and B using the unweighted data
         if self.weight:
@@ -239,28 +236,3 @@ class AA:
     def return_all(self) -> tuple:
         """Return optimized matrices: A, B, Z, and fitting stats: RSS, varexpl."""
         return self.A, self.B, self.Z, self.RSS_trace, self.varexpl
-
-    def save_to_anndata(self, archetypes_only: bool = True):
-        """
-        Saves the results to the AnnData object provided in fit().
-
-        Parameters
-        ----------
-        archetypes_only: bool
-          If True, only the archetypes (Z) are saved. Otherwise, all results (A, B, Z, RSS, varexpl) are saved.
-        """
-        if self.adata is None:
-            raise ValueError("No AnnData object found. Please provide an AnnData object to fit().")
-
-        if archetypes_only:
-            self.adata.uns["archetypal_analysis"] = {
-                "Z": self.Z,
-            }
-        else:
-            self.adata.uns["archetypal_analysis"] = {
-                "A": self.A,
-                "B": self.B,
-                "Z": self.Z,
-                "RSS": self.RSS_trace,
-                "varexpl": self.varexpl,
-            }

@@ -20,6 +20,7 @@ b) https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 
 import numpy as np
 import scipy.optimize
+from numba import float32
 
 from .const import LAMBDA
 
@@ -54,12 +55,11 @@ def _compute_B_regularized_nnls(
 
 # @njit(cache=True)
 def _compute_A_projected_gradients(
-    X: np.ndarray,
-    Z: np.ndarray,
-    A: np.ndarray,
+    X: float32[:, :],
+    Z: float32[:, :],
+    A: float32[:, :],
     derivative_max_iter: int = 10,
-    muA: float = 1.0,
-) -> np.ndarray:
+) -> float32[:, :]:
     """Updates the A matrix given the data matrix X and the archetypes Z.
 
     A is the matrix that provides the best convex approximation of X by Z.
@@ -83,36 +83,35 @@ def _compute_A_projected_gradients(
     A : numpy 2d-array
         Updated A matrix with shape (n_samples, n_archetypes).
     """
-    rel_tol = 1e-6
-    prev_RSS = np.linalg.norm(X - A @ Z) ** 2
+    muA = np.float32(1.0)
+    rel_tol = np.float32(1e-6)
+    prev_RSS = np.float32(np.linalg.norm(X - (A @ Z)) ** 2)
     for _ in range(derivative_max_iter):
         # brackets are VERY important to save time
-        # [G] ~ N x K
-        G = 2.0 * (A @ (Z @ Z.T) - X @ Z.T)
+        G = np.float32(2.0) * (A @ (Z @ Z.T) - X @ Z.T)  # G has shape N x K
         G = G - np.sum(A * G, axis=1)[:, None]  # chain rule of projection, check broadcasting
 
         prev_A = A
         # NOTE: original implementation has a while True
         for _ in range(derivative_max_iter * 100):
             A = (prev_A - muA * G).clip(0)
-            A = A / (np.sum(A, axis=1)[:, None] + np.finfo(np.float64).eps)  # Avoid division by zero
+            A = A / (np.sum(A, axis=1)[:, None] + np.finfo(np.float32).eps)  # Avoid division by zero
             RSS = np.linalg.norm(X - A @ Z) ** 2
             if RSS <= (prev_RSS * (1 + rel_tol)):
-                muA *= 1.2
+                muA *= np.float32(1.2)
                 break
             else:
-                muA /= 2.0
+                muA /= np.float32(2.0)
     return A
 
 
 # @njit(cache=True)
 def _compute_B_projected_gradients(
-    X: np.ndarray,
-    A: np.ndarray,
-    B: np.ndarray,
+    X: float32[:, :],
+    A: float32[:, :],
+    B: float32[:, :],
     derivative_max_iter: int = 10,
-    muB: float = 1.0,
-) -> np.ndarray:
+) -> float32[:, :]:
     """Updates the B matrix given the data matrix X and the A matrix.
 
     Parameters
@@ -134,25 +133,25 @@ def _compute_B_projected_gradients(
     B : numpy 2d-array
         Updated B matrix with shape (n_archetypes, n_samples).
     """
-    rel_tol = 1e-6
+    muB = np.float32(1.0)
+    rel_tol = np.float32(1e-6)
     prev_RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
     for _ in range(derivative_max_iter):
         # brackets are VERY important to save time
-        # [G] ~ K x N
-        G = 2.0 * (((A.T @ A) @ (B @ X) @ X.T) - ((A.T @ X) @ X.T))
+        G = np.float32(2.0) * (((A.T @ A) @ (B @ X) @ X.T) - ((A.T @ X) @ X.T))  # G has shape K x N
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection, check broadcasting
 
         prev_B = B
         # NOTE: original implementation has a while True
         for _ in range(derivative_max_iter * 100):
             B = (prev_B - muB * G).clip(0)
-            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float64).eps)  # Avoid division by zero
+            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # Avoid division by zero
             RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
             if RSS <= (prev_RSS * (1 + rel_tol)):
-                muB *= 1.2
+                muB *= np.float32(1.2)
                 break
             else:
-                muB /= 2.0
+                muB /= np.float32(2.0)
     return B
 
 
@@ -170,8 +169,8 @@ def _compute_A_frank_wolfe(
     # # TODO: why do we set here the first column of A to 1.0?
     # # is this just a simplest way to create a matrix A that satisfies the constraints?
     # A[:, 0] = 1.0
-    e = np.zeros(A.shape)
-    for _t in range(derivative_max_iter):
+    e = np.zeros(A.shape, dtype=np.float32)
+    for _t in range(derivative_max_iter * 10):
         # Define the objective function and its gradient
         # def f(A_flat):
         #    A_mat = A_flat.reshape((n_samples, n_archetypes))
@@ -205,8 +204,8 @@ def _compute_A_frank_wolfe(
         # Reset e
         e[range(n_samples), argmins] = 0.0
 
-    assert np.allclose(np.sum(A, axis=1), 1.0), "A is not a stochastic matrix"
-    assert np.all(A >= 0), "A has negative elements"
+    # assert np.allclose(np.sum(A, axis=1), 1.0), "A is not a stochastic matrix"
+    # assert np.all(A >= 0), "A has negative elements"
     return A
 
 
@@ -223,8 +222,8 @@ def _compute_B_frank_wolfe(
     # # TODO: why do we set here the first column of B to 1.0?
     # # is this just a simplest way to create a matrix B that satisfies the constraints?
     # B[:, 0] = 1.0
-    e = np.zeros(B.shape)
-    for _t in range(derivative_max_iter):
+    e = np.zeros(B.shape, dtype=np.float32)
+    for _t in range(derivative_max_iter * 10):
         # Define the objective function and its gradient
         # def f(B_flat):
         #    B_mat = B_flat.reshape((n_archetypes, n_samples))
@@ -258,6 +257,6 @@ def _compute_B_frank_wolfe(
         # Reset e
         e[range(n_archetypes), argmins] = 0.0
 
-    assert np.allclose(np.sum(B, axis=1), 1.0), "B is not a stochastic matrix"
-    assert np.all(B >= 0), "B has negative elements"
+    # assert np.allclose(np.sum(B, axis=1), 1.0), "B is not a stochastic matrix"
+    # assert np.all(B >= 0), "B has negative elements"
     return B

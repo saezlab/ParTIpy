@@ -5,7 +5,7 @@ from scipy.sparse import csr_matrix
 def _random_init(X: np.ndarray, n_archetypes: int, exclude: None | list = None, seed: int = 42) -> np.ndarray:
     if exclude is None:
         exclude = []
-    B = np.eye(N=n_archetypes, M=X.shape[0])
+    B = np.eye(N=n_archetypes, M=X.shape[0], dtype=np.float32)
     return B
 
 
@@ -84,5 +84,5 @@ def _furthest_sum_init(X: np.ndarray, n_archetypes: int, exclude: None | list = 
             index[ind_t] = -1
 
     B = csr_matrix((np.ones(len(i)), (i, range(n_archetypes))), shape=(N, n_archetypes)).toarray().T
-    B = np.ascontiguousarray(B)
+    B = np.ascontiguousarray(B, dtype=np.float32)
     return B
