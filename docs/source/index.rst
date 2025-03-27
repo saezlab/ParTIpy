@@ -20,4 +20,9 @@ ParTIpy (Pareto Task Inference in Python)
    :caption: Vignettes
 
    notebooks/quickstart
+<<<<<<< HEAD
    notebooks/cross_condition_lupus.ipynb 
+=======
+   notebooks/cross_condition_lupus
+   notebooks/crosstalk
+>>>>>>> 2af1d66 (adding archetypal crosstalk network)
