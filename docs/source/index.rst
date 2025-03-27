@@ -20,3 +20,4 @@ ParTIpy (Pareto Task Inference in Python)
    :caption: Vignettes
 
    notebooks/quickstart
+   notebooks/cross_condition_lupus.ipynb 
