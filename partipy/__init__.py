@@ -28,6 +28,7 @@ from .paretoti_funcs import (
     project_on_affine_subspace,
     set_dimension,
     t_ratio_significance,
+    t_ratio_significance_shuffled,
     var_explained_aa,
 )
 
@@ -55,6 +56,7 @@ __all__ = [
     "project_on_affine_subspace",
     "compute_t_ratio",
     "t_ratio_significance",
+    "t_ratio_significance_shuffled",
     "plot_2D",
     "plot_2D_adata",
     "plot_3D",
