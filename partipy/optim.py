@@ -20,7 +20,7 @@ b) https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 
 import numpy as np
 import scipy.optimize
-from numba import float32
+from numba import float32, njit
 
 from .const import LAMBDA
 
@@ -53,7 +53,7 @@ def _compute_B_regularized_nnls(
     return B
 
 
-# @njit(cache=True)
+@njit(cache=True)
 def _compute_A_projected_gradients(
     X: float32[:, :],
     Z: float32[:, :],
@@ -105,7 +105,7 @@ def _compute_A_projected_gradients(
     return A
 
 
-# @njit(cache=True)
+@njit(cache=True)
 def _compute_B_projected_gradients(
     X: float32[:, :],
     A: float32[:, :],

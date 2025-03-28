@@ -30,3 +30,4 @@ from .plotting import (
     plot_bootstrap_3D,
     plot_var_explained,
 )
+from .simulate import simulate_archetypes

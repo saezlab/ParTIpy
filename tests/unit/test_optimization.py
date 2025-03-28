@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from partipy.arch import AA
 from partipy.const import INIT_ALGS, OPTIM_ALGS, WEIGHT_ALGS
-from partipy.generate_test_data import simulate
+from partipy.simulate import simulate_archetypes
 from scipy.optimize import linear_sum_assignment
 
 
@@ -43,8 +43,8 @@ def test_that_archetypes_can_be_identified(
 ) -> None:
     N_SAMPLES = 1_000
     N_DIMENSIONS = 10
-    MIN_CORR = 0.9
-    X, A, Z = simulate(
+    MIN_CORR = 0.95
+    X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=N_DIMENSIONS,
@@ -67,7 +67,7 @@ def test_that_input_to_AA_is_not_modfied(optim_str, weight_str, init_str) -> Non
     N_SAMPLES = 200
     N_DIMENSIONS = 3
     N_ARCHETYPES = 5
-    X, A, Z = simulate(
+    X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=N_ARCHETYPES,
         n_dimensions=N_DIMENSIONS,

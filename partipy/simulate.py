@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def simulate(
+def simulate_archetypes(
     n_samples: int,
     n_archetypes: int,
     n_dimensions: int,
