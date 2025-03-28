@@ -82,7 +82,7 @@ class AA:
         init: str = DEFAULT_INIT,
         optim: str = DEFAULT_OPTIM,
         weight: None | str = DEFAULT_WEIGHT,
-        max_iter: int = 100,
+        max_iter: int = 200,
         derivative_max_iter: int = 10,
         tol: float = 1e-6,  # TODO: Which tolerance should we be using?
         verbose: bool = False,

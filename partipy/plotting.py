@@ -403,9 +403,9 @@ def barplot_functional_enrichment(top_features, show: bool = True):
     Parameters
     ----------
     top_features : dict
-        A dictionary where keys are archetype names ('archetype_0', 'archetype_1',...) and values are pd.DataFrames
+        A dictionary where keys are archetype indices (0, 1,...) and values are pd.DataFrames
         containing the data to plot. Each DataFrame should have a column for the feature ('Process') and a column
-        for the score ('Score')."
+        for the archetype (0, 1, ...)
     show: bool, optional
         If the plots should be printed.
 
@@ -416,8 +416,7 @@ def barplot_functional_enrichment(top_features, show: bool = True):
     """
     plots = []
     # Loop through archetypes
-    for i in range(len(top_features)):
-        key = f"archetype_{i}"  # Construct the key dynamically
+    for key in range(len(top_features)):
         data = top_features[key]
 
         # Order column
@@ -425,10 +424,10 @@ def barplot_functional_enrichment(top_features, show: bool = True):
 
         # Create plot
         plot = (
-            pn.ggplot(data, pn.aes(x="Process", y="Score", fill="Score"))
+            pn.ggplot(data, pn.aes(x="Process", y=str(key), fill=str(key)))
             + pn.geom_bar(stat="identity")
             + pn.labs(
-                title=f"Enrichment at archetype {i}",
+                title=f"Enrichment at archetype {key}",
                 x="Feature",
                 y="Enrichment score",
                 fill="Enrichment score",
@@ -451,7 +450,7 @@ def barplot_functional_enrichment(top_features, show: bool = True):
     return plots
 
 
-def barplot_enrichment_comparison(est: pd.DataFrame, features: str | list[str] | pd.Series):
+def barplot_enrichment_comparison(specific_processes_arch: pd.DataFrame):
     """
     Plots a grouped bar plot comparing enrichment scores across archetypes for a given set of features.
 
@@ -468,19 +467,20 @@ def barplot_enrichment_comparison(est: pd.DataFrame, features: str | list[str] |
         A grouped bar plot visualizing the enrichment scores for the specified features across archetypes."
     """
     # Subset the DataFrame to include only the specified features
-    enrich_subset = est[features].reset_index().rename(columns={"index": "archetype"})
+    process_order = specific_processes_arch.sort_values("specificity", ascending=False)["Process"].to_list()
+    arch_columns = specific_processes_arch.drop(columns=["Process", "specificity"]).columns
+    plot_df = specific_processes_arch.drop(columns="specificity").melt(
+        id_vars=["Process"], value_vars=arch_columns, var_name="Archetype", value_name="Enrichment"
+    )
+    plot_df["Process"] = pd.Categorical(plot_df["Process"], categories=process_order)
 
-    # Convert the DataFrame from wide to long format for plotting
-    enrich_long = enrich_subset.melt(id_vars=["archetype"], var_name="Feature", value_name="Enrichment")
-
-    # Create plot
     plot = (
-        pn.ggplot(enrich_long, pn.aes(x="Feature", y="Enrichment", fill="factor(archetype)"))
+        pn.ggplot(plot_df, pn.aes(x="Process", y="Enrichment", fill="factor(Archetype)"))
         + pn.geom_bar(stat="identity", position=pn.position_dodge())
         + pn.theme_matplotlib()
         + pn.scale_fill_brewer(type="qual", palette="Dark2")
         + pn.labs(
-            x="Features",
+            x="Process",
             y="Enrichment score",
             fill="Archetype",
             title="Enrichment Comparison",

@@ -102,6 +102,7 @@ def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) ->
     pseudobulk /= weights.sum(axis=1, keepdims=True)
 
     pseudobulk_df = pd.DataFrame(pseudobulk, columns=adata.var_names)
+    pseudobulk_df.columns.name = None
 
     return pseudobulk_df
 
@@ -112,7 +113,7 @@ def extract_enriched_processes(
     order: str = "desc",
     n: int = 20,
     p_threshold: float = 0.05,
-) -> dict[str, pd.DataFrame]:
+) -> dict[int, pd.DataFrame]:
     """
     Extract the top enriched biological processes based on statistical significance.
 
@@ -148,6 +149,8 @@ def extract_enriched_processes(
         - "Score": The enrichment score for the process.
     """
     # Validate input
+    if not ((p_threshold > 0.0) and (p_threshold <= 1.0)):
+        raise ValueError("`p_threshold` must be a valid p value")
     if est.shape != pval.shape:
         raise ValueError("`est` and `pval` must have the same shape.")
 
@@ -155,19 +158,23 @@ def extract_enriched_processes(
         raise ValueError("`order` must be either 'desc' or 'asc'.")
 
     results = {}
-    for archetype in range(est.shape[0]):
+    for arch_idx in range(est.shape[0]):
         # Filter processes based on p-value threshold
-        significant_processes = pval.iloc[archetype] < p_threshold
-        filtered_scores = est.iloc[archetype, list(significant_processes)]
+        significant_processes = pval.columns[pval.iloc[arch_idx] < p_threshold]
 
-        # Sort and select top processes
+        # compute specificity score
+        top_processes = est[significant_processes].T
+        arch_z_score = top_processes[[str(arch_idx)]].values
+        other_z_scores = top_processes[[c for c in top_processes.columns if c != str(arch_idx)]].values
+        top_processes["specificity"] = (arch_z_score - other_z_scores).min(axis=1)
+
+        # filter
         if order == "desc":
-            top_processes = filtered_scores.nlargest(n).reset_index()
+            top_processes = top_processes.nlargest(n=n, columns=f"{arch_idx}").reset_index(names="Process")
         else:
-            top_processes = filtered_scores.nsmallest(n).reset_index()
+            top_processes = top_processes.nsmallest(n=n, columns=f"{arch_idx}").reset_index(names="Process")
 
-        top_processes.columns = ["Process", "Score"]
-        results[f"archetype_{archetype}"] = top_processes
+        results[arch_idx] = top_processes
 
     return results
 
@@ -175,10 +182,9 @@ def extract_enriched_processes(
 def extract_specific_processes(
     est: pd.DataFrame,
     pval: pd.DataFrame,
-    drop_threshold: int = 0,
     n: int = 20,
     p_threshold: float = 0.05,
-):
+) -> dict[int, pd.DataFrame]:
     """
     Extract the top enriched biological processes that are specific to each archetype.
 
@@ -195,8 +201,6 @@ def extract_specific_processes(
     pval : pd.DataFrame
         A DataFrame of shape (n_archetypes, n_processes) containing the p-values corresponding to
         the enrichment scores in `est`.
-    drop_threshold : int, optional (default=20)
-      The enrichment threshold below which processes are dropped.
     n : int, optional (default=20)
         The number of top processes to extract per archetype.
     p_threshold : float, optional (default=0.05)
@@ -210,21 +214,25 @@ def extract_specific_processes(
         DataFrames containing the top `n` enriched processes for each archetype that are below a score of
         `drop_threshold` for all other archetypes.
     """
+    # Validate input
+    if not ((p_threshold > 0.0) and (p_threshold <= 1.0)):
+        raise ValueError("`p_threshold` must be a valid p value")
     if est.shape != pval.shape:
         raise ValueError("`est` and `pval` must have the same shape.")
 
     results = {}
-    for archetype in range(est.shape[0]):
+    for arch_idx in range(est.shape[0]):
         # Filter processes based on p-value threshold
-        significant_processes = pval.iloc[archetype] < p_threshold
-        top_processes = est.iloc[archetype, list(significant_processes)].nlargest(n).index
+        significant_processes = pval.columns[pval.iloc[arch_idx] < p_threshold]
 
-        # Filter processes based on drop threshold
-        subset = est.loc[:, top_processes]
-        subset.index = subset.index.astype(int)
-        filtered_processes = top_processes[(subset.drop(index=archetype) < drop_threshold).all(axis=0)]
+        # compute specificity score
+        top_processes = est[significant_processes].T
+        arch_z_score = top_processes[[str(arch_idx)]].values
+        other_z_scores = top_processes[[c for c in top_processes.columns if c != str(arch_idx)]].values
+        top_processes["specificity"] = (arch_z_score - other_z_scores).min(axis=1)
+        top_processes = top_processes.nlargest(n=n, columns="specificity").reset_index(names="Process")
 
-        results[f"archetype_{archetype}"] = est.loc[:, filtered_processes].copy()
+        results[arch_idx] = top_processes.copy()
 
     return results
 
