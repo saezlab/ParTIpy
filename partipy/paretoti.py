@@ -478,7 +478,7 @@ def compute_archetypes(
     seed: int = 42,
     save_to_anndata: bool = True,
     archetypes_only: bool = True,
-) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, list[float | None] | np.ndarray, float] | None:
+) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, list[float] | np.ndarray, float] | None:
     """
 
     Perform Archetypal Analysis (AA) on the input data.

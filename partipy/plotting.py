@@ -468,7 +468,7 @@ def barplot_enrichment_comparison(specific_processes_arch: pd.DataFrame):
     """
     # Subset the DataFrame to include only the specified features
     process_order = specific_processes_arch.sort_values("specificity", ascending=False)["Process"].to_list()
-    arch_columns = specific_processes_arch.drop(columns=["Process", "specificity"]).columns
+    arch_columns = specific_processes_arch.drop(columns=["Process", "specificity"]).columns.to_list()
     plot_df = specific_processes_arch.drop(columns="specificity").melt(
         id_vars=["Process"], value_vars=arch_columns, var_name="Archetype", value_name="Enrichment"
     )

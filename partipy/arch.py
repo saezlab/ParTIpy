@@ -82,8 +82,8 @@ class AA:
         init: str = DEFAULT_INIT,
         optim: str = DEFAULT_OPTIM,
         weight: None | str = DEFAULT_WEIGHT,
-        max_iter: int = 200,
-        derivative_max_iter: int = 10,
+        max_iter: int = 500,
+        derivative_max_iter: int = 50,  # TODO: should we make the default depending on the optim algorithm?
         tol: float = 1e-6,  # TODO: Which tolerance should we be using?
         verbose: bool = False,
         seed: int = 42,
@@ -94,7 +94,8 @@ class AA:
         self.weight = weight
         self.max_iter = max_iter
         self.deriv_max_iter = derivative_max_iter
-        self.tol = tol
+        self.rel_tol = tol
+        self.abs_tol: float = None  # type: ignore[assignment]
         self.verbose = verbose
         self.seed = seed
         # NOTE: I don't want to use here type annotation np.ndarray: None | np.ndarray
@@ -105,7 +106,7 @@ class AA:
         self.n_samples: int = None  # type: ignore[assignment]
         self.n_features: int = None  # type: ignore[assignment]
         self.RSS: float | None = None
-        self.RSS_trace: list[float | None] | np.ndarray = []
+        self.RSS_trace: list[float] | np.ndarray = []  # type: ignore[assignment]
         self.varexpl: float = None  # type: ignore[assignment]
 
         # checks
@@ -163,13 +164,14 @@ class AA:
         A /= np.sum(A, axis=1, keepdims=True)
 
         TSS = np.sum(X * X)
-        prev_RSS = None
 
         W = np.ones(X.shape[0], dtype=np.float32) if self.weight else None
 
+        self.RSS_trace = []
         convergence_flag = False
         for _n_iter in range(self.max_iter):
-            X_w = np.diag(W) @ X if self.weight else X  # type: ignore[arg-type]
+            # (W[:, None] * X) is the same as np.diag(W) @ X
+            X_w = (W[:, None] * X) if self.weight else X  # type: ignore[arg-type, index]
             A = compute_A(X_w, Z, A, self.deriv_max_iter)
             B = compute_B(X_w, A, B, self.deriv_max_iter)
             Z = B @ X_w
@@ -179,18 +181,31 @@ class AA:
             R = X - A_0 @ Z
             W = compute_weights(R) if self.weight else None
 
+            # compute RSS and check for convergence
             RSS = np.linalg.norm(R) ** 2
-            if (prev_RSS is not None) and ((abs(prev_RSS - RSS) / prev_RSS) < self.tol):
-                convergence_flag = True
-                break
-            prev_RSS = RSS
             self.RSS_trace.append(float(RSS))  # type: ignore[union-attr]
+            if np.isnan(RSS) or np.isinf(RSS):
+                print("Warning: RSS is NaN or Inf. Stopping optimization.")
+                break
+            if _n_iter == 0:
+                # NOTE: Hardcoded here how the absolute tolerance is computed
+                # see also: https://github.com/dpeerlab/SEACells/blob/a0a00d779ab5f51b9b005aeb251922fe6119f566/SEACells/cpu_dense.py#L198
+                self.abs_tol = float(1e-4 * (RSS / np.prod(X.shape)))
+            else:
+                delta_RSS = self.RSS_trace[-2] - self.RSS_trace[-1]
+                rel_cond = (np.abs(delta_RSS) / self.RSS_trace[-2]) < self.rel_tol
+                abs_cond = np.abs(delta_RSS) < self.abs_tol
+                if rel_cond or abs_cond:
+                    convergence_flag = True
+                    break
         if self.verbose:
-            print(
-                f"Algorithm converged after {_n_iter} iterations."
+            message = (
+                f"Algorithm converged after {_n_iter} iterations "
+                f"with relative condition: {rel_cond} and absolute condition: {abs_cond}."
                 if convergence_flag
                 else f"Algorithm did not converge after {_n_iter} iterations."
             )
+            print(message)
 
         # Recalculate A and B using the unweighted data
         if self.weight:

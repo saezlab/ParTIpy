@@ -72,7 +72,7 @@ def compute_archetype_weights(
 
 
 # compute_characteristic_gene_expression_per_archetype
-def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) -> np.ndarray:
+def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) -> pd.DataFrame:
     """
     Calculate a weighted pseudobulk expression profile for each archetype.
 
