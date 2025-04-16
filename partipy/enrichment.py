@@ -13,7 +13,7 @@ def compute_archetype_weights(
     length_scale: None | float = None,
 ) -> None | tuple[np.ndarray | None]:
     """
-    Calculate weights for cells based on their distance to archetypes using a squared exponential kernel.
+    Calculate weights for the data points based on their distance to archetypes using a squared exponential kernel.
 
     Parameters
     ----------
@@ -74,7 +74,7 @@ def compute_archetype_weights(
 # compute_characteristic_gene_expression_per_archetype
 def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) -> pd.DataFrame:
     """
-    Calculate a weighted pseudobulk expression profile for each archetype.
+    Calculate a weighted average gene expression profile for each archetype.
 
     This function computes the weighted average of gene expression across cells for each archetype.
     The weights should be based on the distance of cells to the archetypes, as computed by `calculate_weights`.
@@ -90,8 +90,8 @@ def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) ->
 
     Returns
     -------
-    np.ndarray
-        A 2D array of shape (n_archetypes, n_genes) representing the weighted pseudobulk expression profiles.
+    pd.DataFrame
+        A DataFrame of shape (n_archetypes, n_genes) with weighted pseudobulk expression profiles.
     """
     weights = adata.obsm["cell_weights"].T
     if layer is None:
@@ -115,11 +115,12 @@ def extract_enriched_processes(
     p_threshold: float = 0.05,
 ) -> dict[int, pd.DataFrame]:
     """
-    Extract the top enriched biological processes based on statistical significance.
+    Extract top enriched biological processes for each archetype based on significance and enrichment score.
 
-    This function filters and ranks the most enriched biological processes from the decoupler output
-    based on estimated enrichment scores (`est`) and corresponding p-values (`pval`) below the
-    specified threshold (`p_treshold`).
+    This function filters and ranks biological processes using enrichment estimates (`est`) and p-values (`pval`)
+    from decoupler output. For each archetype, it selects the top `n` processes with p-values below `p_threshold`,
+    optionally sorting by the highest or lowest enrichment scores. It also computes a "specificity" score indicating
+    how uniquely enriched a process is for a given archetype compared to others.
 
     Parameters
     ----------
@@ -141,12 +142,12 @@ def extract_enriched_processes(
 
     Returns
     -------
-    Dict[str, pd.DataFrame]
-        A dictionary where keys are of the form "archetype_X" and values are
-        DataFrames containing the top `n` enriched processes for each archetype. Each DataFrame
-        has two columns:
-        - "Process": The name of the biological process.
-        - "Score": The enrichment score for the process.
+    Dict[int, pd.DataFrame]
+        A dictionary mapping each archetype index to a DataFrame of the top `n` enriched processes.
+        Each DataFrame has the following columns:
+        - "Process": Name of the biological process.
+        - "{archetype indices}": Enrichment score for that process.
+        - "specificity": A score indicating how uniquely enriched the process is in the given archetype.
     """
     # Validate input
     if not ((p_threshold > 0.0) and (p_threshold <= 1.0)):
@@ -186,12 +187,12 @@ def extract_specific_processes(
     p_threshold: float = 0.05,
 ) -> dict[int, pd.DataFrame]:
     """
-    Extract the top enriched biological processes that are specific to each archetype.
+    Extract the top biological processes that are uniquely enriched in each archetype.
 
-    This function identifies the most enriched biological processes for each archetype based on
-    estimated enrichment scores (`est`) and corresponding p-values (`pval`) from the decoupler output below the
-    specified threshold (`p_treshold`). It ensures that the selected processes are specific to the archetype by
-    enforcing that their enrichment scores are below a specified threshold (`drop_threshold`) in all other archetypes.
+    This function identifies the top `n` biological processes for each archetype based on their
+    enrichment scores (`est`) and associated p-values (`pval`). Only processes with p-values below
+    `p_threshold` in a given archetype are considered. A "specificity" score is computed for each
+    process, reflecting how much more enriched it is in the target archetype compared to others.
 
     Parameters
     ----------
@@ -209,10 +210,12 @@ def extract_specific_processes(
 
     Returns
     -------
-    Dict[str, pd.DataFrame]
-        A dictionary where keys are of the form "archetype_X" and values are
-        DataFrames containing the top `n` enriched processes for each archetype that are below a score of
-        `drop_threshold` for all other archetypes.
+    dict[int, pd.DataFrame]
+        A dictionary mapping each archetype index to a DataFrame containing the top `n` processes
+        specific to that archetype. Each DataFrame includes:
+        - "Process": Name of the biological process.
+        - "{archetype indices}": Enrichment score in the given archetype.
+        - "specificity": Score indicating how uniquely enriched the process is compared to other archetypes.
     """
     # Validate input
     if not ((p_threshold > 0.0) and (p_threshold <= 1.0)):
@@ -239,24 +242,31 @@ def extract_specific_processes(
 
 def compute_meta_enrichment(adata: sc.AnnData, meta_col: str) -> pd.DataFrame:
     """
-    Compute the weighted enrichment of metadata categories across archetypes.
+    Compute the enrichment of metadata categories across archetypes.
 
-    This function performs the following steps:
-    1. One-hot encodes the categorical metadata.
-    2. Normalizes the one-hot encoded metadata to sum to 1 for each category.
-    3. Computes the weighted enrichment of each metadata category for each archetype using the weights stored in `adata.obsm["cell_weights"]`.
+    This function estimates how enriched each metadata category is within each archetype using
+    a weighted average approach. Weights are based on each cell’s contribution to each archetype
+    (`adata.obsm["cell_weights"]`), and enrichment is calculated from one-hot encoded metadata.
+
+    Steps:
+    1. One-hot encode the metadata column from `adata.obs[meta_col]`.
+    2. Normalize the metadata so that the sum for each category equals 1 (column-wise).
+    3. Compute weighted enrichment using cell weights.
+    4. Normalize the resulting enrichment scores across metadata categories for each archetype (row-wise).
 
     Parameters
     ----------
     adata : sc.AnnData
-        An AnnData object containing the metadata in `adata.obs[meta]` and weights in `adata.obsm["cell_weights"]`.
+        AnnData object with categorical metadata in `adata.obs[meta_col]` and archetype weights
+        in `adata.obsm["cell_weights"]`
     meta_col : str
         The name of the categorical metadata column in `adata.obs` to use for enrichment analysis.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame of shape (n_archetypes, n_categories) containing the normalized enrichment of a metadata category for a given archetypes.
+            A DataFrame of shape (n_archetypes, n_categories), where each entry represents the
+            normalized enrichment of a metadata category withforin a given archetype.
     """
     metadata = adata.obs[meta_col]
     weights = adata.obsm["cell_weights"].T

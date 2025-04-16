@@ -55,7 +55,7 @@ class AA:
         - "random": Random initialization.
         - "furthest_sum": Utilizes the furthest sum algorithm (recommended).
     optim: str, optional (default="projected_gradients")
-            Optimization algorithm to use. Options are:
+        Optimization algorithm to use. Options are:
         - "regularized_nnls": Regularized non-negative least squares.
         - "projected_gradients": Projected gradient descent (PCHA).
         - "frank_wolfe": Frank-Wolfe algorithm.
@@ -63,9 +63,9 @@ class AA:
         Weighting scheme for robust archetypal analysis. Options:
         - None: No weighting.
         - "bisquare": Bisquare weighting.
-    max_iter : int, optional (default: 100)
+    max_iter : int, optional (default: 500)
         Maximum number of iterations for the optimization.
-    derivative_max_iter : int, optional (default: 100)
+    derivative_max_iter : int, optional (default: 50)
         Maximum number of iterations for derivative-based optimization steps.
     tol : float, optional (default: 1e-6)
         Tolerance for convergence. The optimization stops if the relative change in RSS
@@ -117,9 +117,17 @@ class AA:
     def fit(self, X: np.ndarray):
         """
         Computes the archetypes and the RSS from the data X, which are stored
-        in the corresponding attributes
-        :param X: data matrix, with shape (n_samples, n_features)
-        :return: self
+        in the corresponding attributes.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Data matrix with shape (n_samples, n_features).
+
+        Returns
+        -------
+        self : AA
+            The instance of the AA class, with computed archetypes and RSS stored as attributes.
         """
         self.n_samples, self.n_features = X.shape
 
@@ -224,16 +232,29 @@ class AA:
 
     def archetypes(self) -> None | np.ndarray:
         """
-        Returns the archetypes' matrix
-        :return: archetypes matrix, with shape (n_archetypes, n_features)
+        Returns the archetypes' matrix.
+
+        Returns
+        -------
+        np.ndarray or None
+            The archetypes matrix with shape (n_archetypes, n_features),
+            or None if the archetypes have not been computed yet.
         """
         return self.Z
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         """
-        Computes the best convex approximation A of X by the archetypes Z
-        :param X: data matrix, with shape (n_samples, n_features)
-        :return: A matrix, with shape (n_samples, n_archetypes)
+        Computes the best convex approximation A of X by the archetypes Z.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Data matrix with shape (n_samples, n_features).
+
+        Returns
+        -------
+        np.ndarray
+            The matrix A with shape (n_samples, n_archetypes).
         """
         if self.optim == "regularized_nnls":
             return _compute_A_regularized_nnls(X, self.Z)
@@ -249,5 +270,22 @@ class AA:
             raise NotImplementedError()
 
     def return_all(self) -> tuple:
-        """Return optimized matrices: A, B, Z, and fitting stats: RSS, varexpl."""
+        """
+        Returns the optimized matrices and fitting statistics.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            - A : np.ndarray
+                Coefficient matrix with shape (n_samples, n_archetypes).
+            - B : np.ndarray
+                Coefficient matrix with shape (n_archetypes, n_samples).
+            - Z : np.ndarray
+                Archetype matrix with shape (n_archetypes, n_features).
+            - RSS_trace : list[float]
+                Residual sum of squares per iteration.
+            - varexpl : float
+                Variance explained by the model.
+        """
         return self.A, self.B, self.Z, self.RSS_trace, self.varexpl

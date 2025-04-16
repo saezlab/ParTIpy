@@ -64,7 +64,9 @@ def test_that_archetypes_can_be_identified(
 
 
 @pytest.mark.parametrize(
-    "n_archetypes, n_dimensions", [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d + 2]
+    "n_archetypes, n_dimensions",
+    [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d],
+    # "n_archetypes, n_dimensions", [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d + 2]
 )
 @pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
 def test_that_archetypes_can_be_identified_only_fast_algorithms(

@@ -4,24 +4,27 @@ from scipy.spatial import ConvexHull, QhullError, distance_matrix
 
 def _generate_extreme_archetypes(n_archetypes, n_dimensions, rng, distribution="normal", max_attempts=100):
     """
-    Generate extreme archetypes ensuring they are vertices of a convex hull
+    Generate extreme archetypes, ensuring they are vertices of a convex hull
     and maximally separated from each other.
 
     Parameters
     ----------
     n_archetypes : int
-        Number of archetypes to generate
+        Number of archetypes to generate.
     n_dimensions : int
-        Number of dimensions for each archetype
+        Number of dimensions for each archetype.
     rng : numpy.random.Generator
-        Random number generator
+        Random number generator.
     distribution : str, optional
-        Distribution to sample from, either "normal" or "uniform"
+        Distribution to sample from, either "normal" or "uniform".
+    max_attempts : int, optional
+        Maximum number of attempts to generate valid archetypes. If the maximum number of attempts is exceeded
+        without generating enough archetypes, a ValueError is raised.
 
     Returns
     -------
     np.ndarray
-        Array of shape (n_archetypes, n_dimensions) containing the archetypes
+        Array of shape (n_archetypes, n_dimensions) containing the archetypes.
     """
     # Determine minimum number of points needed based on dimensions
     min_points_needed = n_dimensions + 1
@@ -75,16 +78,16 @@ def _select_distant_vertices(vertices, n_select, rng):
     Parameters
     ----------
     vertices : np.ndarray
-        Array of shape (n_vertices, n_dimensions) containing the vertices
+        Array of shape (n_vertices, n_dimensions) containing the vertices.
     n_select : int
-        Number of vertices to select
+        Number of vertices to select.
     rng : numpy.random.Generator
-        Random number generator
+        Random number generator.
 
     Returns
     -------
     np.ndarray
-        Array of shape (n_select, n_dimensions) containing the selected vertices
+        Array of shape (n_select, n_dimensions) containing the selected vertices.
     """
     if len(vertices) <= n_select:
         return vertices

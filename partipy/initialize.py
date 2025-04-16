@@ -3,6 +3,27 @@ from scipy.sparse import csr_matrix
 
 
 def _random_init(X: np.ndarray, n_archetypes: int, exclude: None | list = None, seed: int = 42) -> np.ndarray:
+    """Random selection of convex combinations of data points from X to form initial archetypes.
+
+    Parameters
+    ----------
+    X: numpy 2d-array
+        Data matrix with shape (n_samples x n_features).
+
+    n_archetypes: int
+        Number of candidate archetypes to extract.
+
+    exclude: numpy 1d-array
+        1D array of indices in X that cannot be used as candidates.
+
+    seed: int
+        Seed for reproducibility
+
+    Returns
+    -------
+    B : numpy 2d-array
+        Matrix B with shape (n_archetypes, n_samples).
+    """
     if exclude is None:
         exclude = []
     B = np.eye(N=n_archetypes, M=X.shape[0], dtype=np.float32)
@@ -10,26 +31,26 @@ def _random_init(X: np.ndarray, n_archetypes: int, exclude: None | list = None, 
 
 
 def _furthest_sum_init(X: np.ndarray, n_archetypes: int, exclude: None | list = None, seed: int = 42) -> np.ndarray:
-    """Furthest sum algorithm, to efficiently generat initial archetypes.
+    """Furthest sum algorithm, to efficiently generate initial archetypes.
 
     Parameters
     ----------
     X: numpy 2d-array
-        data matrix with shape (n_samples x n_features)
+        Data matrix with shape (n_samples x n_features).
 
     n_archetypes: int
-        number of candidate archetypes to extract.
+        Number of candidate archetypes to extract.
 
     exclude: numpy 1d-array
-        entries in X that can not be used as candidates.
+        1D array of indices in X that cannot be used as candidates.
 
     seed: int
-        reproducibility
+        Seed for reproducibility
 
-    Output
-    ------
+    Returns
+    -------
     B : numpy 2d-array
-        B matrix with shape (n_archetypes, n_samples).
+        Matrix B with shape (n_archetypes, n_samples).
     """
     np.random.seed(seed)
 

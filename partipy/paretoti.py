@@ -15,14 +15,17 @@ from .const import DEFAULT_INIT, DEFAULT_OPTIM
 
 def set_dimension_aa(adata: sc.AnnData, n_pcs: int) -> None:
     """
-    Sets the number of PCs used for subsetting the PCA in `adata.obsm["X_pca"]`.
-    If `adata.obsm["X_pca"]` does not exist, PCA is computed and stored in `adata.obsm["X_pca"]`.
-    The number of PCs are stored in `adata.uns["n_pcs"]`
+    Sets the number of principal components (PCs) to use for AA.
+
+    This function ensures that `adata.obsm["X_pca"]` contains PCA coordinates.
+    If not, PCA is computed on highly variable genes. The specified number of
+    PCs is stored in `adata.uns["n_pcs"]` for later use.
 
     Parameters
     ----------
     adata : sc.AnnData
-        AnnData object containing single-cell data.
+        AnnData object containing single-cell data. PCA coordinates should be
+        stored in `adata.obsm["X_pca"]`.
     n_pcs : int
         The number of principal components (PCs) to retain. Must be less than or equal to the
         number of available PCs in `adata.obsm["X_pca"]`.
@@ -56,16 +59,16 @@ def var_explained_aa(
     """
     Compute the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
-    This function performs Archetypal Analysis (AA) for a range of archetypes (from `min_a` to `max_a`)
-    on the PCA data stored in `adata.obsm["X_pca"]`. The results are
-    stored in `adata.uns["AA_var"]`.
+    This function performs Archetypal Analysis (AA) across a range of archetype counts (`min_a` to `max_a`)
+    on the PCA representation stored in `adata.obsm[obsm_key]`. It stores the explained variance and other
+    diagnostics in `adata.uns["AA_var"]`.
 
     Parameters
     ----------
     adata: sc.AnnData
         AnnData object containing adata.obsm["obsm_key"].
     obsm_key: str, optional (default="X_pca")
-        opsm to use as representation to fit archetypes
+        Key in `adata.obsm` containing the PCA or other reduced representation to be used for AA.
     min_a : int, optional (default=2)
         Minimum number of archetypes to test.
     max_a : int, optional (default=10)
@@ -76,7 +79,7 @@ def var_explained_aa(
         The initialization function to use for Archetypal Analysis.
     n_jobs : int, optional (default=-1)
         Number of jobs for parallel computation. `-1` uses all available cores.
-    kwargs:
+    **kwargs:
         Additional keyword arguments passed to `AA` class.
 
     Returns
@@ -84,10 +87,10 @@ def var_explained_aa(
     None
         The results are stored in `adata.uns["AA_var"]` as a DataFrame with the following columns:
         - `k`: The number of archetypes.
-        - `varexpl`: The variance explained by the model.
-        - `varexpl_ontop`: The additional variance explained compared to the model with `k-1` archetypes.
-        - `dist_to_projected`: The distance between the variance explained and its projection on the line
-          connecting the variance explained of first and last k.
+        - `varexpl`: Variance explained by the AA model with `k` archetypes.
+        - `varexpl_ontop`: Incremental variance explained compared to `k-1` archetypes.
+        - `dist_to_projected`: Distance from each point to its projection on the line connecting the first and last points
+            in the variance curve, used to identify "elbow points".
     """
     # Validation input
     if obsm_key not in adata.obsm.keys():
@@ -150,17 +153,19 @@ def bootstrap_aa(
     init: str = DEFAULT_INIT,
     seed: int = 42,
     n_jobs: int = -1,
+    **kwargs,
 ) -> None:
     """
     Perform bootstrap sampling to compute archetypes and assess their stability.
 
     This function generates bootstrap samples from the data, computes archetypes for each sample,
     aligns them with the reference archetypes, and stores the results in `adata.uns["AA_bootstrap"]`.
+    It allows assessing the stability of the archetypes across multiple bootstrap iterations.
 
     Parameters
     ----------
     adata : sc.AnnData
-        AnnData object. The PCA data should be stored in `adata.obsm["X_pca"]`.
+        AnnData object containing the data. The PCA data should be stored in `adata.obsm["X_pca"]`.
     n_bootstrap : int
         The number of bootstrap samples to generate.
     n_archetypes : int
@@ -171,6 +176,10 @@ def bootstrap_aa(
         The initialization function to use for Archetypal Analysis.
     seed : int, optional (default=42)
         The random seed for reproducibility.
+    n_jobs : int, optional (default=-1)
+        The number of jobs to run in parallel. `-1` uses all available cores.
+    **kwargs:
+        Additional keyword arguments passed to `AA` class.
 
     Returns
     -------
@@ -180,7 +189,8 @@ def bootstrap_aa(
         - `archetype`: The archetype index.
         - `iter`: The bootstrap iteration index (0 for the reference archetypes).
         - `reference`: A boolean indicating whether the archetype is from the reference model.
-        - `mean_variance`: The mean variance of archetype coordinates across bootstrap samples.
+        - `mean_variance`: The mean variance of all archetype coordinates across bootstrap samples.
+        - `variance_per_archetype`: The mean variance of each archetype coordinates across bootstrap samples.
     """
     # Validation input
     if "n_pcs" not in adata.uns:
@@ -201,7 +211,7 @@ def bootstrap_aa(
 
     # Define function for parallel computation
     def compute_bootstrap_z(idx):
-        return AA(n_archetypes=n_archetypes, optim=optim, init=init).fit(X[idx, :]).Z
+        return AA(n_archetypes=n_archetypes, optim=optim, init=init, **kwargs).fit(X[idx, :]).Z
 
     # Parallel computation of AA on bootstrap samples
     Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)
@@ -232,6 +242,9 @@ def bootstrap_aa(
     bootstrap_df["archetype"] = pd.Categorical(bootstrap_df["archetype"])
 
     bootstrap_df["mean_variance"] = mean_variance
+
+    archetype_variance_map = dict(zip(np.arange(n_archetypes), var_per_archetype, strict=False))
+    bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].astype(int).map(archetype_variance_map)
 
     adata.uns["AA_bootstrap"] = bootstrap_df
 
@@ -483,18 +496,19 @@ def compute_archetypes(
 
     Perform Archetypal Analysis (AA) on the input data.
 
-    This function is a wrapper for the AA class, providing a simplified interface for fitting the model,
-    and returning the desired outputs or saving them to the AnnData object.
+    This function is a wrapper around the AA class, offering a simplified interface for fitting the model
+    and returning the results, or saving them to the AnnData object. It allows users to customize the
+    archetype computation with various parameters for initialization, optimization, convergence, and output.
 
     Parameters
     ----------
-    adata : Union[sc.AnnData, np.ndarray]
-        The input data, which can be either:
-        - An AnnData object containing data in `adata.obsm[obsm_key]`.
+    adata : sc.AnnData
+        The AnnData object containing the data to fit the archetypes. The data should be available in
+        `adata.obsm[obsm_key]`.
     n_archetypes : int
         The number of archetypes to compute.
-    obsm_key: str, optional
-        Which obsm_key to use, by default "X_pca"
+    obsm_key : str, optional (default="X_pca")
+        The key in `adata.obsm` that contains the data to use for fitting the archetypes (by default "X_pca").
     init : str, optional
         The initialization method for the archetypes. If not provided, the default from the AA class is used.
         Options include:
@@ -519,12 +533,13 @@ def compute_archetypes(
     verbose : bool, optional
         Whether to print verbose output during fitting. If not provided, the default from the AA class is used.
     seed : int, optional
-        Random seed
+        The random seed for reproducibility.
     save_to_anndata : bool, optional (default=True)
-        Whether to save the results to the AnnData object. If `adata` is not an AnnData object, this is ignored.
+        Whether to save the results to the AnnData object. If False, the results are returned as a tuple. If
+        `adata` is not an AnnData object, this is ignored.
     archetypes_only : bool, optional (default=True)
-        Whether to return only the archetypes matrix. If `save_to_anndata` is True, this parameter determines
-        whether only the archetypes are saved to the AnnData object.
+        Whether to save/return only the archetypes matrix `Z` (if det to True) or also the full outputs, including
+        the matrices `A`, `B`, `RSS`, and variance explained `varexpl`.
 
     Returns
     -------
@@ -532,7 +547,7 @@ def compute_archetypes(
         The output depends on the values of `save_to_anndata` and `archetypes_only`:
         - If `archetypes_only` is True:
             - Only the archetype matrix (Z) is returned/ saved
-        - If `archetypes_only` is True:
+        - If `archetypes_only` is False:
             - returns/ saves a tuple containing:
                 - A: The matrix of weights for the data points (n_samples, n_archetypes).
                 - B: The matrix of weights for the archetypes (n_archetypes, n_samples).

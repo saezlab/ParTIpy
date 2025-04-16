@@ -1,5 +1,5 @@
 """
-Optimize the archetypal analysis objective by block coordiante descent.
+Optimize the archetypal analysis objective by block coordinate descent.
 
 a) Regularized Nonnegative Least Squares
 - Paper: A. Cutler and L. Breiman, “Archetypal analysis,” Technometrics, vol. 36, no. 4, pp. 338-347, 1994, doi: 10.1080/00401706.1994.10485840.
@@ -9,7 +9,7 @@ b) Projected Gradients (PCHA)
 - Paper: M. Mørup and L. K. Hansen, “Archetypal analysis for machine learning and data mining,” Neurocomputing, vol. 80, pp. 54-63, Mar. 2012, doi: 10.1016/j.neucom.2011.06.033.
 
 
-c) Adapted Frank-Wolfe algorithm
+c) Adapted Frank-Wolfe Algorithm
 - Paper: C. Bauckhage, K. Kersting, F. Hoppe, and C. Thurau, “Archetypal analysis as an autoencoder,” presented at the Workshop “New Challenges in Neural Computation” (NC2) 2015, 2015. Accessed: Feb. 10, 2025. [Online]. Available: https://publica.fraunhofer.de/handle/publica/393337
 
 
@@ -31,6 +31,29 @@ def _compute_A_regularized_nnls(
     A: np.ndarray | None = None,
     derivative_max_iter=None,
 ) -> np.ndarray:
+    """Updates the A matrix using NNLS given the data matrix X and the archetypes Z.
+
+    A is the matrix that provides the best convex approximation of X by Z.
+
+    Parameters
+    ----------
+    X : numpy 2d-array
+        Data matrix with shape (n_samples, n_features).
+
+    Z : numpy 2d-array
+        Archetypes matrix with shape (n_archetypes, n_features).
+
+    A : numpy 2d-array
+        Coefficient matrix with shape (n_samples, n_archetypes).
+
+    derivative_max_iter: int
+        Maximum number of steps for optimization.
+
+    Returns
+    -------
+    A : numpy 2d-array
+        Updated A matrix with shape (n_samples, n_archetypes).
+    """
     # huge_constant is added as a new column to account for w norm constraint
     X_padded = np.hstack([X, (LAMBDA * np.ones(X.shape[0]))[:, None]])
     Zt_padded = np.vstack([Z.T, LAMBDA * np.ones(Z.shape[0])])
@@ -46,6 +69,27 @@ def _compute_B_regularized_nnls(
     B: np.ndarray | None = None,
     derivative_max_iter=None,
 ) -> np.ndarray:
+    """Updates the B matrix using NNLS given the data matrix X and the A matrix.
+
+    Parameters
+    ----------
+    X : numpy 2d-array
+        Data matrix with shape (n_samples, n_features).
+
+    A : numpy 2d-array
+        A matrix with shape (n_samples, n_archetypes).
+
+    B : numpy 2d-array
+        Coefficient matrix with shape (n_archetypes, n_samples).
+
+    derivative_max_iter: int
+        Maximum number of steps for optimization.
+
+    Returns
+    -------
+    B : numpy 2d-array
+        Updated B matrix with shape (n_archetypes, n_samples).
+    """
     Z = np.linalg.lstsq(a=A, b=X, rcond=None)[0]
     Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
     Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
@@ -60,7 +104,7 @@ def _compute_A_projected_gradients(
     A: float32[:, :],
     derivative_max_iter: int = 50,
 ) -> float32[:, :]:
-    """Updates the A matrix given the data matrix X and the archetypes Z.
+    """Updates the A matrix using PCHA given the data matrix X and the archetypes Z.
 
     A is the matrix that provides the best convex approximation of X by Z.
 
@@ -73,10 +117,10 @@ def _compute_A_projected_gradients(
         Archetypes matrix with shape (n_archetypes, n_features).
 
     A : numpy 2d-array
-        A matrix with shape (n_samples, n_archetypes).
+        Coefficient matrix with shape (n_samples, n_archetypes).
 
     derivative_max_iter: int
-        Maximum number of steps for optimization
+        Maximum number of steps for optimization.
 
     Returns
     -------
@@ -112,7 +156,7 @@ def _compute_B_projected_gradients(
     B: float32[:, :],
     derivative_max_iter: int = 50,
 ) -> float32[:, :]:
-    """Updates the B matrix given the data matrix X and the A matrix.
+    """Updates the B matrix using PCHA given the data matrix X and the A matrix.
 
     Parameters
     ----------
@@ -123,10 +167,10 @@ def _compute_B_projected_gradients(
         A matrix with shape (n_samples, n_archetypes).
 
     B : numpy 2d-array
-        B matrix with shape (n_archetypes, n_samples).
+        Coefficient matrix with shape (n_archetypes, n_samples).
 
     derivative_max_iter: int
-        Maximum number of steps for optimization
+        Maximum number of steps for optimization.
 
     Returns
     -------
@@ -162,6 +206,29 @@ def _compute_A_frank_wolfe(
     A: np.ndarray,
     derivative_max_iter: int = 50,
 ) -> np.ndarray:
+    """Updates the A matrix using Frank-Wolfe given the data matrix X and the archetypes Z.
+
+    A is the matrix that provides the best convex approximation of X by Z.
+
+    Parameters
+    ----------
+    X : numpy 2d-array
+        Data matrix with shape (n_samples, n_features).
+
+    Z : numpy 2d-array
+        Archetypes matrix with shape (n_archetypes, n_features).
+
+    A : numpy 2d-array
+        Coefficient matrix with shape (n_samples, n_archetypes).
+
+    derivative_max_iter: int
+        Maximum number of steps for optimization.
+
+    Returns
+    -------
+    A : numpy 2d-array
+        Updated A matrix with shape (n_samples, n_archetypes).
+    """
     gamma = np.float32(1e-3)
     n_samples = X.shape[0]
     e = np.zeros(A.shape, dtype=np.float32)
@@ -194,6 +261,27 @@ def _compute_B_frank_wolfe(
     B: np.ndarray,
     derivative_max_iter: int = 50,
 ) -> np.ndarray:
+    """Updates the B matrix using Frank-Wolfe given the data matrix X and the A matrix.
+
+    Parameters
+    ----------
+    X : numpy 2d-array
+        Data matrix with shape (n_samples, n_features).
+
+    A : numpy 2d-array
+        A matrix with shape (n_samples, n_archetypes).
+
+    B : numpy 2d-array
+        Coefficient matrix with shape (n_archetypes, n_samples).
+
+    derivative_max_iter: int
+        Maximum number of steps for optimization.
+
+    Returns
+    -------
+    B : numpy 2d-array
+        Updated B matrix with shape (n_archetypes, n_samples).
+    """
     gamma = np.float32(1e-3)
     n_archetypes = A.shape[1]
     e = np.zeros(B.shape, dtype=np.float32)

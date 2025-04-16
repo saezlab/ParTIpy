@@ -9,14 +9,12 @@ from scipy.spatial import ConvexHull
 from .paretoti import var_explained_aa
 
 
-def plot_var_explained(
-    adata: sc.AnnData,
-) -> pn.ggplot:
+def plot_var_explained(adata: sc.AnnData) -> pn.ggplot:
     """
     Generate an elbow plot of the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
-    The data is retrieved from `adata.uns["AA_var"]`. If `AA_var` is not found, `var_explained_aa` is called.
+    The data is retrieved from `adata.uns["AA_var"]`. If `adata.uns["AA_var"]` is not found, `var_explained_aa` is called.
 
     Parameters
     ----------
@@ -58,7 +56,9 @@ def plot_var_explained(
 
 def plot_bootstrap_2D(adata: sc.AnnData) -> pn.ggplot:
     """
-    Create an static 2D scatter plot showing the positions of archetypes
+    Visualize the distribution and stability of archetypes across bootstrap samples in 2D PCA space.
+
+    Creates a static 2D scatter plot showing the positions of archetypes
     computed from bootstrap samples, stored in `adata.uns["AA_bootstrap"]`.
 
     Parameters
@@ -69,7 +69,7 @@ def plot_bootstrap_2D(adata: sc.AnnData) -> pn.ggplot:
     Returns
     -------
     pn.ggplot
-        2D plot of bootstrap results for the archetypes.
+        A 2D scatter plot visualizing the bootstrap results for the archetypes.
     """
     # Validation input
     if "AA_bootstrap" not in adata.uns:
@@ -84,6 +84,8 @@ def plot_bootstrap_2D(adata: sc.AnnData) -> pn.ggplot:
 
 def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
     """
+    Interactive 3D visualization of archetypes from bootstrap samples to assess their variability.
+
     Create an interactive 3D scatter plot showing the positions of archetypes
     computed from bootstrap samples, stored in `adata.uns["AA_bootstrap"]`.
 
@@ -94,8 +96,8 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
 
     Returns
     -------
-    go.Figure:
-        3D plot of bootstrap results for the archetypes.
+    go.Figure
+        A 3D scatter plot visualizing the bootstrap results for the archetypes.
     """
     # Validation input
     if "AA_bootstrap" not in adata.uns:
@@ -126,7 +128,26 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
 
 
 def plot_archetypes_2D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot:
-    """TODO"""
+    """
+    Generate a static 2D scatter plot showing data points, archetypes and the polytope they span.
+
+    This function visualizes the archetypes computed via Archetypal Analysis (AA)
+    in PCA space, along with the data points. An optional color vector can be used
+    to annotate the data points.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        Annotated data object containing the archetypes in `adata.uns["archetypal_analysis"]["Z"]`
+        and PCA-reduced data in `adata.obsm["X_pca"]`.
+    color : str or None, optional
+        Column name in `adata.obs` to use for coloring the data points. If None, no coloring is applied.
+
+    Returns
+    -------
+    pn.ggplot
+        A static 2D scatter plot showing the data and archetypes.
+    """
     if "archetypal_analysis" not in adata.uns:
         raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
     Z = adata.uns["archetypal_analysis"]["Z"]
@@ -136,30 +157,23 @@ def plot_archetypes_2D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
     return plot
 
 
-def plot_2D(
-    X: np.ndarray,
-    Z: np.ndarray,
-    color_vec: np.ndarray | None = None,
-) -> pn.ggplot:
+def plot_2D(X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None) -> pn.ggplot:
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
 
     Parameters
     ----------
-    X : Union[np.ndarray, sc.AnnData]
-        The input data, which can be either:
-        - A 2D array of shape (n_samples, n_features) representing the data points.
-        - An AnnData object containing the PCA data in `X.obsm["X_pca"]` and archetypes in `X.uns["archetypal_analysis"]["Z"]`.
-    Z : np.ndarray, optional
+    X : np.ndarray
+        A 2D array of shape (n_samples, n_features) representing the data points.
+    Z : np.ndarray
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
-        Required if `X` is not an AnnData object.
     color_vec : np.ndarray, optional
         A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
 
     Returns
     -------
     pn.ggplot
-        2D plot of X and polytope enclosed by Z
+        2D plot of X and polytope enclosed by Z.
     """
     if X.shape[1] < 2 or Z.shape[1] < 2:
         raise ValueError("Both X and Z must have at least 2 columns (PCs).")
@@ -197,7 +211,26 @@ def plot_2D(
 
 
 def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot:
-    """TODO"""
+    """
+    Create an interactive 3D scatter plot showing data points, archetypes and the polytope they span.
+
+    This function uses the first three principal components from `adata.obsm["X_pca"]`
+    and visualizes the archetypes stored in `adata.uns["archetypal_analysis"]["Z"]`.
+    If a color key is provided, it colors data points by the corresponding values from `adata.obs`.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        Annotated data object containing the PCA-reduced data in `obsm["X_pca"]` and
+        archetypes in `uns["archetypal_analysis"]["Z"]`.
+    color : str, optional
+        Name of a column in `adata.obs` to color the data points by.
+
+    Returns
+    -------
+    go.Figure
+        A Plotly figure object showing a 3D scatter plot of the data and archetypes.
+    """
     if "archetypal_analysis" not in adata.uns:
         raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
     Z = adata.uns["archetypal_analysis"]["Z"]
@@ -208,35 +241,32 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
 
 
 def plot_3D(
-    X: np.ndarray | sc.AnnData,
-    Z: np.ndarray | None = None,
+    X: np.ndarray,
+    Z: np.ndarray,
     color_vec: np.ndarray | None = None,
     marker_size: int = 4,
     color_polyhedron: str = "green",
 ) -> go.Figure:
     """
-    3D plot of the datapoints in X and the 3D polytope enclosed by the archetypes in Z.
+    Generates a 3D plot of data points and the polytope formed by archetypes.
 
     Parameters
     ----------
-    X : Union[np.ndarray, sc.AnnData]
-        The input data, which can be either:
-        - A 2D array of shape (n_samples, n_features) representing the data points.
-        - An AnnData object containing the PCA data in `X.obsm["X_pca"]` and archetypes in `X.uns["archetypal_analysis"]["Z"]`.
-    Z : np.ndarray, optional
+    X : np.ndarray
+        A 2D array of shape (n_samples, n_features) representing the data points.
+    Z : np.ndarray
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
-        Required if `X` is not an AnnData object.
     color_vec : np.ndarray, optional
         A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
     marker_size : int, optional (default=4)
         The size of the markers for the data points in `X`.
     color_polyhedron : str, optional (default="green")
-        The color of the polytope (convex hull) defined by the archetypes.
+        The color of the polytope defined by the archetypes.
 
     Returns
     -------
-    go.Figuret
-        3D plot of X and polytope enclosed by Z
+    go.Figure
+        3D plot of X and polytope enclosed by Z.
     """
     # Validation input
     if Z is None:
@@ -332,17 +362,20 @@ def plot_3D(
 
 def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
     """
+    Generate a stacked bar plot showing metadata enrichment across archetypes.
+
     Parameters
     ----------
     meta_enrich: pd.DataFrame
-        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
-    meta: str, optional
-        The name for the metadata.
+        Output of `meta_enrichment()`, a DataFrame where rows are archetypes and columns are metadata categories,
+        with values representing normalized enrichment scores.
+    meta : str, optional
+        Label to use for the metadata category legend in the plot. Default is "Meta".
 
     Returns
     -------
     pn.ggplot.ggplot
-        A stacked bar plot.
+        A stacked bar plot of metadata enrichment per archetype.
     """
     # Prepare data
     meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
@@ -369,17 +402,20 @@ def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
 
 def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: str | None = "Meta"):
     """
+    Generate a heatmap showing metadata enrichment across archetypes.
+
     Parameters
     ----------
     meta_enrich: pd.DataFrame
-        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
-    meta: str, optional
-        The name for the metadata.
+        Output of `meta_enrichment()`, a DataFrame where rows are archetypes and columns are metadata categories,
+        with values representing normalized enrichment scores.
+    meta : str, optional
+        Label to use for the metadata category legend in the plot. Default is "Meta".
 
     Returns
     -------
     pn.ggplot.ggplot
-        A heatmap.
+        A heatmap of normalized enrichment scores per archetype and metadata category.
     """
     # Prepare data
     meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
@@ -396,9 +432,11 @@ def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: str | None = "Meta"
     return plot
 
 
-def barplot_functional_enrichment(top_features, show: bool = True):
+def barplot_functional_enrichment(top_features: dict, show: bool = True):
     """
-    Generate bar plots for functional enrichment data across archetypes.
+    Generate bar plots showing functional enrichment scores for each archetype.
+
+    Each plot displays the top enriched features (e.g., biological processes) for one archetype.
 
     Parameters
     ----------
@@ -456,14 +494,13 @@ def barplot_enrichment_comparison(specific_processes_arch: pd.DataFrame):
 
     Parameters
     ----------
-    est : pandas.DataFrame
-        A DataFrame containing enrichment scores. Rows represent archetypes, and columns represent features.
-    features : str, list of str, or pd.Series
-        A list of feature names (columns in `est`) to include in the plot.
+    specific_processes_arch : pd.DataFrame
+            Output from `extract_specific_processes`. Must contain a 'Process' column, a 'specificity' score,
+            and one column per archetype with enrichment values.
 
     Returns
     -------
-    plot : plotnine.ggplot.ggplot
+    plotnine.ggplot.ggplot
         A grouped bar plot visualizing the enrichment scores for the specified features across archetypes."
     """
     # Subset the DataFrame to include only the specified features
