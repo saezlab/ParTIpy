@@ -16,6 +16,7 @@ Compared to traditional clustering, **AA** avoids artificial discretization and 
 
    installation
    release_notes
+   api
 
 .. toctree::
    :maxdepth: 1
