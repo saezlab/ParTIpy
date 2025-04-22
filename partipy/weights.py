@@ -3,8 +3,17 @@ import numpy as np
 
 def compute_bisquare_weights(R: np.ndarray) -> np.ndarray:
     """
-    Compute the weights using the residuals per data point
-    :param R: residual vector, with shape (n_samples, n_features)
+    Compute the weights using the residuals per data point.
+
+    Parameters
+    ----------
+    R : np.ndarray
+        The residual vector, with shape (n_samples, n_features).
+
+    Returns
+    -------
+    W : np.ndarray
+        Weight vector of shape (n_samples,), where each entry corresponds to the bisquare weight of a data point.
     """
     R_scaled_l1_norm = np.abs(R).sum(axis=1)
     c = 6 * np.median(R_scaled_l1_norm) + 1e-9

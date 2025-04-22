@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
-from partipy.generate_test_data import simulate
 from partipy.initialize import _furthest_sum_init, _random_init
+from partipy.simulate import simulate_archetypes
 
 N_SAMPLES = 1_000
 
-X, A, Z = simulate(n_samples=N_SAMPLES, n_archetypes=5, n_dimensions=10, noise_std=0.0)
+X, A, Z = simulate_archetypes(n_samples=N_SAMPLES, n_archetypes=5, n_dimensions=10, noise_std=0.0)
 
 
 @pytest.mark.parametrize("init_func", [_furthest_sum_init, _random_init])

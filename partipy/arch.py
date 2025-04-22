@@ -7,7 +7,6 @@ Code adapted from https://github.com/atmguille/archetypal-analysis (by Guillermo
 """
 
 import numpy as np
-import scanpy as sc
 
 from .const import (
     DEFAULT_INIT,
@@ -56,7 +55,7 @@ class AA:
         - "random": Random initialization.
         - "furthest_sum": Utilizes the furthest sum algorithm (recommended).
     optim: str, optional (default="projected_gradients")
-            Optimization algorithm to use. Options are:
+        Optimization algorithm to use. Options are:
         - "regularized_nnls": Regularized non-negative least squares.
         - "projected_gradients": Projected gradient descent (PCHA).
         - "frank_wolfe": Frank-Wolfe algorithm.
@@ -64,9 +63,9 @@ class AA:
         Weighting scheme for robust archetypal analysis. Options:
         - None: No weighting.
         - "bisquare": Bisquare weighting.
-    max_iter : int, optional (default: 100)
+    max_iter : int, optional (default: 500)
         Maximum number of iterations for the optimization.
-    derivative_max_iter : int, optional (default: 100)
+    derivative_max_iter : int, optional (default: 50)
         Maximum number of iterations for derivative-based optimization steps.
     tol : float, optional (default: 1e-6)
         Tolerance for convergence. The optimization stops if the relative change in RSS
@@ -83,9 +82,9 @@ class AA:
         init: str = DEFAULT_INIT,
         optim: str = DEFAULT_OPTIM,
         weight: None | str = DEFAULT_WEIGHT,
-        max_iter: int = 100,
-        derivative_max_iter: int = 100,
-        tol: float = 1e-6,
+        max_iter: int = 500,
+        derivative_max_iter: int = 50,  # TODO: should we make the default depending on the optim algorithm?
+        tol: float = 1e-6,  # TODO: Which tolerance should we be using?
         verbose: bool = False,
         seed: int = 42,
     ):
@@ -95,7 +94,8 @@ class AA:
         self.weight = weight
         self.max_iter = max_iter
         self.deriv_max_iter = derivative_max_iter
-        self.tol = tol
+        self.rel_tol = tol
+        self.abs_tol: float = None  # type: ignore[assignment]
         self.verbose = verbose
         self.seed = seed
         # NOTE: I don't want to use here type annotation np.ndarray: None | np.ndarray
@@ -105,11 +105,9 @@ class AA:
         self.Z: np.ndarray = None  # type: ignore[assignment]
         self.n_samples: int = None  # type: ignore[assignment]
         self.n_features: int = None  # type: ignore[assignment]
-        self.muA, self.muB = None, None
         self.RSS: float | None = None
-        self.RSS_trace: list[float | None] | np.ndarray = []
-        self.varexpl = None
-        self.adata = None
+        self.RSS_trace: list[float] | np.ndarray = []  # type: ignore[assignment]
+        self.varexpl: float = None  # type: ignore[assignment]
 
         # checks
         assert self.init in INIT_ALGS
@@ -119,22 +117,22 @@ class AA:
     def fit(self, X: np.ndarray):
         """
         Computes the archetypes and the RSS from the data X, which are stored
-        in the corresponding attributes
-        :param X: data matrix, with shape (n_samples, n_features)
-        :return: self
-        """
-        if isinstance(X, sc.AnnData):
-            if "X_pca" not in X.obsm:
-                raise ValueError(
-                    "X_pca not in AnnData object. Please use run PCA and set_dimension() to add both to the AnnData object."
-                )
-            self.adata = X
-            X = X.obsm["X_pca"][:, : X.uns["n_pcs"]]
+        in the corresponding attributes.
 
+        Parameters
+        ----------
+        X : np.ndarray
+            Data matrix with shape (n_samples, n_features).
+
+        Returns
+        -------
+        self : AA
+            The instance of the AA class, with computed archetypes and RSS stored as attributes.
+        """
         self.n_samples, self.n_features = X.shape
 
         # ensure C-contiguous format for numba
-        X = np.ascontiguousarray(X)
+        X = np.ascontiguousarray(X, dtype=np.float32)
 
         # set the initalization function
         if self.init == "random":
@@ -170,16 +168,18 @@ class AA:
 
         # randomly initialize A
         rng = np.random.default_rng(self.seed)  # Use a fixed seed
-        A = -np.log(rng.random((self.n_samples, self.n_archetypes)))
+        A = -np.log(rng.random((self.n_samples, self.n_archetypes), dtype=np.float32))
         A /= np.sum(A, axis=1, keepdims=True)
 
         TSS = np.sum(X * X)
-        prev_RSS = None
 
-        W = np.ones(X.shape[0]) if self.weight else None
+        W = np.ones(X.shape[0], dtype=np.float32) if self.weight else None
 
-        for _ in range(self.max_iter):
-            X_w = np.diag(W) @ X if self.weight else X  # type: ignore[arg-type]
+        self.RSS_trace = []
+        convergence_flag = False
+        for _n_iter in range(self.max_iter):
+            # (W[:, None] * X) is the same as np.diag(W) @ X
+            X_w = (W[:, None] * X) if self.weight else X  # type: ignore[arg-type, index]
             A = compute_A(X_w, Z, A, self.deriv_max_iter)
             B = compute_B(X_w, A, B, self.deriv_max_iter)
             Z = B @ X_w
@@ -189,11 +189,31 @@ class AA:
             R = X - A_0 @ Z
             W = compute_weights(R) if self.weight else None
 
+            # compute RSS and check for convergence
             RSS = np.linalg.norm(R) ** 2
-            if (prev_RSS is not None) and ((abs(prev_RSS - RSS) / prev_RSS) < self.tol):
-                break
-            prev_RSS = RSS
             self.RSS_trace.append(float(RSS))  # type: ignore[union-attr]
+            if np.isnan(RSS) or np.isinf(RSS):
+                print("Warning: RSS is NaN or Inf. Stopping optimization.")
+                break
+            if _n_iter == 0:
+                # NOTE: Hardcoded here how the absolute tolerance is computed
+                # see also: https://github.com/dpeerlab/SEACells/blob/a0a00d779ab5f51b9b005aeb251922fe6119f566/SEACells/cpu_dense.py#L198
+                self.abs_tol = float(1e-4 * (RSS / np.prod(X.shape)))
+            else:
+                delta_RSS = self.RSS_trace[-2] - self.RSS_trace[-1]
+                rel_cond = (np.abs(delta_RSS) / self.RSS_trace[-2]) < self.rel_tol
+                abs_cond = np.abs(delta_RSS) < self.abs_tol
+                if rel_cond or abs_cond:
+                    convergence_flag = True
+                    break
+        if self.verbose:
+            message = (
+                f"Algorithm converged after {_n_iter} iterations "
+                f"with relative condition: {rel_cond} and absolute condition: {abs_cond}."
+                if convergence_flag
+                else f"Algorithm did not converge after {_n_iter} iterations."
+            )
+            print(message)
 
         # Recalculate A and B using the unweighted data
         if self.weight:
@@ -212,16 +232,29 @@ class AA:
 
     def archetypes(self) -> None | np.ndarray:
         """
-        Returns the archetypes' matrix
-        :return: archetypes matrix, with shape (n_archetypes, n_features)
+        Returns the archetypes' matrix.
+
+        Returns
+        -------
+        np.ndarray or None
+            The archetypes matrix with shape (n_archetypes, n_features),
+            or None if the archetypes have not been computed yet.
         """
         return self.Z
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         """
-        Computes the best convex approximation A of X by the archetypes Z
-        :param X: data matrix, with shape (n_samples, n_features)
-        :return: A matrix, with shape (n_samples, n_archetypes)
+        Computes the best convex approximation A of X by the archetypes Z.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Data matrix with shape (n_samples, n_features).
+
+        Returns
+        -------
+        np.ndarray
+            The matrix A with shape (n_samples, n_archetypes).
         """
         if self.optim == "regularized_nnls":
             return _compute_A_regularized_nnls(X, self.Z)
@@ -237,30 +270,22 @@ class AA:
             raise NotImplementedError()
 
     def return_all(self) -> tuple:
-        """Return optimized matrices: A, B, Z, and fitting stats: RSS, varexpl."""
+        """
+        Returns the optimized matrices and fitting statistics.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            - A : np.ndarray
+                Coefficient matrix with shape (n_samples, n_archetypes).
+            - B : np.ndarray
+                Coefficient matrix with shape (n_archetypes, n_samples).
+            - Z : np.ndarray
+                Archetype matrix with shape (n_archetypes, n_features).
+            - RSS_trace : list[float]
+                Residual sum of squares per iteration.
+            - varexpl : float
+                Variance explained by the model.
+        """
         return self.A, self.B, self.Z, self.RSS_trace, self.varexpl
-
-    def save_to_anndata(self, archetypes_only: bool = True):
-        """
-        Saves the results to the AnnData object provided in fit().
-
-        Parameters
-        ----------
-        archetypes_only: bool
-          If True, only the archetypes (Z) are saved. Otherwise, all results (A, B, Z, RSS, varexpl) are saved.
-        """
-        if self.adata is None:
-            raise ValueError("No AnnData object found. Please provide an AnnData object to fit().")
-
-        if archetypes_only:
-            self.adata.uns["archetypal_analysis"] = {
-                "Z": self.Z,
-            }
-        else:
-            self.adata.uns["archetypal_analysis"] = {
-                "A": self.A,
-                "B": self.B,
-                "Z": self.Z,
-                "RSS": self.RSS_trace,
-                "varexpl": self.varexpl,
-            }

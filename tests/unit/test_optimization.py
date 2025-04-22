@@ -2,8 +2,11 @@ import numpy as np
 import pytest
 from partipy.arch import AA
 from partipy.const import INIT_ALGS, OPTIM_ALGS, WEIGHT_ALGS
-from partipy.generate_test_data import simulate
+from partipy.simulate import simulate_archetypes
 from scipy.optimize import linear_sum_assignment
+
+# for regularized_nnls the tests take much longer, and this algorithm is not recommended
+FAST_OPTIM_ALGS = tuple(alg for alg in OPTIM_ALGS if alg != "regularized_nnls")
 
 
 def compute_dist_mtx(mtx_1, mtx_2):
@@ -35,21 +38,21 @@ def compute_rowwise_correlation(mtx_1, mtx_2):
     return corr_vec
 
 
-@pytest.mark.parametrize("n_archetypes", list(range(2, 8)))
+@pytest.mark.parametrize("n_archetypes", list(range(2, 4)))
 @pytest.mark.parametrize("optim_str", OPTIM_ALGS)
 def test_that_archetypes_can_be_identified(
     n_archetypes: int,
     optim_str: str,
 ) -> None:
-    N_SAMPLES = 1_000
-    N_DIMENSIONS = 10
-    MIN_CORR = 0.9
-    X, A, Z = simulate(
+    N_SAMPLES = 2_000
+    N_DIMENSIONS = 3
+    MIN_CORR = 0.95
+    X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=N_DIMENSIONS,
         noise_std=0.0,
-        seed=111,
+        seed=42,
     )
 
     A_hat, B_hat, Z_hat, RSS, varexpl = AA(n_archetypes=n_archetypes, optim=optim_str).fit(X).return_all()
@@ -60,6 +63,36 @@ def test_that_archetypes_can_be_identified(
     assert np.all(corr_between_archetypes > MIN_CORR)
 
 
+@pytest.mark.parametrize(
+    "n_archetypes, n_dimensions",
+    [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d],
+    # "n_archetypes, n_dimensions", [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d + 2]
+)
+@pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
+def test_that_archetypes_can_be_identified_only_fast_algorithms(
+    n_archetypes: int,
+    n_dimensions: int,
+    optim_str: str,
+) -> None:
+    N_SAMPLES = 4_000
+    MIN_CORR_high = 0.95
+    MIN_CORR_low = 0.90
+    X, A, Z = simulate_archetypes(
+        n_samples=N_SAMPLES,
+        n_archetypes=n_archetypes,
+        n_dimensions=n_dimensions,
+        noise_std=0.0,
+        seed=42,
+    )
+
+    A_hat, B_hat, Z_hat, RSS, varexpl = AA(n_archetypes=n_archetypes, optim=optim_str).fit(X).return_all()
+
+    Z_hat = align_archetypes(Z, Z_hat)
+
+    corr_between_archetypes = compute_rowwise_correlation(Z, Z_hat)
+    assert np.all(corr_between_archetypes > (MIN_CORR_high if n_archetypes <= n_dimensions else MIN_CORR_low))
+
+
 @pytest.mark.parametrize("optim_str", OPTIM_ALGS)
 @pytest.mark.parametrize("weight_str", WEIGHT_ALGS)
 @pytest.mark.parametrize("init_str", INIT_ALGS)
@@ -67,12 +100,12 @@ def test_that_input_to_AA_is_not_modfied(optim_str, weight_str, init_str) -> Non
     N_SAMPLES = 200
     N_DIMENSIONS = 3
     N_ARCHETYPES = 5
-    X, A, Z = simulate(
+    X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=N_ARCHETYPES,
         n_dimensions=N_DIMENSIONS,
         noise_std=0.0,
-        seed=111,
+        seed=42,
     )
     X_in = X.copy()
 
