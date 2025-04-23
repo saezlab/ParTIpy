@@ -93,11 +93,17 @@ def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) ->
     pd.DataFrame
         A DataFrame of shape (n_archetypes, n_genes) with weighted pseudobulk expression profiles.
     """
+    if "cell_weights" not in adata.obsm:
+        raise ValueError("No weights available. Please run compute_archetype_weights()")
     weights = adata.obsm["cell_weights"].T
+
     if layer is None:
         expr = adata.X
+    elif layer not in adata.layers:
+        raise ValueError("Invalid layer")
     else:
         expr = adata.layers[layer]
+
     pseudobulk = np.einsum("ij,jk->ik", weights, expr)
     pseudobulk /= weights.sum(axis=1, keepdims=True)
 
@@ -268,6 +274,11 @@ def compute_meta_enrichment(adata: sc.AnnData, meta_col: str) -> pd.DataFrame:
             A DataFrame of shape (n_archetypes, n_categories), where each entry represents the
             normalized enrichment of a metadata category withforin a given archetype.
     """
+    if meta_col not in adata.obs:
+        raise ValueError("Metadata column does not exist")
+    if "cell_weights" not in adata.obsm:
+        raise ValueError("No weights available. Please run compute_archetype_weights()")
+
     metadata = adata.obs[meta_col]
     weights = adata.obsm["cell_weights"].T
 
