@@ -38,24 +38,31 @@ def compute_rowwise_correlation(mtx_1, mtx_2):
     return corr_vec
 
 
-@pytest.mark.parametrize("n_archetypes", list(range(2, 4)))
+@pytest.mark.parametrize(
+    "n_archetypes, n_dimensions",
+    [(n_a, n_d) for n_a in range(3, 5) for n_d in range(2, 6) if n_a <= n_d],
+)
 @pytest.mark.parametrize("optim_str", OPTIM_ALGS)
+@pytest.mark.parametrize("init_str", INIT_ALGS)
 def test_that_archetypes_can_be_identified(
     n_archetypes: int,
+    n_dimensions: int,
     optim_str: str,
+    init_str: str,
 ) -> None:
-    N_SAMPLES = 2_000
-    N_DIMENSIONS = 3
+    N_SAMPLES = 1_000
     MIN_CORR = 0.95
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
-        n_dimensions=N_DIMENSIONS,
+        n_dimensions=n_dimensions,
         noise_std=0.0,
         seed=42,
     )
 
-    A_hat, B_hat, Z_hat, RSS, varexpl = AA(n_archetypes=n_archetypes, optim=optim_str).fit(X).return_all()
+    A_hat, B_hat, Z_hat, RSS, varexpl = (
+        AA(n_archetypes=n_archetypes, init=init_str, optim=optim_str).fit(X).return_all()
+    )
 
     Z_hat = align_archetypes(Z, Z_hat)
 
@@ -66,7 +73,6 @@ def test_that_archetypes_can_be_identified(
 @pytest.mark.parametrize(
     "n_archetypes, n_dimensions",
     [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d],
-    # "n_archetypes, n_dimensions", [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d + 2]
 )
 @pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
 def test_that_archetypes_can_be_identified_only_fast_algorithms(

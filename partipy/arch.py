@@ -16,7 +16,7 @@ from .const import (
     OPTIM_ALGS,
     WEIGHT_ALGS,
 )
-from .initialize import _furthest_sum_init, _random_init
+from .initialize import _init_furthest_sum, _init_plus_plus, _init_uniform
 from .optim import (
     _compute_A_frank_wolfe,
     _compute_A_projected_gradients,
@@ -65,8 +65,6 @@ class AA:
         - "bisquare": Bisquare weighting.
     max_iter : int, optional (default: 500)
         Maximum number of iterations for the optimization.
-    derivative_max_iter : int, optional (default: 50)
-        Maximum number of iterations for derivative-based optimization steps.
     tol : float, optional (default: 1e-6)
         Tolerance for convergence. The optimization stops if the relative change in RSS
         falls below this threshold.
@@ -74,6 +72,7 @@ class AA:
         If True, print progress during optimization.
     seed : int, optional (default: 42)
         Random seed
+    optim_kwargs : arguments that are passed to compute_A and compute_B
     """
 
     def __init__(
@@ -83,21 +82,21 @@ class AA:
         optim: str = DEFAULT_OPTIM,
         weight: None | str = DEFAULT_WEIGHT,
         max_iter: int = 500,
-        derivative_max_iter: int = 50,  # TODO: should we make the default depending on the optim algorithm?
-        tol: float = 1e-6,  # TODO: Which tolerance should we be using?
+        tol: float = 1e-6,  # TODO: Which relative tolerance should we be using?
         verbose: bool = False,
         seed: int = 42,
+        **optim_kwargs,
     ):
         self.n_archetypes = n_archetypes
         self.init = init
         self.optim = optim
         self.weight = weight
         self.max_iter = max_iter
-        self.deriv_max_iter = derivative_max_iter
         self.rel_tol = tol
         self.abs_tol: float = None  # type: ignore[assignment]
         self.verbose = verbose
         self.seed = seed
+        self.optim_kwargs = optim_kwargs
         # NOTE: I don't want to use here type annotation np.ndarray: None | np.ndarray
         # because it makes little sense for downstream type checking
         self.A: np.ndarray = None  # type: ignore[assignment]
@@ -135,10 +134,12 @@ class AA:
         X = np.ascontiguousarray(X, dtype=np.float32)
 
         # set the initalization function
-        if self.init == "random":
-            initialize_B = _random_init
+        if self.init == "uniform":
+            initialize_B = _init_uniform
         elif self.init == "furthest_sum":
-            initialize_B = _furthest_sum_init
+            initialize_B = _init_furthest_sum
+        elif self.init == "plus_plus":
+            initialize_B = _init_plus_plus
         else:
             raise NotImplementedError()
 
@@ -180,20 +181,22 @@ class AA:
         for _n_iter in range(self.max_iter):
             # (W[:, None] * X) is the same as np.diag(W) @ X
             X_w = (W[:, None] * X) if self.weight else X  # type: ignore[arg-type, index]
-            A = compute_A(X_w, Z, A, self.deriv_max_iter)
-            B = compute_B(X_w, A, B, self.deriv_max_iter)
+            A = compute_A(X_w, Z, A, **self.optim_kwargs)
+            B = compute_B(X_w, A, B, **self.optim_kwargs)
             Z = B @ X_w
 
-            # compute residuals using the original data
-            A_0 = compute_A(X, Z, A, self.deriv_max_iter) if self.weight else A
+            # compute residuals using the original data (to recompute the weights)
+            A_0 = compute_A(X, Z, A, **self.optim_kwargs) if self.weight else A
             R = X - A_0 @ Z
             W = compute_weights(R) if self.weight else None
 
             # compute RSS and check for convergence
             RSS = np.linalg.norm(R) ** 2
+            if self.verbose:
+                print(f"\rRSS: {RSS:.6f}", end="", flush=True)
             self.RSS_trace.append(float(RSS))  # type: ignore[union-attr]
             if np.isnan(RSS) or np.isinf(RSS):
-                print("Warning: RSS is NaN or Inf. Stopping optimization.")
+                print("\nWarning: RSS is NaN or Inf. Stopping optimization.")
                 break
             if _n_iter == 0:
                 # NOTE: Hardcoded here how the absolute tolerance is computed
@@ -208,17 +211,17 @@ class AA:
                     break
         if self.verbose:
             message = (
-                f"Algorithm converged after {_n_iter} iterations "
+                f"\nAlgorithm converged after {_n_iter} iterations "
                 f"with relative condition: {rel_cond} and absolute condition: {abs_cond}."
                 if convergence_flag
-                else f"Algorithm did not converge after {_n_iter} iterations."
+                else f"\nAlgorithm did not converge after {_n_iter} iterations."
             )
             print(message)
 
         # Recalculate A and B using the unweighted data
         if self.weight:
-            A = compute_A(X, Z, A, self.deriv_max_iter)
-            B = compute_B(X, A, B, self.deriv_max_iter)
+            A = compute_A(X, Z, A, **self.optim_kwargs)
+            B = compute_B(X, A, B, **self.optim_kwargs)
             Z = B @ X
             RSS = np.linalg.norm(X - A @ Z) ** 2
 

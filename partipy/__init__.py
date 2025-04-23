@@ -28,6 +28,7 @@ from .plotting import (
     plot_archetypes_3D,
     plot_bootstrap_2D,
     plot_bootstrap_3D,
+    plot_IC,
     plot_var_explained,
 )
 from .simulate import simulate_archetypes

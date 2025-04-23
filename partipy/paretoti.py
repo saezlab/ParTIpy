@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from .arch import AA
 from .const import DEFAULT_INIT, DEFAULT_OPTIM
+from .selection import compute_IC
 
 
 def set_dimension_aa(adata: sc.AnnData, n_pcs: int) -> None:
@@ -122,27 +123,33 @@ def var_explained_aa(
     # results = {k: result for k, result in results_list}
     results = dict(results_list)  # faster, and see https://docs.astral.sh/ruff/rules/unnecessary-comprehension/
 
+    IC_values = []
+    for n_archetypes in k_arr:
+        X_tilde = results[n_archetypes]["A"] @ results[n_archetypes]["Z"]
+        IC_values.append(compute_IC(X=X, X_tilde=X_tilde, n_archetypes=n_archetypes))
+
     varexpl_values = np.array([results[k]["varexpl"] for k in k_arr])
 
-    plot_df = pd.DataFrame(
+    result_df = pd.DataFrame(
         {
             "k": k_arr,
+            "IC": IC_values,
             "varexpl": varexpl_values,
             "varexpl_ontop": np.insert(np.diff(varexpl_values), 0, varexpl_values[0]),
         }
     )
 
     # Compute the distance of the explained variance to its projection
-    offset_vec = plot_df[["k", "varexpl"]].iloc[0].values
-    proj_vec = (plot_df[["k", "varexpl"]].values - offset_vec)[-1, :][:, None]
+    offset_vec = result_df[["k", "varexpl"]].iloc[0].values
+    proj_vec = (result_df[["k", "varexpl"]].values - offset_vec)[-1, :][:, None]
     proj_mtx = proj_vec @ np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T
-    proj_val = (proj_mtx @ (plot_df[["k", "varexpl"]].values - offset_vec).T).T + offset_vec
+    proj_val = (proj_mtx @ (result_df[["k", "varexpl"]].values - offset_vec).T).T + offset_vec
     proj_df = pd.DataFrame(proj_val, columns=["k", "varexpl"])
-    plot_df["dist_to_projected"] = np.linalg.norm(
-        plot_df[["k", "varexpl"]].values - proj_df[["k", "varexpl"]].values, axis=1
+    result_df["dist_to_projected"] = np.linalg.norm(
+        result_df[["k", "varexpl"]].values - proj_df[["k", "varexpl"]].values, axis=1
     )
 
-    adata.uns["AA_var"] = plot_df
+    adata.uns["AA_var"] = result_df
 
 
 def bootstrap_aa(
@@ -485,12 +492,12 @@ def compute_archetypes(
     optim: str | None = None,
     weight: None | str = None,
     max_iter: int | None = None,
-    derivative_max_iter: int | None = None,
     tol: float | None = None,
     verbose: bool | None = None,
     seed: int = 42,
     save_to_anndata: bool = True,
     archetypes_only: bool = True,
+    **optim_kwargs,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, list[float] | np.ndarray, float] | None:
     """
 
@@ -526,8 +533,6 @@ def compute_archetypes(
         - "bisquare": Bisquare weighting.
     max_iter : int, optional
         The maximum number of iterations for the optimization. If not provided, the default from the AA class is used.
-    derivative_max_iter : int, optional
-        The maximum number of iterations for derivative computation. If not provided, the default from the AA class is used.
     tol : float, optional
         The tolerance for convergence. If not provided, the default from the AA class is used.
     verbose : bool, optional
@@ -540,6 +545,7 @@ def compute_archetypes(
     archetypes_only : bool, optional (default=True)
         Whether to save/return only the archetypes matrix `Z` (if det to True) or also the full outputs, including
         the matrices `A`, `B`, `RSS`, and variance explained `varexpl`.
+    optim_kwargs: TODO
 
     Returns
     -------
@@ -578,7 +584,6 @@ def compute_archetypes(
     optim = optim if optim is not None else defaults["optim"]
     weight = weight if weight is not None else defaults["weight"]
     max_iter = max_iter if max_iter is not None else defaults["max_iter"]
-    derivative_max_iter = derivative_max_iter if derivative_max_iter is not None else defaults["derivative_max_iter"]
     tol = tol if tol is not None else defaults["tol"]
     verbose = verbose if verbose is not None else defaults["verbose"]
 
@@ -589,10 +594,10 @@ def compute_archetypes(
         optim=optim,
         weight=weight,
         max_iter=max_iter,
-        derivative_max_iter=derivative_max_iter,
         tol=tol,
         verbose=verbose,
         seed=seed,
+        **optim_kwargs,
     )
 
     # Extract the data matrix used to fit the archetypes
