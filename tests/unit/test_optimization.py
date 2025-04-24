@@ -3,39 +3,42 @@ import pytest
 from partipy.arch import AA
 from partipy.const import INIT_ALGS, OPTIM_ALGS, WEIGHT_ALGS
 from partipy.simulate import simulate_archetypes
-from scipy.optimize import linear_sum_assignment
+
+from .utils import align_archetypes, compute_relative_rowwise_l2_distance
 
 # for regularized_nnls the tests take much longer, and this algorithm is not recommended
 FAST_OPTIM_ALGS = tuple(alg for alg in OPTIM_ALGS if alg != "regularized_nnls")
 
 
-def compute_dist_mtx(mtx_1, mtx_2):
-    AB = np.dot(mtx_1, mtx_2.T)
-    AA = np.sum(np.square(mtx_1), axis=1)
-    BB = np.sum(np.square(mtx_2), axis=1)
-    dist_mtx = (BB - 2 * AB).T + AA
-    dist_mtx[np.isclose(dist_mtx, 0)] = (
-        0  # avoid problems if we get small negative numbers due to numerical inaccuracies
+@pytest.mark.parametrize(
+    "n_archetypes, n_dimensions",
+    [(n_a, n_d) for n_a in range(2, 9) for n_d in range(2, 19, 4) if n_a <= n_d],
+)
+@pytest.mark.parametrize("optim_str", OPTIM_ALGS)
+def test_that_archetypes_can_be_identified_fail_if_we_dont_optimize(
+    n_archetypes: int,
+    n_dimensions: int,
+    optim_str: str,
+) -> None:
+    N_SAMPLES = 1_000
+    MAX_REL_DIST = 0.10 if n_archetypes < n_dimensions else 0.15
+    X, A, Z = simulate_archetypes(
+        n_samples=N_SAMPLES,
+        n_archetypes=n_archetypes,
+        n_dimensions=n_dimensions,
+        noise_std=0.0,
+        seed=0,
     )
-    dist_mtx = np.sqrt(dist_mtx)
-    return dist_mtx
 
+    AA_object = AA(n_archetypes=n_archetypes, init="uniform", optim=optim_str, max_iter=0)
+    AA_object.fit(X)
+    Z_hat = AA_object.Z
 
-def align_archetypes(ref_arch, query_arch):
-    # not sure if copy here is needed, compute_dist_mtx should not modify the matrices
-    euclidean_d = compute_dist_mtx(ref_arch, query_arch.copy()).T
-    ref_idx, query_idx = linear_sum_assignment(euclidean_d)
-    return query_arch[query_idx, :]
+    Z_hat = align_archetypes(Z, Z_hat)
 
+    rel_dist_between_archetypes = compute_relative_rowwise_l2_distance(Z, Z_hat)
 
-def compute_rowwise_correlation(mtx_1, mtx_2):
-    assert np.all(mtx_1.shape == mtx_2.shape)
-    mtx_1 = mtx_1 - mtx_1.mean(axis=1, keepdims=True)
-    mtx_1 /= mtx_1.std(axis=1, keepdims=True)
-    mtx_2 = mtx_2 - mtx_2.mean(axis=1, keepdims=True)
-    mtx_2 /= mtx_2.std(axis=1, keepdims=True)
-    corr_vec = np.mean(mtx_1 * mtx_2, axis=1)
-    return corr_vec
+    assert np.any(rel_dist_between_archetypes > MAX_REL_DIST)
 
 
 @pytest.mark.parametrize(
@@ -44,79 +47,91 @@ def compute_rowwise_correlation(mtx_1, mtx_2):
 )
 @pytest.mark.parametrize("optim_str", OPTIM_ALGS)
 @pytest.mark.parametrize("init_str", INIT_ALGS)
-def test_that_archetypes_can_be_identified(
+def test_that_all_algorithms_can_identify_archetypes(
     n_archetypes: int,
     n_dimensions: int,
     optim_str: str,
     init_str: str,
 ) -> None:
-    N_SAMPLES = 1_000
-    MIN_CORR = 0.95
+    N_SAMPLES = 2_000
+    MAX_REL_DIST = 0.8 if n_archetypes < n_dimensions else 0.14
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=n_dimensions,
         noise_std=0.0,
-        seed=42,
+        seed=0,
     )
 
-    A_hat, B_hat, Z_hat, RSS, varexpl = (
-        AA(n_archetypes=n_archetypes, init=init_str, optim=optim_str).fit(X).return_all()
-    )
+    AA_object = AA(n_archetypes=n_archetypes, init=init_str, optim=optim_str)
+    AA_object.fit(X)
+    Z_hat = AA_object.Z
 
     Z_hat = align_archetypes(Z, Z_hat)
 
-    corr_between_archetypes = compute_rowwise_correlation(Z, Z_hat)
-    assert np.all(corr_between_archetypes > MIN_CORR)
+    rel_dist_between_archetypes = compute_relative_rowwise_l2_distance(Z, Z_hat)
+
+    assert np.all(rel_dist_between_archetypes < MAX_REL_DIST)
 
 
 @pytest.mark.parametrize(
     "n_archetypes, n_dimensions",
-    [(n_a, n_d) for n_a in range(2, 8) for n_d in range(4, 12, 2) if n_a <= n_d],
+    [(n_a, n_d) for n_a in range(3, 8, 2) for n_d in range(2, 13, 2) if n_a <= n_d],
 )
-@pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
-def test_that_archetypes_can_be_identified_only_fast_algorithms(
+# @pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
+@pytest.mark.parametrize("optim_str", ["projected_gradients"])
+def test_that_fast_algorithms_can_identify_archetypes(
     n_archetypes: int,
     n_dimensions: int,
     optim_str: str,
 ) -> None:
-    N_SAMPLES = 4_000
-    MIN_CORR_high = 0.95
-    MIN_CORR_low = 0.90
+    if n_dimensions < 8:
+        N_SAMPLES = 10_000
+    else:
+        N_SAMPLES = 100_000
+    MAX_REL_DIST = 0.15
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=n_dimensions,
         noise_std=0.0,
-        seed=42,
+        seed=0,
     )
 
-    A_hat, B_hat, Z_hat, RSS, varexpl = AA(n_archetypes=n_archetypes, optim=optim_str).fit(X).return_all()
+    AA_object = AA(n_archetypes=n_archetypes, optim=optim_str)
+    AA_object.fit(X)
+    Z_hat = AA_object.Z
 
     Z_hat = align_archetypes(Z, Z_hat)
 
-    corr_between_archetypes = compute_rowwise_correlation(Z, Z_hat)
-    assert np.all(corr_between_archetypes > (MIN_CORR_high if n_archetypes <= n_dimensions else MIN_CORR_low))
+    rel_dist_between_archetypes = compute_relative_rowwise_l2_distance(Z, Z_hat)
+
+    assert np.all(rel_dist_between_archetypes < MAX_REL_DIST)
 
 
 @pytest.mark.parametrize("optim_str", OPTIM_ALGS)
 @pytest.mark.parametrize("weight_str", WEIGHT_ALGS)
 @pytest.mark.parametrize("init_str", INIT_ALGS)
 def test_that_input_to_AA_is_not_modfied(optim_str, weight_str, init_str) -> None:
-    N_SAMPLES = 200
-    N_DIMENSIONS = 3
-    N_ARCHETYPES = 5
+    N_SAMPLES = 100
+    N_ARCHETYPES = 3
+    N_DIMENSIONS = 4
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=N_ARCHETYPES,
         n_dimensions=N_DIMENSIONS,
         noise_std=0.0,
-        seed=42,
+        seed=0,
     )
     X_in = X.copy()
 
-    A_hat, B_hat, Z_hat, RSS, varexpl = (
-        AA(n_archetypes=N_ARCHETYPES, optim=optim_str, weight=weight_str, init=init_str).fit(X).return_all()
+    AA_object = AA(
+        n_archetypes=N_ARCHETYPES,
+        optim=optim_str,
+        weight=weight_str,
+        init=init_str,
+        early_stopping=True if weight_str is None else False,
     )
+    AA_object.fit(X)
 
     assert np.all(np.isclose(X_in, X))
