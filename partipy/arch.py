@@ -159,10 +159,10 @@ class AA:
         X = np.ascontiguousarray(X, dtype=np.float32)
 
         # center X by substracting the feature means, scale X by dividing by the feature stds
-        feature_means = X.mean(axis=0, keepdims=True)
-        feature_stds = X.std(axis=0, keepdims=True)
-        X -= feature_means
-        X /= feature_stds
+        # feature_means = X.mean(axis=0, keepdims=True)
+        # feature_stds = X.std(axis=0, keepdims=True)
+        # X -= feature_means
+        # X /= feature_stds
 
         # set the initalization function
         if self.init == "uniform":
@@ -282,10 +282,9 @@ class AA:
             print(message)
 
         # re-scale and add back the feature means
-        X *= feature_stds
-        X += feature_means
-        Z *= feature_stds
-        Z += feature_means
+        # X *= feature_stds
+        # X += feature_means
+        # Z = np.dot(B, X)
 
         # Recalculate A and B using the unweighted and data
         if self.weight:

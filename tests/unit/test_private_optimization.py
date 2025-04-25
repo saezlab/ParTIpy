@@ -2,8 +2,7 @@ import numpy as np
 import pytest
 from partipy.optim import _compute_A_frank_wolfe, _compute_A_projected_gradients, _compute_A_regularized_nnls
 from partipy.simulate import simulate_archetypes
-
-from .utils import compute_relative_rowwise_l2_distance
+from partipy.utils import compute_relative_rowwise_l2_distance
 
 compute_a_functions = [_compute_A_regularized_nnls, _compute_A_projected_gradients, _compute_A_frank_wolfe]
 

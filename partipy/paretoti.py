@@ -492,7 +492,7 @@ def compute_archetypes(
     optim: str | None = None,
     weight: None | str = None,
     max_iter: int | None = None,
-    tol: float | None = None,
+    rel_tol: float | None = None,
     verbose: bool | None = None,
     seed: int = 42,
     save_to_anndata: bool = True,
@@ -533,8 +533,8 @@ def compute_archetypes(
         - "bisquare": Bisquare weighting.
     max_iter : int, optional
         The maximum number of iterations for the optimization. If not provided, the default from the AA class is used.
-    tol : float, optional
-        The tolerance for convergence. If not provided, the default from the AA class is used.
+    rel_tol : float, optional
+        The rel_tol tolerance for convergence. If not provided, the default from the AA class is used.
     verbose : bool, optional
         Whether to print verbose output during fitting. If not provided, the default from the AA class is used.
     seed : int, optional
@@ -584,7 +584,7 @@ def compute_archetypes(
     optim = optim if optim is not None else defaults["optim"]
     weight = weight if weight is not None else defaults["weight"]
     max_iter = max_iter if max_iter is not None else defaults["max_iter"]
-    tol = tol if tol is not None else defaults["tol"]
+    rel_tol = rel_tol if rel_tol is not None else defaults["rel_tol"]
     verbose = verbose if verbose is not None else defaults["verbose"]
 
     # Create the AA model with the specified parameters
@@ -594,14 +594,14 @@ def compute_archetypes(
         optim=optim,
         weight=weight,
         max_iter=max_iter,
-        tol=tol,
+        rel_tol=rel_tol,
         verbose=verbose,
         seed=seed,
         **optim_kwargs,
     )
 
     # Extract the data matrix used to fit the archetypes
-    X = adata.obsm[obsm_key][:, : adata.uns["n_pcs"]]
+    X = adata.obsm[obsm_key][:, : adata.uns["n_pcs"]].astype(np.float32)
 
     # Fit the model to the data
     model.fit(X)

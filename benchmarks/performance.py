@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import partipy as pt
 import seaborn as sns
+from tqdm import tqdm
 
 benchmark_path = Path(".") / "benchmarks"
 
@@ -51,8 +52,10 @@ result_list = []
 
 ### execution loop ###
 for simulation_dict in simulation_settings_list:
+    print("\n\t", simulation_dict)
     for optim_dict in optim_settings_list:
-        for _simulation_iter, simulation_seed in enumerate(simulation_seed_list):
+        print("\t\t", optim_dict)
+        for _simulation_iter, simulation_seed in tqdm(enumerate(simulation_seed_list)):
             # simulate the data
             X, A, Z = pt.simulate_archetypes(
                 n_samples=int(simulation_dict["n_samples"]),
@@ -124,7 +127,7 @@ for noise_std in noise_std_list:
 
                 # summarize accross the different seeds
                 result_df_subset = (
-                    result_df_subset.groupby(
+                    result_df_subset.groupby(  # type: ignore[assignment]
                         ["n_samples", "n_features", "n_archetypes", "optim_alg", "init_alg"], as_index=False
                     )[feature].agg("mean")  # or use .agg(["mean", "std"]) for multiple statistics
                 )
@@ -180,7 +183,7 @@ for noise_std in noise_std_list:
             )
 
         fig.suptitle(f"Comparison at {noise_std} Noise Level | {feature}", fontsize=16, y=1.02)
-        plt.tight_layout(rect=[0.02, 0.00, 0.85, 0.98])  # Adjust for both legend and title
+        plt.tight_layout(rect=(0.02, 0.00, 0.85, 0.98))  # Adjust for both legend and title
         fig.savefig(benchmark_path / f"{feature}_{noise_std:.2f}.png", bbox_inches="tight")
         plt.close()
 

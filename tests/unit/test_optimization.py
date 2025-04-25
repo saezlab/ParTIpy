@@ -3,8 +3,7 @@ import pytest
 from partipy.arch import AA
 from partipy.const import INIT_ALGS, OPTIM_ALGS, WEIGHT_ALGS
 from partipy.simulate import simulate_archetypes
-
-from .utils import align_archetypes, compute_relative_rowwise_l2_distance
+from partipy.utils import align_archetypes, compute_relative_rowwise_l2_distance
 
 # for regularized_nnls the tests take much longer, and this algorithm is not recommended
 FAST_OPTIM_ALGS = tuple(alg for alg in OPTIM_ALGS if alg != "regularized_nnls")

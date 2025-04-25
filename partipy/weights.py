@@ -40,7 +40,11 @@ def compute_bisquare_weights(R: np.ndarray, epsilon: float = 0.1) -> np.ndarray:
         points beyond the cutoff are fully downweighted to 0.
     """
     l1_norm = np.abs(R).sum(axis=1)
-    c = 6 * np.median(l1_norm[l1_norm >= epsilon])
+    selection_vec = l1_norm > epsilon
+    if np.sum(selection_vec) > 0:
+        c = 6 * np.median(l1_norm[selection_vec])
+    else:
+        c = 6 * np.median(l1_norm)
     l1_norm /= c
     W = np.zeros_like(l1_norm)
     W[l1_norm < 1] = np.square(1 - np.square(l1_norm[l1_norm < 1]))
@@ -86,7 +90,11 @@ def compute_huber_weights(R: np.ndarray, epsilon: float = 0.1) -> np.ndarray:
     epsilon = 0.1
 
     l2_norm = np.sqrt(np.sum(np.square(R), axis=1))
-    sigma_hat = np.median(l2_norm[l2_norm > epsilon]) / 0.6745  # Consistent estimator for Gaussian noise
+    selection_vec = l2_norm > epsilon
+    if np.sum(selection_vec) > 0:
+        sigma_hat = np.median(l2_norm[l2_norm > epsilon]) / 0.6745  # Consistent estimator for Gaussian noise
+    else:
+        sigma_hat = np.median(l2_norm) / 0.6745  # Consistent estimator for Gaussian noise
     delta = 1.345 * sigma_hat
     W = np.ones_like(l2_norm)
     mask = l2_norm > delta
