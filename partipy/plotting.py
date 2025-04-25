@@ -50,6 +50,43 @@ def plot_var_explained(adata: sc.AnnData) -> pn.ggplot:
         + pn.lims(y=[0, 1])
         + pn.scale_x_continuous(breaks=list(np.arange(plot_df["k"].min(), plot_df["k"].max() + 1)))
         + pn.theme_matplotlib()
+        + pn.theme(panel_grid_major=pn.element_line(color="gray", size=0.5, alpha=0.5), figure_size=(6, 3))
+    )
+    return p
+
+
+def plot_IC(adata: sc.AnnData) -> pn.ggplot:
+    """
+    Generate a plot showing an information criteria for a range of archetypes.
+
+    This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
+    The data is retrieved from `adata.uns["AA_var"]`. If `adata.uns["AA_var"]` is not found, `var_explained_aa` is called.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
+
+    Returns
+    -------
+    pn.ggplot
+        A ggplot object showing the variance explained plot.
+    """
+    # Validation input
+    if "AA_var" not in adata.uns:
+        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
+        var_explained_aa(adata=adata)
+
+    plot_df = adata.uns["AA_var"]
+
+    p = (
+        pn.ggplot(plot_df)
+        + pn.geom_line(mapping=pn.aes(x="k", y="IC"), color="black")
+        + pn.geom_point(mapping=pn.aes(x="k", y="IC"), color="black")
+        + pn.labs(x="Number of Archetypes (k)", y="Information Criteria")
+        + pn.scale_x_continuous(breaks=list(np.arange(plot_df["k"].min(), plot_df["k"].max() + 1)))
+        + pn.theme_matplotlib()
+        + pn.theme(panel_grid_major=pn.element_line(color="gray", size=0.5, alpha=0.5), figure_size=(6, 3))
     )
     return p
 

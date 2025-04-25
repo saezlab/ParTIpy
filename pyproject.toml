@@ -23,7 +23,8 @@ dependencies = [
     "plotnine",
     "matplotlib",
     "scanpy",
-    "plotly"
+    "plotly",
+    "nbformat"
 ]
 
 [project.urls]

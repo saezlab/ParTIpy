@@ -1,5 +1,5 @@
 # allowed arguments
-INIT_ALGS = ("random", "furthest_sum")
+INIT_ALGS = ("uniform", "furthest_sum", "plus_plus")
 WEIGHT_ALGS = (None, "bisquare")
 OPTIM_ALGS = ("regularized_nnls", "projected_gradients", "frank_wolfe")
 

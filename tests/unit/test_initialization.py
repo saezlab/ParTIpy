@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from partipy.initialize import _furthest_sum_init, _random_init
+from partipy.initialize import _init_furthest_sum, _init_plus_plus, _init_uniform
 from partipy.simulate import simulate_archetypes
 
 N_SAMPLES = 1_000
@@ -8,7 +8,7 @@ N_SAMPLES = 1_000
 X, A, Z = simulate_archetypes(n_samples=N_SAMPLES, n_archetypes=5, n_dimensions=10, noise_std=0.0)
 
 
-@pytest.mark.parametrize("init_func", [_furthest_sum_init, _random_init])
+@pytest.mark.parametrize("init_func", [_init_uniform, _init_furthest_sum, _init_plus_plus])
 @pytest.mark.parametrize("n_archetypes", list(range(2, 20)))
 def test_that_initalized_B_fullfills_constraints(
     init_func,
