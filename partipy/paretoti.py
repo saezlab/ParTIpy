@@ -159,9 +159,10 @@ def bootstrap_aa(
     optim: str = DEFAULT_OPTIM,
     init: str = DEFAULT_INIT,
     seed: int = 42,
+    save_to_anndata: bool = True,
     n_jobs: int = -1,
     **kwargs,
-) -> None:
+) -> None | pd.DataFrame:
     """
     Perform bootstrap sampling to compute archetypes and assess their stability.
 
@@ -211,7 +212,7 @@ def bootstrap_aa(
     rng = np.random.default_rng(seed)
 
     # Reference archetypes
-    ref_Z = AA(n_archetypes=n_archetypes, optim=optim, init=init).fit(X).Z
+    ref_Z = AA(n_archetypes=n_archetypes, optim=optim, init=init, **kwargs).fit(X).Z
 
     # Generate bootstrap samples
     idx_bootstrap = rng.choice(n_samples, size=(n_bootstrap, n_samples), replace=True)
@@ -226,7 +227,7 @@ def bootstrap_aa(
     # Align archetypes
     Z_list = [_align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]
 
-    # Compute variance
+    # Compute variance per archetype
     Z_stack = np.stack(Z_list)
     var_per_archetype = Z_stack.var(axis=0).mean(axis=1)
     mean_variance = var_per_archetype.mean()
@@ -253,7 +254,60 @@ def bootstrap_aa(
     archetype_variance_map = dict(zip(np.arange(n_archetypes), var_per_archetype, strict=False))
     bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].astype(int).map(archetype_variance_map)
 
-    adata.uns["AA_bootstrap"] = bootstrap_df
+    if save_to_anndata:
+        adata.uns["AA_bootstrap"] = bootstrap_df
+        return None
+    else:
+        return bootstrap_df
+
+
+def bootstrap_aa_multiple_k(
+    adata: sc.AnnData, n_bootstrap: int = 30, n_archetypes_list=None, save_to_anndata: bool = True
+):
+    """
+    Perform bootstrap sampling across multiple numbers of archetypes to assess stability.
+
+    This function repeatedly applies bootstrap sampling and Archetypal Analysis (AA) for different
+    numbers of archetypes, aggregates the archetype stability metrics, and allows for evaluating
+    how stability varies with model complexity.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        AnnData object containing the data. The PCA data should be stored in `adata.obsm["X_pca"]`.
+    n_bootstrap : int, optional (default=30)
+        The number of bootstrap samples to generate for each number of archetypes.
+    n_archetypes_list : list of int, optional (default=range(2, 8))
+        A list specifying the numbers of archetypes to evaluate.
+    save_to_anndata : bool, optional (default=True)
+        Whether to save the results to `adata.uns["bootstrap_aa_multiple_k"]`. If `False`, the
+        result is returned.
+
+    Returns
+    -------
+    None or pd.DataFrame
+        If `save_to_anndata=True`, results are stored in `adata.uns["bootstrap_aa_multiple_k"]` as a
+        DataFrame with the following columns:
+        - `archetype`: The archetype index.
+        - `variance_per_archetype`: The mean variance of each archetype's coordinates across bootstrap samples.
+        - `n_archetypes`: The number of archetypes used for the corresponding bootstrap analysis.
+
+        If `save_to_anndata=False`, the DataFrame is returned.
+    """
+    if n_archetypes_list is None:
+        n_archetypes_list = list(range(2, 8))
+
+    df_list = []
+    for k in n_archetypes_list:
+        boostrap_df = bootstrap_aa(adata=adata, n_bootstrap=n_bootstrap, n_archetypes=k, save_to_anndata=False)
+        boostrap_df["n_archetypes"] = k  # type: ignore[index]
+        df_list.append(boostrap_df)
+    df = pd.concat(df_list, axis=0)
+    df = df[["archetype", "variance_per_archetype", "n_archetypes"]].drop_duplicates()
+    if save_to_anndata:
+        adata.uns["bootstrap_aa_multiple_k"] = df
+    else:
+        return df
 
 
 def _project_on_affine_subspace(X, Z) -> np.ndarray:

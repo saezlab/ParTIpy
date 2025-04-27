@@ -86,7 +86,7 @@ class AA:
         optim: str = DEFAULT_OPTIM,
         weight: None | str = DEFAULT_WEIGHT,
         max_iter: int = 500,
-        rel_tol: float = 1e-3,  # TODO: Which relative tolerance should we be using? (1e-3, 1e-4?)
+        rel_tol: float = 1e-4,
         early_stopping: bool = True,
         use_coreset: bool = False,
         coreset_flavor: str = "default",

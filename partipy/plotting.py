@@ -164,6 +164,45 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
     return fig
 
 
+def plot_bootstrap_multiple_k(adata: sc.AnnData) -> pn.ggplot:
+    """
+    Visualize archetype stability as a function of the number of archetypes.
+
+    This function generates a plot summarizing the stability of archetypes across different
+    numbers of archetypes (`k`), based on bootstrap variance metrics. It displays individual
+    archetype variances as points, along with summary statistics (median and maximum variance)
+    as lines.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        Annotated data object containing the results from `bootstrap_aa_multiple_k` in
+        `adata.uns["bootstrap_aa_multiple_k"]`.
+
+    Returns
+    -------
+    pn.ggplot
+        A ggplot object displaying:
+        - Scatter points for individual archetype variances (`variance_per_archetype`) as a function of `n_archetypes`.
+        - Lines and points for the median and maximum variance across archetypes at each `n_archetypes`.
+    """
+    if "bootstrap_aa_multiple_k" not in adata.uns:
+        raise ValueError(
+            "bootstrap_aa_multiple_k not found in adata.uns. Please run bootstrap_aa_multiple_k() to compute"
+        )
+    df = adata.uns["bootstrap_aa_multiple_k"]
+    df_summary = df.groupby("n_archetypes")["variance_per_archetype"].agg(["median", "max"]).reset_index()
+    df_summary = df_summary.melt(id_vars="n_archetypes", value_vars=["median", "max"])
+    p = (
+        pn.ggplot()
+        + pn.geom_point(data=df, mapping=pn.aes(x="n_archetypes", y="variance_per_archetype"), alpha=0.5, size=3)
+        + pn.geom_line(data=df_summary, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
+        + pn.geom_point(data=df_summary, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
+        + pn.labs(x="Number of Archetypes", y="Value", color="Variance\nSummary")
+    )
+    return p
+
+
 def plot_archetypes_2D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot:
     """
     Generate a static 2D scatter plot showing data points, archetypes and the polytope they span.
