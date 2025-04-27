@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import partipy as pt
 import seaborn as sns
+from partipy.utils import align_archetypes, compute_rowwise_l2_distance
+from scipy.spatial.distance import pdist
 from tqdm import tqdm
 
 benchmark_path = Path(".") / "benchmarks"
@@ -78,6 +80,12 @@ for simulation_dict in simulation_settings_list:
             model.fit(X=X)
             end_time = time.time()
 
+            # compute the l2 distance between the true archetypes and the (aligned) learned archetypes
+            Z_aligned = align_archetypes(ref_arch=Z, query_arch=model.Z)
+            l2_distances = compute_rowwise_l2_distance(mtx_1=Z, mtx_2=Z_aligned)
+            l2_distances_mean = l2_distances.mean()
+            l2_distances_mean_normalized = l2_distances_mean / np.mean(pdist(Z))
+
             # record the results
             execution_time = end_time - start_time
 
@@ -86,6 +94,8 @@ for simulation_dict in simulation_settings_list:
                 "rss": model.RSS,
                 "varexpl": model.varexpl,
                 "seed": simulation_seed,
+                "l2_dist": l2_distances_mean,
+                "l2_dist_norm": l2_distances_mean_normalized,
             }
             result_dict = result_dict | model.fitting_info  # type: ignore[operator, assignment, attr-defined]
             result_dict = result_dict | simulation_dict  # type: ignore[operator, assignment, attr-defined]
@@ -96,7 +106,7 @@ result_df = pd.DataFrame(result_list)
 result_df["time_log10"] = np.log10(result_df["time"])
 result_df.to_csv(benchmark_path / "results.csv", index=False)
 
-all_features = ["time_log10", "varexpl"]
+all_features = ["time_log10", "varexpl", "l2_dist_norm"]
 
 for noise_std in noise_std_list:
     for feature in all_features:

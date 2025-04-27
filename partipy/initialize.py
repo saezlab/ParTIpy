@@ -13,7 +13,16 @@ def _construct_B_from_indices(X: np.ndarray, indices: list):
     return B
 
 
-def _init_uniform(X: np.ndarray, n_archetypes: int, seed: int = 42) -> np.ndarray:
+def _init_A(n_samples: int, n_archetypes: int, seed: int):
+    rng = np.random.default_rng(seed)  # Use a fixed seed
+    A = -np.log(rng.random((n_samples, n_archetypes), dtype=np.float32))
+    A /= np.sum(A, axis=1, keepdims=True)
+    return A
+
+
+def _init_uniform(
+    X: np.ndarray, n_archetypes: int, seed: int = 42, return_indices: bool = False
+) -> np.ndarray | tuple[np.ndarray, list[int]]:
     """Random selection of data points from X to form initial archetypes.
 
     Parameters
@@ -38,10 +47,15 @@ def _init_uniform(X: np.ndarray, n_archetypes: int, seed: int = 42) -> np.ndarra
     rng = np.random.default_rng(seed=seed)
     selected_indices = list(rng.choice(a=n_samples, size=n_archetypes, replace=False))
     B = _construct_B_from_indices(X=X, indices=selected_indices)
-    return B
+    if return_indices:
+        return B, selected_indices
+    else:
+        return B
 
 
-def _init_furthest_sum(X: np.ndarray, n_archetypes: int, seed: int = 42) -> np.ndarray:
+def _init_furthest_sum(
+    X: np.ndarray, n_archetypes: int, seed: int = 42, return_indices: bool = False
+) -> np.ndarray | tuple[np.ndarray, list[int]]:
     """Furthest sum initialization for archetypes.
 
     Reference: M. Mørup and L. K. Hansen, “Archetypal analysis for machine learning and data mining,” Neurocomputing, vol. 80, pp. 54-63, Mar. 2012, doi: https://doi.org/10.1016/j.neucom.2011.06.033.
@@ -84,10 +98,15 @@ def _init_furthest_sum(X: np.ndarray, n_archetypes: int, seed: int = 42) -> np.n
         selected_indices.append(allowed_indices[np.argmax(mean_distances[zero_distances > 0])])
 
     B = _construct_B_from_indices(X=X, indices=selected_indices)
-    return B
+    if return_indices:
+        return B, selected_indices
+    else:
+        return B
 
 
-def _init_plus_plus(X: np.ndarray, n_archetypes: int, seed: int = 42) -> np.ndarray:
+def _init_plus_plus(
+    X: np.ndarray, n_archetypes: int, seed: int = 42, return_indices: bool = False
+) -> np.ndarray | tuple[np.ndarray, list[int]]:
     """Archetypal++ initialization for archetypes.
 
     Reference: Mair, S., Sjölund, J., 2024. Archetypal Analysis++: Rethinking the Initialization Strategy. doi: https://doi.org/10.48550/arXiv.2301.13748
@@ -130,4 +149,7 @@ def _init_plus_plus(X: np.ndarray, n_archetypes: int, seed: int = 42) -> np.ndar
         selected_indices.append(rng.choice(a=n_samples, size=1, p=p)[0])
 
     B = _construct_B_from_indices(X=X, indices=selected_indices)
-    return B
+    if return_indices:
+        return B, selected_indices
+    else:
+        return B

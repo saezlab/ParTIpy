@@ -4,6 +4,8 @@ from partipy.arch import AA
 from partipy.const import INIT_ALGS, OPTIM_ALGS, WEIGHT_ALGS
 from partipy.simulate import simulate_archetypes
 from partipy.utils import align_archetypes, compute_relative_rowwise_l2_distance
+from scipy.optimize import linear_sum_assignment
+from scipy.spatial.distance import cdist
 
 # for regularized_nnls the tests take much longer, and this algorithm is not recommended
 FAST_OPTIM_ALGS = tuple(alg for alg in OPTIM_ALGS if alg != "regularized_nnls")
@@ -25,7 +27,7 @@ def test_that_archetypes_can_be_identified_fail_if_we_dont_optimize(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=n_dimensions,
-        noise_std=0.0,
+        noise_std=0.05,
         seed=0,
     )
 
@@ -58,7 +60,7 @@ def test_that_all_algorithms_can_identify_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=n_dimensions,
-        noise_std=0.0,
+        noise_std=0.05,
         seed=0,
     )
 
@@ -77,8 +79,7 @@ def test_that_all_algorithms_can_identify_archetypes(
     "n_archetypes, n_dimensions",
     [(n_a, n_d) for n_a in range(3, 8, 2) for n_d in range(2, 13, 2) if n_a <= n_d],
 )
-# @pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
-@pytest.mark.parametrize("optim_str", ["projected_gradients"])
+@pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
 def test_that_fast_algorithms_can_identify_archetypes(
     n_archetypes: int,
     n_dimensions: int,
@@ -93,7 +94,7 @@ def test_that_fast_algorithms_can_identify_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=n_dimensions,
-        noise_std=0.0,
+        noise_std=0.05,
         seed=0,
     )
 
@@ -119,7 +120,7 @@ def test_that_input_to_AA_is_not_modfied(optim_str, weight_str, init_str) -> Non
         n_samples=N_SAMPLES,
         n_archetypes=N_ARCHETYPES,
         n_dimensions=N_DIMENSIONS,
-        noise_std=0.0,
+        noise_std=0.05,
         seed=0,
     )
     X_in = X.copy()
@@ -134,3 +135,83 @@ def test_that_input_to_AA_is_not_modfied(optim_str, weight_str, init_str) -> Non
     AA_object.fit(X)
 
     assert np.all(np.isclose(X_in, X))
+
+
+@pytest.mark.parametrize("optim_str", OPTIM_ALGS)
+@pytest.mark.parametrize("init_str", INIT_ALGS)
+@pytest.mark.parametrize("seed", list(range(3)))
+def test_that_shifting_X_does_not_affect_A(
+    optim_str: str,
+    init_str: str,
+    seed: int,
+) -> None:
+    N_SAMPLES = 1_000
+    N_ARCHETYPES = 3
+    N_DIMENSIONS = 4
+    MAX_REL_DIST_A = 0.50  # TODO: This threshold should be lower (but we anyway rather care for Z)
+    MAX_REL_DIST_Z = 0.10
+    X, A, Z = simulate_archetypes(
+        n_samples=N_SAMPLES,
+        n_archetypes=N_ARCHETYPES,
+        n_dimensions=N_DIMENSIONS,
+        noise_std=0.05,
+        seed=seed,
+    )
+    rng = np.random.default_rng(seed=seed)
+    shift_vec = rng.normal(loc=0.0, scale=100.0, size=N_DIMENSIONS)
+    X += shift_vec
+    Z_shifted = Z + shift_vec
+
+    AA_object = AA(n_archetypes=N_ARCHETYPES, init=init_str, optim=optim_str)
+    AA_object.fit(X)
+
+    euclidean_d = cdist(Z_shifted, AA_object.Z)
+    ref_idx, query_idx = linear_sum_assignment(euclidean_d)
+    AA_object.A = AA_object.A[:, query_idx]
+    AA_object.Z = AA_object.Z[query_idx, :]
+
+    rel_distance_A = compute_relative_rowwise_l2_distance(A, AA_object.A)
+    assert np.all(rel_distance_A < MAX_REL_DIST_A)
+
+    rel_distance_to_scaled_Z = compute_relative_rowwise_l2_distance(Z_shifted, AA_object.Z)
+    assert np.all(rel_distance_to_scaled_Z < MAX_REL_DIST_Z)
+
+
+@pytest.mark.parametrize("optim_str", OPTIM_ALGS)
+@pytest.mark.parametrize("init_str", INIT_ALGS)
+@pytest.mark.parametrize("seed", list(range(3)))
+@pytest.mark.parametrize("scale", [1e-9, 1e-4, 1e4, 1e9])
+def test_that_scaling_X_does_not_affect_A(
+    optim_str: str,
+    init_str: str,
+    seed: int,
+    scale: float,
+) -> None:
+    N_SAMPLES = 1_000
+    N_ARCHETYPES = 3
+    N_DIMENSIONS = 4
+    MAX_REL_DIST_A = 0.50  # TODO: This threshold should be lower (but we anyway rather care for Z)
+    MAX_REL_DIST_Z = 0.10
+    X, A, Z = simulate_archetypes(
+        n_samples=N_SAMPLES,
+        n_archetypes=N_ARCHETYPES,
+        n_dimensions=N_DIMENSIONS,
+        noise_std=0.05,
+        seed=seed,
+    )
+    X *= scale
+    Z_scaled = Z * scale
+
+    AA_object = AA(n_archetypes=N_ARCHETYPES, init=init_str, optim=optim_str)
+    AA_object.fit(X)
+
+    euclidean_d = cdist(Z_scaled, AA_object.Z)
+    ref_idx, query_idx = linear_sum_assignment(euclidean_d)
+    AA_object.A = AA_object.A[:, query_idx]
+    AA_object.Z = AA_object.Z[query_idx, :]
+
+    rel_distance_A = compute_relative_rowwise_l2_distance(A, AA_object.A)
+    assert np.all(rel_distance_A < MAX_REL_DIST_A)
+
+    rel_distance_to_scaled_Z = compute_relative_rowwise_l2_distance(Z_scaled, AA_object.Z)
+    assert np.all(rel_distance_to_scaled_Z < MAX_REL_DIST_Z)

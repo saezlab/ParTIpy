@@ -5,7 +5,7 @@ from partipy.simulate import simulate_archetypes
 
 N_SAMPLES = 1_000
 
-X, A, Z = simulate_archetypes(n_samples=N_SAMPLES, n_archetypes=5, n_dimensions=10, noise_std=0.0)
+X, A, Z = simulate_archetypes(n_samples=N_SAMPLES, n_archetypes=5, n_dimensions=10, noise_std=0.05)
 
 
 @pytest.mark.parametrize("init_func", [_init_uniform, _init_furthest_sum, _init_plus_plus])

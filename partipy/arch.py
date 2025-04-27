@@ -7,18 +7,20 @@ Code adapted from https://github.com/atmguille/archetypal-analysis (by Guillermo
 """
 
 import numpy as np
+from scipy.optimize import nnls
 
 from .const import (
     DEFAULT_INIT,
     DEFAULT_OPTIM,
     DEFAULT_WEIGHT,
     INIT_ALGS,
+    LAMBDA,
     MIN_ITERATIONS,
     OPTIM_ALGS,
     WEIGHT_ALGS,
-    WEIGHTING_FLAVORS,
 )
-from .initialize import _init_furthest_sum, _init_plus_plus, _init_uniform
+from .coreset import construct_coreset, construct_lightweight_coreset, construct_uniform_coreset
+from .initialize import _init_A, _init_furthest_sum, _init_plus_plus, _init_uniform
 from .optim import (
     _compute_A_frank_wolfe,
     _compute_A_projected_gradients,
@@ -84,8 +86,14 @@ class AA:
         optim: str = DEFAULT_OPTIM,
         weight: None | str = DEFAULT_WEIGHT,
         max_iter: int = 500,
-        rel_tol: float = 1e-4,  # TODO: Which relative tolerance should we be using?
+        rel_tol: float = 1e-3,  # TODO: Which relative tolerance should we be using? (1e-3, 1e-4?)
         early_stopping: bool = True,
+        use_coreset: bool = False,
+        coreset_flavor: str = "default",
+        coreset_fraction: float = 0.1,
+        coreset_size: None | int = None,
+        centering: bool = True,
+        scaling: bool = True,
         verbose: bool = False,
         seed: int = 42,
         **optim_kwargs,
@@ -94,11 +102,15 @@ class AA:
         self.init = init
         self.optim = optim
         self.weight = weight
-        self.weighting_flavor = "mair_brefeld_2019"  # NOTE: harcoded for now
         self.max_iter = max_iter
         self.rel_tol = rel_tol
         self.early_stopping = early_stopping
-        self.abs_tol: float = None  # type: ignore[assignment]
+        self.use_coreset = use_coreset
+        self.coreset_flavor = coreset_flavor
+        self.coreset_fraction = coreset_fraction
+        self.coreset_size = coreset_size
+        self.centering = centering
+        self.scaling = scaling
         self.verbose = verbose
         self.seed = seed
         self.optim_kwargs = optim_kwargs
@@ -124,11 +136,6 @@ class AA:
         if self.weight not in WEIGHT_ALGS:
             raise ValueError(f"Weighting method '{self.weight}' is not supported. Must be one of {WEIGHT_ALGS}.")
 
-        if self.weighting_flavor not in WEIGHTING_FLAVORS:
-            raise ValueError(
-                f"Weighting method '{self.weighting_flavor}' is not supported. Must be one of {WEIGHTING_FLAVORS}."
-            )
-
         if self.max_iter < 0:
             raise ValueError(f"max_iter must be non-negative, got {self.max_iter}.")
 
@@ -137,6 +144,19 @@ class AA:
                 "Early stopping must be disabled (early_stopping=False) when using weighted/robust"
                 "archetypal analysis. This is because optimization with weights does not lead to RSS reduction"
             )
+
+        if self.use_coreset and self.weight:
+            raise ValueError(
+                "It is not yet implemented to use robust archetypal analysis and coresets at the same time"
+            )
+
+        # harcoding the weighting flavor for now
+        if self.use_coreset:
+            self.weighting_flavor = "mair_brefeld_2019"
+        elif self.weight:
+            self.weighting_flavor = "eugster_leisch_2011"
+        else:
+            self.weighting_flavor = None  # type: ignore[assignment]
 
     def fit(self, X: np.ndarray):
         """
@@ -154,15 +174,6 @@ class AA:
             The instance of the AA class, with computed archetypes and RSS stored as attributes.
         """
         self.n_samples, self.n_features = X.shape
-
-        # ensure C-contiguous format for numba
-        X = np.ascontiguousarray(X, dtype=np.float32)
-
-        # center X by substracting the feature means, scale X by dividing by the feature stds
-        # feature_means = X.mean(axis=0, keepdims=True)
-        # feature_stds = X.std(axis=0, keepdims=True)
-        # X -= feature_means
-        # X /= feature_stds
 
         # set the initalization function
         if self.init == "uniform":
@@ -196,57 +207,94 @@ class AA:
             else:
                 raise NotImplementedError()
 
-        # initialize B and the archetypes Z
-        B = initialize_B(X=X, n_archetypes=self.n_archetypes, seed=self.seed)
-        Z = B @ X
+        # ensure C-contiguous format for numba (plus using np.float32 datatype)
+        X = np.ascontiguousarray(X, dtype=np.float32)
 
-        # randomly initialize A
-        rng = np.random.default_rng(self.seed)  # Use a fixed seed
-        A = -np.log(rng.random((self.n_samples, self.n_archetypes), dtype=np.float32))
-        A /= np.sum(A, axis=1, keepdims=True)
+        # keep the raw X
+        X_raw = X
 
-        TSS = RSS = np.sum(X * X)
+        # center X by substracting the feature means
+        if self.centering:
+            feature_means = X.mean(axis=0, keepdims=True)
+            X -= feature_means
 
-        W = np.ones(X.shape[0], dtype=np.float32) if self.weight else None
+        # scale X globally (needs to happen before we compute weights, otherwise the weights are off)
+        # TODO: Test whether we can also just apply the same scaling to the weights
+        if self.scaling:
+            global_scale = np.linalg.norm(X) / np.sqrt(np.prod(X.shape))
+            X /= global_scale
 
-        convergence_flag = False
-        for n_iter in range(self.max_iter):
-            if self.weighting_flavor == "eugster_leisch_2011":
-                # (W[:, None] * X) is the same as np.diag(W) @ X
-                X_w = (W[:, None] * X) if self.weight else X  # type: ignore[arg-type, index]
-                A = compute_A(X_w, Z, A, **self.optim_kwargs)
-                B = compute_B(X_w, A, B, **self.optim_kwargs)
-                Z = B @ X_w
-            elif self.weighting_flavor == "mair_brefeld_2019":
-                A = compute_A(X, Z, A, **self.optim_kwargs)
-                A_w = (np.sqrt(W)[:, None] * A) if self.weight else A  # type: ignore[arg-type, index]
-                X_w = (np.sqrt(W)[:, None] * X) if self.weight else X  # type: ignore[arg-type, index]
-                B = compute_B(X_w, A_w, B, **self.optim_kwargs)
-                Z = B @ X_w
+        # construct the coreset and initialize A
+        if self.use_coreset:
+            if self.coreset_size is None:
+                self.coreset_size = int(self.n_samples * self.coreset_fraction)
+
+            if self.coreset_flavor == "default":
+                coreset_indices, W = construct_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
+            elif self.coreset_flavor == "lightweight_kmeans":
+                coreset_indices, W = construct_uniform_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
+            elif self.coreset_flavor == "uniform":
+                coreset_indices, W = construct_lightweight_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
             else:
                 raise NotImplementedError()
 
-            # compute residuals using the original data (to recompute the weights)
-            A_0 = compute_A(X, Z, A, **self.optim_kwargs) if self.weight else A
-            R = X - A_0 @ Z
-            W = compute_weights(R) if self.weight else None
+            X = X[coreset_indices, :].copy()  # TODO: probably no copy here needed!
+            A = _init_A(n_samples=self.coreset_size, n_archetypes=self.n_archetypes, seed=self.seed)
 
-            # import matplotlib.pyplot as plt
-            # plt.style.use("dark_background")
-            # if n_iter in [0, 1, 3, 7, 15, 31]:
-            #    # show residual norm
-            #    plt.scatter(X[:, 0], X[:, 1], c=np.sum(np.abs(R), axis=1), alpha=1.0)
-            #    plt.gca().set_aspect('equal')
-            #    plt.title(n_iter)
-            #    plt.colorbar()
-            #    plt.show()
-            #
-            #    # show weights
-            #    plt.scatter(X[:, 0], X[:, 1], c=W, alpha=1.0)
-            #    plt.gca().set_aspect('equal')
-            #    plt.title(n_iter)
-            #    plt.colorbar()
-            #    plt.show()
+        else:
+            A = _init_A(n_samples=self.n_samples, n_archetypes=self.n_archetypes, seed=self.seed)
+
+        # initialize B and the archetypes Z
+        B, inital_indices = initialize_B(X=X, n_archetypes=self.n_archetypes, seed=self.seed, return_indices=True)
+        Z = B @ X
+
+        # initialize weights
+        if self.weight:
+            W = np.ones(X.shape[0], dtype=np.float32)
+
+        TSS = RSS = np.sum(X * X)
+
+        if self.weighting_flavor == "mair_brefeld_2019":
+            # we can store
+            Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
+
+        convergence_flag = False
+        for n_iter in range(self.max_iter):
+            if self.weighting_flavor is None:
+                A = compute_A(X, Z, A, **self.optim_kwargs)
+                B = compute_B(X, A, B, **self.optim_kwargs)
+                Z = B @ X
+            elif self.weighting_flavor == "eugster_leisch_2011":
+                WX = W[:, None] * X  # same as np.diag(W) @ X
+                A = compute_A(WX, Z, A, **self.optim_kwargs)
+                B = compute_B(WX, A, B, **self.optim_kwargs)
+                Z = B @ WX
+            elif self.weighting_flavor == "mair_brefeld_2019":
+                # compute A using the unweighted data X
+                A = _compute_A_regularized_nnls(X=X, Z=Z, A=None)
+
+                # weight A and X
+                WA = W[:, None] * A
+                WX = W[:, None] * X
+
+                # compute Z given WX and WA
+                Z = np.linalg.lstsq(np.dot(WA.T, WA), np.dot(WA.T, WX), rcond=None)[0].astype(np.float32)
+
+                # now compute optimal B given Z and X
+                Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
+                B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :])[0] for k in range(Z.shape[0])]).astype(np.float32)
+                Z = B @ X
+
+            else:
+                raise NotImplementedError()
+
+            if self.weight:
+                # compute residuals using the original data (to recompute the weights)
+                A_0 = compute_A(X, Z, A, **self.optim_kwargs)
+                R = X - A_0 @ Z
+                W = compute_weights(R)
+            else:
+                R = X - A @ Z
 
             # compute RSS and check for convergence
             RSS = np.linalg.norm(R) ** 2
@@ -264,7 +312,11 @@ class AA:
                 else np.nan
             )
             if self.verbose:
-                print(f"\rRSS: {RSS:.6f} | rel_delta_RSS: {rel_delta_RSS_mean_last_n:.6f}", end="", flush=True)
+                print(
+                    f"\riter: {n_iter} | RSS: {RSS:.3f} | rel_delta_RSS: {rel_delta_RSS_mean_last_n:.6f}",
+                    end="",
+                    flush=True,
+                )
             if np.isnan(RSS) or np.isinf(RSS):
                 print("\nWarning: RSS is NaN or Inf. Stopping optimization.")
                 break
@@ -281,17 +333,29 @@ class AA:
             )
             print(message)
 
-        # re-scale and add back the feature means
-        # X *= feature_stds
-        # X += feature_means
-        # Z = np.dot(B, X)
+        if self.use_coreset:
+            B_full = np.zeros((self.n_archetypes, self.n_samples))
+            for B_col_idx, coreset_idx in enumerate(coreset_indices):
+                B_full[:, coreset_idx] += B[:, B_col_idx]
+            # B_full[:, coreset_indices] = B # this only works in resample is set to false
+            B = B_full
+            Z = B @ X_raw
+            A = _compute_A_regularized_nnls(X=X_raw, Z=Z, A=None)
 
-        # Recalculate A and B using the unweighted and data
+        # If using weights, we need to recalculate A and B using the unweighted data
         if self.weight:
             A = compute_A(X, Z, A, **self.optim_kwargs)
             B = compute_B(X, A, B, **self.optim_kwargs)
             Z = B @ X
             RSS = np.linalg.norm(X - A @ Z) ** 2
+
+        if self.scaling:
+            X *= global_scale
+            Z *= global_scale
+
+        if self.centering:
+            X += feature_means
+            Z += feature_means
 
         self.Z = Z
         self.A = A
@@ -302,6 +366,9 @@ class AA:
         self.fitting_info = {
             "conv": convergence_flag if self.max_iter > 0 else None,
             "n_iter": n_iter if self.max_iter > 0 else None,
+            "coreset_indices": coreset_indices if self.use_coreset else None,
+            "weights": W if (self.use_coreset or self.weight) else None,
+            "inital_indices": inital_indices,
         }
         return self
 

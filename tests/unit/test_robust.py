@@ -18,17 +18,19 @@ def test_that_all_algorithms_can_identify_archetypes_in_robust_mode(
     optim_str: str,
     weight_str: str,
 ) -> None:
+    MAX_ITER = 50 if optim_str == "regularized_nnls" else 500
     N_SAMPLES = 1_000
-    MAX_REL_DIST = 0.8 if n_archetypes < n_dimensions else 0.14
+    MAX_REL_DIST = 0.50
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
         n_dimensions=n_dimensions,
-        noise_std=0.0,
-        seed=0,
+        noise_std=0.05,
+        seed=123,
     )
 
     # add outliers
+    OUTLIER_SCALE = 5
     n_outliers = 1
     n_points_per_outlier = 3
     rng = np.random.default_rng(seed=0)
@@ -38,12 +40,17 @@ def test_that_all_algorithms_can_identify_archetypes_in_robust_mode(
         start_idx = i * n_points_per_outlier
         end_idx = (i + 1) * n_points_per_outlier
         outlier_mtx[start_idx:end_idx, :] = rng.normal(
-            loc=X[outlier_idx, :] * 3, scale=0.2, size=(n_points_per_outlier, n_dimensions)
+            loc=X[outlier_idx, :] * OUTLIER_SCALE, scale=0.2, size=(n_points_per_outlier, n_dimensions)
         )
     X = np.vstack([X, outlier_mtx])
 
     AA_object = AA(
-        n_archetypes=n_archetypes, init="uniform", optim=optim_str, weight=weight_str, early_stopping=False, max_iter=10
+        n_archetypes=n_archetypes,
+        init="uniform",
+        optim=optim_str,
+        weight=weight_str,
+        early_stopping=False,
+        max_iter=MAX_ITER,
     )
     AA_object.fit(X)
     Z_hat = AA_object.Z

@@ -19,8 +19,8 @@ b) https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 """
 
 import numpy as np
-import scipy.optimize
 from numba import float32, njit, prange
+from scipy.optimize import nnls
 
 from .const import LAMBDA
 
@@ -35,14 +35,14 @@ def _compute_A_regularized_nnls(
     X: np.ndarray,
     Z: np.ndarray,
     A: np.ndarray | None = None,
-    derivative_max_iter=None,
 ) -> np.ndarray:
     # huge_constant is added as a new column to account for w norm constraint
     X_padded = np.hstack([X, (LAMBDA * np.ones(X.shape[0]))[:, None]])
     Zt_padded = np.vstack([Z.T, LAMBDA * np.ones(Z.shape[0])])
 
     # Use non-negative least squares to solve the optimization problem
-    A = np.array([scipy.optimize.nnls(A=Zt_padded, b=X_padded[n, :])[0] for n in range(X.shape[0])])
+    A = np.array([nnls(A=Zt_padded, b=X_padded[n, :])[0] for n in range(X.shape[0])])
+    A = A.astype(np.float32)
     return A
 
 
@@ -50,12 +50,12 @@ def _compute_B_regularized_nnls(
     X: np.ndarray,
     A: np.ndarray,
     B: np.ndarray | None = None,
-    derivative_max_iter=None,
 ) -> np.ndarray:
     Z = np.linalg.lstsq(a=A, b=X, rcond=None)[0]
     Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
     Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
-    B = np.array([scipy.optimize.nnls(A=Xt_padded, b=Z_padded[k, :])[0] for k in range(Z.shape[0])])
+    B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :])[0] for k in range(Z.shape[0])])
+    B = B.astype(np.float32)
     return B
 
 
