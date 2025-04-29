@@ -246,19 +246,22 @@ def extract_specific_processes(
     return results
 
 
-def compute_meta_enrichment(adata: sc.AnnData, meta_col: str) -> pd.DataFrame:
+def compute_meta_enrichment(adata: sc.AnnData, meta_col: str, datatype: str = "automatic") -> pd.DataFrame:
     """
     Compute the enrichment of metadata categories across archetypes.
 
     This function estimates how enriched each metadata category is within each archetype using
     a weighted average approach. Weights are based on each cell’s contribution to each archetype
-    (`adata.obsm["cell_weights"]`), and enrichment is calculated from one-hot encoded metadata.
+    (`adata.obsm["cell_weights"]`).It supports both categorical and continuous metadata.
 
-    Steps:
-    1. One-hot encode the metadata column from `adata.obs[meta_col]`.
-    2. Normalize the metadata so that the sum for each category equals 1 (column-wise).
-    3. Compute weighted enrichment using cell weights.
-    4. Normalize the resulting enrichment scores across metadata categories for each archetype (row-wise).
+    Steps for categorical data:
+        1. One-hot encode the metadata column from `adata.obs[meta_col]`.
+        2. Normalize the metadata so that the sum for each category equals 1 (column-wise).
+        3. Compute weighted enrichment using cell weights.
+        4. Normalize the resulting enrichment scores across metadata categories for each archetype (row-wise).
+
+    Steps for continuous data:
+        1. Compute the weighted average of the metadata per archetype.
 
     Parameters
     ----------
@@ -267,12 +270,18 @@ def compute_meta_enrichment(adata: sc.AnnData, meta_col: str) -> pd.DataFrame:
         in `adata.obsm["cell_weights"]`
     meta_col : str
         The name of the categorical metadata column in `adata.obs` to use for enrichment analysis.
+    datatype : str, optional (default="automatic")
+        Specifies how to interpret the metadata column:
+        - "automatic": infers type based on column dtype.
+        - "categorical": treats the column as categorical and one-hot encodes it.
+        - "continuous": treats the column as numeric and computes weighted averages.
 
     Returns
     -------
     pd.DataFrame
-            A DataFrame of shape (n_archetypes, n_categories), where each entry represents the
-            normalized enrichment of a metadata category withforin a given archetype.
+        A DataFrame of shape (n_archetypes, n_categories) for categorical data or
+        (n_archetypes, 1) for continuous data, containing normalized enrichment scores
+        or weighted averages respectively.
     """
     if meta_col not in adata.obs:
         raise ValueError("Metadata column does not exist")
@@ -282,17 +291,40 @@ def compute_meta_enrichment(adata: sc.AnnData, meta_col: str) -> pd.DataFrame:
     metadata = adata.obs[meta_col]
     weights = adata.obsm["cell_weights"].T
 
-    # One-hot encoding of metadata
-    df_encoded = pd.get_dummies(metadata).astype(float)
-    # Normalization
-    df_encoded = df_encoded / df_encoded.values.sum(axis=0, keepdims=True)
+    if datatype == "automatic":
+        if pd.api.types.is_numeric_dtype(metadata):
+            mode = "continuous"
+            metadata = metadata.to_numpy(dtype="float")
+        elif pd.api.types.is_string_dtype(metadata):
+            mode = "categorical"
+        else:
+            raise ValueError("Not a valid data type detected")
+    elif datatype == "continuous" or datatype == "categorical":
+        mode = datatype
+    else:
+        raise ValueError("Not a valid data type")
 
-    # Compute weighted enrichment
-    weighted_meta = np.einsum("ij,jk->ik", weights, df_encoded)
-    weighted_meta /= weights.sum(axis=1, keepdims=True)
+    if mode == "categorical":
+        # One-hot encoding of metadata
+        df_encoded = pd.get_dummies(metadata).astype(float)
+        # Normalization
+        df_encoded = df_encoded / df_encoded.values.sum(axis=0, keepdims=True)
 
-    # Normalization
-    weighted_meta = weighted_meta / np.sum(weighted_meta, axis=1, keepdims=True)
-    weighted_meta_df = pd.DataFrame(weighted_meta, columns=df_encoded.columns)
+        # Compute weighted enrichment
+        weighted_meta = np.einsum("ij,jk->ik", weights, df_encoded)
+        weighted_meta /= weights.sum(axis=1, keepdims=True)
+
+        # Normalization
+        weighted_meta = weighted_meta / np.sum(weighted_meta, axis=1, keepdims=True)
+        weighted_meta_df = pd.DataFrame(weighted_meta, columns=df_encoded.columns)
+
+    elif mode == "continuous":
+        metadata = np.asarray(metadata, dtype=float).reshape(-1, 1)
+
+        # Compute weighted enrichment
+        weighted_meta = np.einsum("ij,jk->ik", weights, metadata)
+        weighted_meta /= weights.sum(axis=1, keepdims=True)
+
+        weighted_meta_df = pd.DataFrame(weighted_meta, columns=[meta_col])
 
     return weighted_meta_df
