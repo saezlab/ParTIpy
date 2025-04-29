@@ -12,6 +12,8 @@ from partipy.enrichment import (
 from partipy.simulate import simulate_archetypes
 from scipy.spatial.distance import cdist
 
+np.random.seed(42)
+
 
 def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs):
     X, A, Z = simulate_archetypes(
@@ -560,28 +562,6 @@ def test_extract_specific_processes_input_validation():
 ### compute_meta_enrichment ###
 
 
-def test_compute_meta_enrichment_shape():
-    """Test output shape.
-
-    Verifies:
-    - Output shape matches (n_archetypes × meta groups)
-    """
-    # Setup with 3 cells, 5 genes, 3 meta groups and 2 archetypes
-    adata = sc.AnnData(X=np.random.rand(3, 5))
-    adata.obs["group"] = ["X", "Y", "Z"]
-
-    adata.obsm["cell_weights"] = np.array(
-        [
-            [1.0, 0.0],  # Archetype 0 fully owns cell 0
-            [0.0, 1.0],  # Archetype 1 fully owns cell 1
-            [0.5, 0.5],  # Cell 2 split
-        ]
-    )
-
-    result = compute_meta_enrichment(adata, "group")
-    assert result.shape == (2, 3), "Did not return expeected shape"
-
-
 def test_compute_meta_enrichment_correct_assigned():
     """
     Test whether meta-enrichment correctly assigns dominant labels to archetypes.
@@ -617,7 +597,7 @@ def test_compute_meta_enrichment_correct_assigned():
 
 
 def test_compute_meta_enrichment_input_validation():
-    """Tets if input validation works as intended.
+    """Tests if input validation works as intended.
 
     Verifies:
     - Raises ValueError when ometa column does not exist
@@ -628,6 +608,9 @@ def test_compute_meta_enrichment_input_validation():
 
     with pytest.raises(ValueError):
         compute_meta_enrichment(adata, meta_col="dklmdsfm")
+
+    with pytest.raises(ValueError):
+        compute_meta_enrichment(adata, meta_col="group", datatype="dfkjgn")
 
     del adata.obsm["cell_weights"]
     with pytest.raises(ValueError):
@@ -658,6 +641,53 @@ def test_compute_meta_enrichment_normalization():
     assert np.isclose(result.loc[0, "X"], 0.666, atol=0.01), "Archetype 0 X contribution not as expected"
     assert np.isclose(result.loc[0, "Z"], 0.333, atol=0.01), "Archetype 0 Z contribution not as expected"
 
-    # 2/3 from Archetype 0 is Y, 1/3 from Z
+    # 2/3 from Archetype 1 is Y, 1/3 from Z
     assert np.isclose(result.loc[1, "Y"], 0.666, atol=0.01), "Archetype 1 Y contribution not as expected"
     assert np.isclose(result.loc[1, "Z"], 0.333, atol=0.01), "Archetype 1 Z contribution not as expected"
+
+
+def test_compute_meta_enrichment_datatype_identification_and_shape():
+    """
+    Test whether compute_meta_enrichment correctly identifies and processes
+    categorical and continuous metadata columns based on their dtype.
+
+    Verifies:
+    - Correct output shape
+    - Correct identification of datatype
+    """
+    adata = _simulate_adata(n_samples=3, n_dimensions=10, n_archetypes=2, n_pcs=2)
+    # Categorical metadata
+    adata.obs["categorical"] = ["X", "Y", "Z"]
+    # Continuous metadata
+    adata.obs["continuous"] = [1, 2.5, 3]
+
+    assert compute_meta_enrichment(adata, "categorical").shape == (2, 3), (
+        "Did not return expeected shape for categorical data"
+    )
+    assert compute_meta_enrichment(adata, "continuous").shape == (2, 1), (
+        "Did not return expeected shape for continuous data"
+    )
+
+
+def test_compute_meta_enrichment_continuous_data():
+    """
+    Test whether compute_meta_enrichment correctly computes weighted averages
+    for continuous metadata. Ensures archetype 0 is enriched in high 'age' values
+    and archetype 1 is enriched in low 'age' values.
+
+    Verifies:
+    - Correct calculation of continuous data enrichment
+    """
+    adata = _simulate_adata(n_samples=300, n_dimensions=10, n_archetypes=3, n_pcs=2)
+
+    # Assign random ages initially
+    adata.obs["age"] = np.random.randint(5, 70, len(adata.obs))
+
+    # Force age bias
+    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 0] > 0.25]
+    adata.obs.loc[selected_cells, "age"] = 70
+    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 1] > 0.25]
+    adata.obs.loc[selected_cells, "age"] = 5
+
+    res = compute_meta_enrichment(adata, "age", datatype="continuous")
+    assert res.iloc[0].item() > res.iloc[2].item() > res.iloc[1].item()
