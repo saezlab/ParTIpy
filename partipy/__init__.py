@@ -32,5 +32,6 @@ from .plotting import (
     plot_bootstrap_multiple_k,
     plot_IC,
     plot_var_explained,
+    radarplot_meta_enrichment,
 )
 from .simulate import simulate_archetypes

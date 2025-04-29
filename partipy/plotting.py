@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -602,3 +603,76 @@ def barplot_enrichment_comparison(specific_processes_arch: pd.DataFrame):
         + pn.coord_flip()
     )
     return plot
+
+
+def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
+    """
+    Parameters
+    ----------
+    meta_enrich: pd.DataFrame
+        Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+
+    Returns
+    -------
+    plt.pyplot.Figure
+        Radar plots for all archetypes.
+    """
+    # Prepare data
+    meta_enrich = meta_enrich.T.reset_index().rename(columns={"index": "Meta_feature"})
+
+    # Function to create a radar plot for a given row
+    def make_radar(row, title, color):
+        # Set number of meta categories
+        categories = list(meta_enrich)[1:]
+        N = len(categories)
+
+        # Calculate angles for the radar plot
+        angles = [n / float(N) * 2 * np.pi for n in range(N)]
+        angles += angles[:1]
+
+        # Initialise the radar plot
+        ax = plt.subplot(int(np.ceil(len(meta_enrich) / 2)), 2, row + 1, polar=True)
+
+        # Put first axis on top:
+        ax.set_theta_offset(np.pi / 2)
+        ax.set_theta_direction(-1)
+
+        # One axe per variable and add labels
+        archetype_label = [f"A{i}" for i in range(len(list(meta_enrich)[1:]))]
+        plt.xticks(angles[:-1], archetype_label, color="grey", size=8)
+
+        # Draw ylabels
+        ax.set_rlabel_position(0)
+        plt.yticks(
+            [0, 0.25, 0.5, 0.75, 1],
+            ["0", "0.25", "0.50", "0.75", "1.0"],
+            color="grey",
+            size=7,
+        )
+        plt.ylim(0, 1)
+
+        # Draw plot
+        values = meta_enrich.loc[row].drop("Meta_feature").values.flatten().tolist()
+        values += values[:1]
+        ax.plot(angles, values, color=color, linewidth=2, linestyle="solid")
+        ax.fill(angles, values, color=color, alpha=0.4)
+
+        # Add a title
+        plt.title(title, size=11, color=color, y=1.065)
+
+    # Initialize the figure
+    my_dpi = 96
+    plt.figure(figsize=(1000 / my_dpi, 1000 / my_dpi), dpi=my_dpi)
+
+    # Create a color palette:
+    my_palette = plt.colormaps.get_cmap("Dark2")
+
+    # Loop to plot
+    for row in range(0, len(meta_enrich.index)):
+        make_radar(
+            row=row,
+            title=f"Feature: {meta_enrich['Meta_feature'][row]}",
+            color=my_palette(row),
+        )
+
+    return plt
