@@ -282,7 +282,9 @@ class AA:
 
                 # now compute optimal B given Z and X
                 Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
-                B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :])[0] for k in range(Z.shape[0])]).astype(np.float32)
+                B = np.array(
+                    [nnls(A=Xt_padded, b=Z_padded[k, :], maxiter=5 * Xt_padded.shape[1])[0] for k in range(Z.shape[0])]
+                ).astype(np.float32)
                 Z = B @ X
 
             else:

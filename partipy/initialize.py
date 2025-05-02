@@ -13,9 +13,9 @@ def _construct_B_from_indices(X: np.ndarray, indices: list):
     return B
 
 
-def _init_A(n_samples: int, n_archetypes: int, seed: int):
+def _init_A(n_samples: int, n_archetypes: int, seed: int, epsilon: float = 1e-9):
     rng = np.random.default_rng(seed)  # Use a fixed seed
-    A = -np.log(rng.random((n_samples, n_archetypes), dtype=np.float32))
+    A = -np.log(rng.random((n_samples, n_archetypes), dtype=np.float32) + epsilon)
     A /= np.sum(A, axis=1, keepdims=True)
     return A
 
@@ -105,7 +105,11 @@ def _init_furthest_sum(
 
 
 def _init_plus_plus(
-    X: np.ndarray, n_archetypes: int, seed: int = 42, return_indices: bool = False
+    X: np.ndarray,
+    n_archetypes: int,
+    seed: int = 42,
+    return_indices: bool = False,
+    epsilon: float = 1e-9,
 ) -> np.ndarray | tuple[np.ndarray, list[int]]:
     """Archetypal++ initialization for archetypes.
 
@@ -141,10 +145,9 @@ def _init_plus_plus(
         if iter == 1:
             A = np.ones((n_samples, 1))
         else:
-            A = -np.log(rng.random((n_samples, len(selected_indices)), dtype=np.float32))
-            A /= np.sum(A, axis=1, keepdims=True)
+            A = _init_A(n_samples=n_samples, n_archetypes=len(selected_indices), seed=seed)
             A = _compute_A_projected_gradients(X=X, Z=Z, A=A)
-        p = np.sum(np.square(X - np.dot(A, Z)), axis=1)
+        p = np.sum(np.square(X - np.dot(A, Z)), axis=1) + epsilon
         p /= p.sum()
         selected_indices.append(rng.choice(a=n_samples, size=1, p=p)[0])
 

@@ -41,7 +41,7 @@ def _compute_A_regularized_nnls(
     Zt_padded = np.vstack([Z.T, LAMBDA * np.ones(Z.shape[0])])
 
     # Use non-negative least squares to solve the optimization problem
-    A = np.array([nnls(A=Zt_padded, b=X_padded[n, :])[0] for n in range(X.shape[0])])
+    A = np.array([nnls(A=Zt_padded, b=X_padded[n, :], maxiter=5 * Zt_padded.shape[1])[0] for n in range(X.shape[0])])
     A = A.astype(np.float32)
     return A
 
@@ -54,7 +54,7 @@ def _compute_B_regularized_nnls(
     Z = np.linalg.lstsq(a=A, b=X, rcond=None)[0]
     Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
     Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
-    B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :])[0] for k in range(Z.shape[0])])
+    B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :], maxiter=5 * Xt_padded.shape[1])[0] for k in range(Z.shape[0])])
     B = B.astype(np.float32)
     return B
 

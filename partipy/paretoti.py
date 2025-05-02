@@ -262,7 +262,7 @@ def bootstrap_aa(
 
 
 def bootstrap_aa_multiple_k(
-    adata: sc.AnnData, n_bootstrap: int = 30, n_archetypes_list=None, save_to_anndata: bool = True
+    adata: sc.AnnData, n_bootstrap: int = 30, n_archetypes_list=None, save_to_anndata: bool = True, n_jobs: int = -1
 ):
     """
     Perform bootstrap sampling across multiple numbers of archetypes to assess stability.
@@ -299,7 +299,9 @@ def bootstrap_aa_multiple_k(
 
     df_list = []
     for k in n_archetypes_list:
-        boostrap_df = bootstrap_aa(adata=adata, n_bootstrap=n_bootstrap, n_archetypes=k, save_to_anndata=False)
+        boostrap_df = bootstrap_aa(
+            adata=adata, n_bootstrap=n_bootstrap, n_archetypes=k, save_to_anndata=False, n_jobs=n_jobs
+        )
         boostrap_df["n_archetypes"] = k  # type: ignore[index]
         df_list.append(boostrap_df)
     df = pd.concat(df_list, axis=0)
