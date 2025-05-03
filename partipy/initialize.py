@@ -4,19 +4,21 @@ from scipy.spatial.distance import cdist
 from .optim import _compute_A_projected_gradients
 
 
-def _construct_B_from_indices(X: np.ndarray, indices: list):
+def _construct_B_from_indices(X: np.ndarray, indices: list) -> np.ndarray:
     X = X.astype(np.float32)
     n_samples, _ = X.shape
     B = np.zeros((len(indices), n_samples), dtype=np.float32)
     for arch_idx in range(len(indices)):
         B[arch_idx, indices[arch_idx]] = 1.0
+    B = np.ascontiguousarray(B, dtype=np.float32)
     return B
 
 
-def _init_A(n_samples: int, n_archetypes: int, seed: int, epsilon: float = 1e-9):
+def _init_A(n_samples: int, n_archetypes: int, seed: int, epsilon: float = 1e-9) -> np.ndarray:
     rng = np.random.default_rng(seed)  # Use a fixed seed
     A = -np.log(rng.random((n_samples, n_archetypes), dtype=np.float32) + epsilon)
     A /= np.sum(A, axis=1, keepdims=True)
+    A = np.ascontiguousarray(A, dtype=np.float32)
     return A
 
 
@@ -42,7 +44,7 @@ def _init_uniform(
         Matrix B with shape (n_archetypes, n_samples).
     """
     assert n_archetypes >= 2
-    X = X.astype(np.float32)
+    X = np.ascontiguousarray(X, dtype=np.float32)
     n_samples, _ = X.shape
     rng = np.random.default_rng(seed=seed)
     selected_indices = list(rng.choice(a=n_samples, size=n_archetypes, replace=False))
@@ -77,7 +79,7 @@ def _init_furthest_sum(
         Matrix B with shape (n_archetypes, n_samples).
     """
     assert n_archetypes >= 2
-    X = X.astype(np.float32)
+    X = np.ascontiguousarray(X, dtype=np.float32)
     n_samples, _ = X.shape
     rng = np.random.default_rng(seed=seed)
 
@@ -133,7 +135,7 @@ def _init_plus_plus(
         Matrix B with shape (n_archetypes, n_samples).
     """
     assert n_archetypes >= 2
-    X = X.astype(np.float32)
+    X = X = np.ascontiguousarray(X, dtype=np.float32)
     n_samples, _ = X.shape
     rng = np.random.default_rng(seed=seed)
 

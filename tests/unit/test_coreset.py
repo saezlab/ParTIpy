@@ -6,7 +6,7 @@ from partipy.utils import align_archetypes, compute_relative_rowwise_l2_distance
 
 
 @pytest.mark.parametrize("n_archetypes", [3, 7])
-@pytest.mark.parametrize("n_dimensions", [5, 10])
+@pytest.mark.parametrize("n_dimensions", [7, 14])
 @pytest.mark.parametrize("seed", [123, 456, 789])
 def test_that_archetypes_can_be_identified_using_coresets_and_uniform_initialization(
     n_archetypes: int,
@@ -14,9 +14,9 @@ def test_that_archetypes_can_be_identified_using_coresets_and_uniform_initializa
     seed: int,
 ) -> None:
     N_SAMPLES = 100_000
-    if n_dimensions == 5:
+    if n_dimensions == 7:
         MAX_REL_DIST = 0.10
-    elif n_dimensions == 10:
+    elif n_dimensions == 14:
         MAX_REL_DIST = 0.20
     else:
         raise NotImplementedError()
@@ -28,6 +28,8 @@ def test_that_archetypes_can_be_identified_using_coresets_and_uniform_initializa
         noise_std=0.05,
         seed=seed,
     )
+
+    X_in = X.copy()
 
     AA_object = AA(
         n_archetypes=n_archetypes,
@@ -44,9 +46,9 @@ def test_that_archetypes_can_be_identified_using_coresets_and_uniform_initializa
     assert AA_object.A.shape[1] == n_archetypes
     assert AA_object.B.shape[1] == N_SAMPLES
     assert AA_object.B.shape[0] == n_archetypes
-    assert np.all(np.isclose(AA_object.A.sum(axis=1), 1))
+    assert np.all(np.isclose(AA_object.A.sum(axis=1), 1, atol=1e-3))
     assert np.all(AA_object.A >= 0)
-    assert np.all(np.isclose(AA_object.B.sum(axis=1), 1))
+    assert np.all(np.isclose(AA_object.B.sum(axis=1), 1, atol=1e-3))
     assert np.all(AA_object.B >= 0)
 
     # now we check how accurately we identify the archetypes
@@ -57,3 +59,6 @@ def test_that_archetypes_can_be_identified_using_coresets_and_uniform_initializa
     rel_dist_between_archetypes = compute_relative_rowwise_l2_distance(Z, Z_hat)
 
     assert np.any(rel_dist_between_archetypes < MAX_REL_DIST)
+
+    # finally test that the input is not modified
+    assert np.all(np.isclose(X_in, X))

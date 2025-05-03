@@ -238,7 +238,7 @@ class AA:
             else:
                 raise NotImplementedError()
 
-            X = X[coreset_indices, :].copy()  # TODO: probably no copy here needed!
+            X = X[coreset_indices, :].copy()  # TODO: probably no copy needed here!
             A = _init_A(n_samples=self.coreset_size, n_archetypes=self.n_archetypes, seed=self.seed)
 
         else:
@@ -271,14 +271,15 @@ class AA:
                 Z = B @ WX
             elif self.weighting_flavor == "mair_brefeld_2019":
                 # compute A using the unweighted data X
-                A = _compute_A_regularized_nnls(X=X, Z=Z, A=None)
+                A = _compute_A_projected_gradients(X=X, Z=Z, A=A)
 
                 # weight A and X
                 WA = W[:, None] * A
-                WX = W[:, None] * X
+                WX = W[:, None] * X  # TODO: is we use coreset I should not be recomputin this term!
 
                 # compute Z given WX and WA
-                Z = np.linalg.lstsq(np.dot(WA.T, WA), np.dot(WA.T, WX), rcond=None)[0].astype(np.float32)
+                # Z = np.linalg.lstsq(a=np.dot(WA.T, WA), b=np.dot(WA.T, WX), rcond=None)[0].astype(np.float32) # TODO: benchmark against this
+                Z = np.linalg.lstsq(a=WA, b=WX, rcond=None)[0].astype(np.float32)
 
                 # now compute optimal B given Z and X
                 Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
@@ -286,6 +287,8 @@ class AA:
                     [nnls(A=Xt_padded, b=Z_padded[k, :], maxiter=5 * Xt_padded.shape[1])[0] for k in range(Z.shape[0])]
                 ).astype(np.float32)
                 Z = B @ X
+                # B = _compute_B_projected_gradients(X=X, A=WA, B=B, WX=WX)
+                # Z = B @ X
 
             else:
                 raise NotImplementedError()

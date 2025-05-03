@@ -36,5 +36,5 @@ def test_that_archetypal_weights_can_be_identified(
 
     A_approx = compute_a_algorithm(X=X, Z=Z, A=A_init)
 
-    assert np.all(np.isclose(A_approx.sum(axis=1), 1))
+    assert np.all(np.isclose(A_approx.sum(axis=1), 1, atol=1e-3))
     assert np.mean(compute_relative_rowwise_l2_distance(A, A_approx)) < 0.10

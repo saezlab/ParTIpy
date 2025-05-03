@@ -19,15 +19,39 @@ b) https://github.com/atmguille/archetypal-analysis (by Guillermo García Cobo)
 """
 
 import numpy as np
-from numba import float32, njit, prange
+from numba import float32, int32, jit, prange
 from scipy.optimize import nnls
 
 from .const import LAMBDA
 
 
-@njit(cache=True, fastmath=True)
+def _inspect_array(arr: np.ndarray) -> dict:
+    """
+    Return key properties of a NumPy array.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        The array to inspect.
+
+    Returns
+    -------
+    dict
+        Dictionary containing dtype, ndim, layout, writeability, and alignment.
+    """
+    layout = "C" if arr.flags["C_CONTIGUOUS"] else "F" if arr.flags["F_CONTIGUOUS"] else "A"
+    return {
+        "dtype": str(arr.dtype),
+        "ndim": arr.ndim,
+        "layout": layout,
+        "read_only": not arr.flags["WRITEABLE"],
+        "aligned": arr.flags["ALIGNED"],
+    }
+
+
+@jit(nopython=True, cache=True, fastmath=True)
 def _compute_RSS(X, A, Z):
-    diff = X - (A @ Z)
+    diff = X - np.dot(A, Z)
     return np.sum(diff * diff)  # Faster than norm squared
 
 
@@ -59,15 +83,14 @@ def _compute_B_regularized_nnls(
     return B
 
 
-@njit(cache=True)
 def _compute_A_projected_gradients(
-    X: float32[:, :],
-    Z: float32[:, :],
-    A: float32[:, :],
-    derivative_max_iter: int = 40,
+    X: np.ndarray,
+    Z: np.ndarray,
+    A: np.ndarray,
+    derivative_max_iter: int | np.int32 = 40,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
-) -> float32[:, :]:
+) -> np.ndarray:
     """Updates the A matrix given the data matrix X and the archetypes Z.
 
     A is the matrix that provides the best convex approximation of X by Z.
@@ -91,11 +114,48 @@ def _compute_A_projected_gradients(
     A : numpy 2d-array
         Updated A matrix with shape (n_samples, n_archetypes).
     """
+    # check and other things
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
+
+    # inspecing (for debugging)
+    # print(_inspect_array(X))
+    # print(_inspect_array(Z))
+    # print(_inspect_array(A))
+
+    # ensure correct data type for parameters
+    derivative_max_iter = np.int32(derivative_max_iter)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
+
+    # compute
+    A = _compute_A_projected_gradients_jit(
+        X=X, Z=Z, A=A, derivative_max_iter=derivative_max_iter, rel_tol_ls=rel_tol_ls, rel_tol_conv=rel_tol_conv
+    )
+    return A
+
+
+@jit(
+    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
+    nopython=True,
+    cache=True,
+    fastmath=True,
+)
+def _compute_A_projected_gradients_jit(
+    X: np.ndarray,
+    Z: np.ndarray,
+    A: np.ndarray,
+    derivative_max_iter: np.int32,
+    rel_tol_ls: np.float32,
+    rel_tol_conv: np.float32,
+) -> np.ndarray:
+    # initialize learning rate
     mu = np.float32(1.0)
     min_mu = np.float32(1e-6)
+
+    # explicitly making sure everything is contiguous (C-roder)
+    X = np.ascontiguousarray(X)
+    Z = np.ascontiguousarray(Z)
+    A = np.ascontiguousarray(A)
 
     # terms that can be pre-computed
     XZT = np.dot(X, Z.T)
@@ -112,7 +172,9 @@ def _compute_A_projected_gradients(
         for _ in range(20):
             A = (prev_A - mu * G).clip(0)
             A = A / (np.sum(A, axis=1)[:, None] + np.finfo(np.float32).eps)  # Avoid division by zero
-            RSS = _compute_RSS(X=X, A=A, Z=Z)
+            RSS = _compute_RSS(
+                X=X, A=A, Z=Z
+            )  # /Users/pschafer/Projects/ParTIpy/partipy/optim.py:137: NumbaPerformanceWarning: np.dot() is faster on contiguous arrays, called on (Array(float32, 2, 'C', False, aligned=True), Array(float32, 2, 'A', False, aligned=True))
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
                 break
@@ -130,18 +192,19 @@ def _compute_A_projected_gradients(
         if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
             break
 
+    A = np.ascontiguousarray(A)  # TODO: check if we need this line
     return A
 
 
-@njit(cache=True)
 def _compute_B_projected_gradients(
-    X: float32[:, :],
-    A: float32[:, :],
-    B: float32[:, :],
-    derivative_max_iter: int = 40,
+    X: np.ndarray,
+    A: np.ndarray,
+    B: np.ndarray,
+    WX: np.ndarray = None,  # type: ignore[assignment]
+    derivative_max_iter: int | np.int32 = 40,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
-) -> float32[:, :]:
+) -> np.ndarray:
     """Updates the B matrix given the data matrix X and the A matrix.
 
     Parameters
@@ -155,6 +218,9 @@ def _compute_B_projected_gradients(
     B : numpy 2d-array
         B matrix with shape (n_archetypes, n_samples).
 
+    WX : numpy 2d-array, optional
+        Weighted data matrix with shape (n_samples, n_features).
+
     derivative_max_iter: int
         Maximum number of steps for optimization
 
@@ -163,19 +229,61 @@ def _compute_B_projected_gradients(
     B : numpy 2d-array
         Updated B matrix with shape (n_archetypes, n_samples).
     """
+    # checks
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
+
+    # ensure correct data type for parameters
+    derivative_max_iter = np.int32(derivative_max_iter)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
+
+    # works for weighted and unweighted version
+    if WX is None:
+        WX = X
+
+    # inspecing (for debugging)
+    # print(_inspect_array(X))
+    # print(_inspect_array(A))
+    # print(_inspect_array(B))
+    # print(_inspect_array(WX))
+
+    return _compute_B_projected_gradients_jit(
+        X=X, A=A, B=B, WX=WX, derivative_max_iter=derivative_max_iter, rel_tol_ls=rel_tol_ls, rel_tol_conv=rel_tol_conv
+    )
+
+
+@jit(
+    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
+    nopython=True,
+    cache=True,
+    fastmath=True,
+)
+def _compute_B_projected_gradients_jit(
+    X: np.ndarray,
+    A: np.ndarray,
+    B: np.ndarray,
+    WX: np.ndarray,
+    derivative_max_iter: np.int32,
+    rel_tol_ls: np.float32,
+    rel_tol_conv: np.float32,
+) -> np.ndarray:
+    # initialize learning rates
     mu = np.float32(1.0)
     min_mu = np.float32(1e-6)
 
+    # explicitly making sure everything is contiguous (C-roder)
+    X = np.ascontiguousarray(X)
+    A = np.ascontiguousarray(A)
+    B = np.ascontiguousarray(B)
+    WX = np.ascontiguousarray(WX)
+
     # terms that can be pre-computed
-    ATA = np.dot(A.T, A)
-    ATXXT = np.dot(np.dot(A.T, X), X.T)
+    AT_X_WXT = np.dot(np.dot(A.T, X), WX.T)
+    AT_A = np.dot(A.T, A)
 
     for _ in range(derivative_max_iter):
         # brackets are VERY important to save time
-        G = np.float32(2.0) * (np.dot(np.dot(ATA, np.dot(B, X)), X.T) - ATXXT)  # G has shape K x N
+        G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, WX)), WX.T) - AT_X_WXT)  # G has shape K x N
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection
 
         # line search for optimal step size
@@ -202,10 +310,11 @@ def _compute_B_projected_gradients(
         if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
             break
 
+    B = np.ascontiguousarray(B)  # TODO: check if we need this line
     return B
 
 
-@njit(cache=True)
+@jit(nopython=True, cache=True, fastmath=True)
 def _add_argmins_per_row(mtx, argmins, mu):
     for idx in range(len(argmins)):
         mtx[idx, argmins[idx]] += mu
@@ -213,22 +322,22 @@ def _add_argmins_per_row(mtx, argmins, mu):
 
 
 # NOTE: can lead to kernel crashed in Jupyter notebooks...
-@njit(cache=True, parallel=True)
+@jit(nopython=True, cache=True, parallel=True)
 def _add_argmins_per_row_p(mtx, argmins, mu):
     for idx in prange(len(argmins)):
         mtx[idx, argmins[idx]] += mu
     return mtx
 
 
-@njit(cache=True)
+@jit(nopython=True, cache=True, fastmath=True)
 def _compute_A_frank_wolfe(
-    X: float32[:, :],
-    Z: float32[:, :],
-    A: float32[:, :],
+    X: np.ndarray,
+    Z: np.ndarray,
+    A: np.ndarray,
     derivative_max_iter: int = 80,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
-) -> float32[:, :]:
+) -> np.ndarray:
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
@@ -268,15 +377,15 @@ def _compute_A_frank_wolfe(
     return A
 
 
-@njit(cache=True)
+@jit(nopython=True, cache=True, fastmath=True)
 def _compute_B_frank_wolfe(
-    X: float32[:, :],
-    A: float32[:, :],
-    B: float32[:, :],
+    X: np.ndarray,
+    A: np.ndarray,
+    B: np.ndarray,
     derivative_max_iter: int = 80,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
-) -> float32[:, :]:
+) -> np.ndarray:
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
@@ -311,105 +420,5 @@ def _compute_B_frank_wolfe(
         # check for convergence
         if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
             break
-
-    return B
-
-
-def _compute_A_frank_wolfe_depr(
-    X: np.ndarray,
-    Z: np.ndarray,
-    A: np.ndarray,
-    derivative_max_iter: int = 80,
-    rel_tol_ls: float | np.float32 = 1e-3,
-    rel_tol_conv: float | np.float32 = 1e-4,
-) -> np.ndarray:
-    n_samples = X.shape[0]
-    e = np.zeros(A.shape, dtype=np.float32)
-
-    assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
-    rel_tol_ls = np.float32(rel_tol_ls)
-    rel_tol_conv = np.float32(rel_tol_conv)
-
-    for iter in range(derivative_max_iter):
-        # frank wolfe step size
-        mu = np.float32(2 / (iter + 2))
-
-        # compute the gradient
-        G = np.float32(2.0) * (A @ (Z @ Z.T) - X @ Z.T)
-
-        # for each sample, get the archetype column with the most negative gradient
-        argmins = np.argmin(G, axis=1)
-
-        # set the indicator matrix e
-        e[range(n_samples), argmins] = 1.0
-
-        # line search
-        prev_RSS = np.linalg.norm(X - (A @ Z)) ** 2
-        prev_A = A
-        for _ in range(1_000):
-            A = prev_A + mu * (e - prev_A)
-            RSS = np.linalg.norm(X - (A @ Z)) ** 2
-            if RSS <= (prev_RSS * (1 + rel_tol_ls)):
-                mu *= np.float32(1.2)
-                break
-            else:
-                mu *= np.float32(0.5)
-
-        # check for convergence
-        if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
-            break
-
-        # Reset e
-        e[range(n_samples), argmins] = 0.0
-
-    return A
-
-
-def _compute_B_frank_wolfe_depr(
-    X: np.ndarray,
-    A: np.ndarray,
-    B: np.ndarray,
-    derivative_max_iter: int = 80,
-    rel_tol_ls: float | np.float32 = 1e-3,
-    rel_tol_conv: float | np.float32 = 1e-4,
-) -> np.ndarray:
-    n_archetypes = A.shape[1]
-    e = np.zeros(B.shape, dtype=np.float32)
-
-    assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
-    rel_tol_ls = np.float32(rel_tol_ls)
-    rel_tol_conv = np.float32(rel_tol_conv)
-
-    for iter in range(derivative_max_iter):
-        # frank wolfe step size
-        mu = np.float32(2 / (iter + 2))
-
-        # compute the gradient
-        G = np.float32(2.0) * (((A.T @ A) @ (B @ X) @ X.T) - ((A.T @ X) @ X.T))
-
-        # for each archetype, get the sample column with the most negative gradient
-        argmins = np.argmin(G, axis=1)
-
-        # set the indicator matrix e
-        e[range(n_archetypes), argmins] = 1.0
-
-        # line search for optimal step size
-        prev_RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
-        prev_B = B
-        for _ in range(1_000):
-            B = prev_B + mu * (e - prev_B)
-            RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
-            if RSS <= (prev_RSS * (1 + rel_tol_ls)):
-                mu *= np.float32(1.2)
-                break
-            else:
-                mu *= np.float32(0.5)
-
-        # check for convergence
-        if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
-            break
-
-        # reset e
-        e[range(n_archetypes), argmins] = 0.0
 
     return B

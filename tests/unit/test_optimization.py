@@ -74,6 +74,12 @@ def test_that_all_algorithms_can_identify_archetypes(
 
     assert np.all(rel_dist_between_archetypes < MAX_REL_DIST)
 
+    # checkig the constraints
+    assert np.all(np.isclose(AA_object.A.sum(axis=1), 1, atol=1e-3))
+    assert np.all(AA_object.A >= 0)
+    assert np.all(np.isclose(AA_object.B.sum(axis=1), 1, atol=1e-3))
+    assert np.all(AA_object.B >= 0)
+
 
 @pytest.mark.parametrize(
     "n_archetypes, n_dimensions",

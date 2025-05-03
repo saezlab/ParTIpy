@@ -12,6 +12,7 @@ __pycache__/
 
 # data directory
 data/*
+*.h5ad
 
 # mac stuff
 .DS_Store
@@ -27,6 +28,3 @@ docs/source/notebooks/*.txt
 docs/source/notebooks/*.txt.gz
 docs/source/notebooks/*.sqlite
 docs/build/*
-
-# others
-spams
