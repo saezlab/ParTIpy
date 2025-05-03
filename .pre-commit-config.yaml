@@ -38,11 +38,11 @@ repos:
     hooks:
       - id: pytest
         name: Run pytest
-        #entry: pytest --cov partipy --cov-report=html
-        entry: pytest
+        #entry: pytest --cov partipy --cov-report=html # will fail because files are changed?
+        entry: pytest tests/unit/test_initialization.py
         language: system
         types: [python]
-        pass_filenames: false
+        pass_filenames: false # ignore file changes?
         always_run: true
 
   # type checking

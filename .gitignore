@@ -28,3 +28,6 @@ docs/source/notebooks/*.txt
 docs/source/notebooks/*.txt.gz
 docs/source/notebooks/*.sqlite
 docs/build/*
+
+# log files
+*.log

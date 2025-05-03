@@ -300,7 +300,7 @@ def _compute_B_projected_gradients_jit(
                 mu *= np.float32(0.5)
 
                 if mu < min_mu:
-                    # Use the current A (even if not optimal) or revert to prev_A
+                    # Use the current B (even if not optimal) or revert to prev_B
                     # depending on which gives better RSS
                     if RSS > prev_RSS:
                         B = prev_B
