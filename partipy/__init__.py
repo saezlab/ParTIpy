@@ -13,7 +13,7 @@ from .paretoti import (
     bootstrap_aa_multiple_k,
     compute_archetypes,
     compute_t_ratio,
-    set_dimension_aa,
+    set_obsm,
     t_ratio_significance,
     t_ratio_significance_shuffled,
     var_explained_aa,

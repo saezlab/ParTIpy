@@ -4,7 +4,7 @@ WEIGHT_ALGS = (None, "bisquare", "huber")
 OPTIM_ALGS = ("regularized_nnls", "projected_gradients", "frank_wolfe")
 
 # default arguments
-DEFAULT_INIT: str = "furthest_sum"
+DEFAULT_INIT: str = "plus_plus"
 DEFAULT_WEIGHT = None
 DEFAULT_OPTIM: str = "projected_gradients"
 

@@ -14,42 +14,123 @@ from .const import DEFAULT_INIT, DEFAULT_OPTIM
 from .selection import compute_IC
 
 
-def set_dimension_aa(adata: sc.AnnData, n_pcs: int) -> None:
+def set_obsm(adata: sc.AnnData, obsm_key: str, n_dimension: int) -> None:
     """
-    Sets the number of principal components (PCs) to use for AA.
+    Sets the `obsm` key and dimensionality to be used as input for archetypal analysis (AA).
 
-    This function ensures that `adata.obsm["X_pca"]` contains PCA coordinates.
-    If not, PCA is computed on highly variable genes. The specified number of
-    PCs is stored in `adata.uns["n_pcs"]` for later use.
+    This function verifies that the specified `obsm_key` exists in `adata.obsm` and that the
+    requested number of dimensions does not exceed the available dimensions in that matrix.
+    The configuration is stored in `adata.uns["aa_config"]`.
 
     Parameters
     ----------
     adata : sc.AnnData
-        AnnData object containing single-cell data. PCA coordinates should be
-        stored in `adata.obsm["X_pca"]`.
-    n_pcs : int
-        The number of principal components (PCs) to retain. Must be less than or equal to the
-        number of available PCs in `adata.obsm["X_pca"]`.
+        AnnData object containing single-cell data. The specified `obsm_key` should refer to
+        a matrix in `adata.obsm` to be used as input for AA.
+
+    obsm_key : str
+        Key in `adata.obsm` pointing to the matrix to be used for AA.
+
+    n_dimension : int
+        Number of dimensions to retain from `adata.obsm[obsm_key]`. Must be less than or equal
+        to the number of columns in that matrix.
 
     Returns
     -------
     None
-        The number of PCs are stored in `adata.uns["n_pcs"]`
+        The AA configuration is stored in `adata.uns["aa_config"]`.
     """
-    # Validation input
-    if "X_pca" not in adata.obsm:
-        print("X_pca not found in adata.obsm. Computing PCA on highly variable genes...")
-        sc.pp.pca(adata, mask_var="highly_variable")
+    if obsm_key not in adata.obsm:
+        raise ValueError(f"'{obsm_key}' not found in adata.obsm. Available keys are: {list(adata.obsm.keys())}")
 
-    if n_pcs > adata.obsm["X_pca"].shape[1]:
-        raise ValueError(f"Requested {n_pcs} PCs, but only {adata.obsm['X_pca'].shape[1]} PCs are available.")
+    available_dim = adata.obsm[obsm_key].shape[1]
+    if n_dimension > available_dim:
+        raise ValueError(
+            f"Requested {n_dimension} dimensions from '{obsm_key}', but only {available_dim} are available."
+        )
 
-    adata.uns["n_pcs"] = n_pcs
+    if "aa_config" in adata.uns:
+        print("Warning: 'aa_config' already exists in adata.uns and will be overwritten.")
+
+    adata.uns["aa_config"] = {
+        "obsm_key": obsm_key,
+        "n_dimension": n_dimension,
+    }
+
+
+def _validate_aa_config(adata: sc.AnnData) -> None:
+    """
+    Validates that the AnnData object is properly configured for archetypal analysis (AA).
+
+    This function checks that:
+    - `adata.uns["aa_config"]` exists,
+    - it contains the keys "obsm_key" and "n_dimension",
+    - the specified `obsm_key` exists in `adata.obsm`,
+    - and that the requested number of dimensions does not exceed the available dimensions.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        AnnData object expected to contain AA configuration in `adata.uns["aa_config"]`.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    ValueError
+        If the configuration is missing, incomplete, or inconsistent with the contents of `adata.obsm`.
+    """
+    if "aa_config" not in adata.uns:
+        raise ValueError("AA configuration not found in `adata.uns['aa_config']`.")
+
+    config = adata.uns["aa_config"]
+
+    if not isinstance(config, dict):
+        raise ValueError("`adata.uns['aa_config']` must be a dictionary.")
+
+    required_keys = {"obsm_key", "n_dimension"}
+    missing = required_keys - config.keys()
+    if missing:
+        raise ValueError(f"Missing keys in `aa_config`: {missing}")
+
+    obsm_key = config["obsm_key"]
+    n_dimension = config["n_dimension"]
+
+    if obsm_key not in adata.obsm:
+        raise ValueError(f"'{obsm_key}' not found in `adata.obsm`. Available keys: {list(adata.obsm.keys())}")
+
+    available_dim = adata.obsm[obsm_key].shape[1]
+    if n_dimension > available_dim:
+        raise ValueError(
+            f"Configured number of dimensions ({n_dimension}) exceeds available dimensions ({available_dim}) in `adata.obsm['{obsm_key}']`."
+        )
+
+
+def _validate_aa_results(adata: sc.AnnData) -> None:
+    """
+    Validates that the result from Archetypal Analysis is present in the AnnData object.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        Annotated data matrix.
+
+    Raises
+    ------
+    ValueError
+        If the archetypal analysis result is not found in `adata.uns["AA_results"]`.
+    """
+    if "AA_results" not in adata.uns:
+        raise ValueError(
+            "Result from Archetypal Analysis not found in `adata.uns['AA_results']`. "
+            "Please run the AA() function first."
+        )
 
 
 def var_explained_aa(
     adata: sc.AnnData,
-    obsm_key: str = "X_pca",
     min_a: int = 2,
     max_a: int = 10,
     optim: str = DEFAULT_OPTIM,
@@ -68,8 +149,6 @@ def var_explained_aa(
     ----------
     adata: sc.AnnData
         AnnData object containing adata.obsm["obsm_key"].
-    obsm_key: str, optional (default="X_pca")
-        Key in `adata.obsm` containing the PCA or other reduced representation to be used for AA.
     min_a : int, optional (default=2)
         Minimum number of archetypes to test.
     max_a : int, optional (default=10)
@@ -93,20 +172,16 @@ def var_explained_aa(
         - `dist_to_projected`: Distance from each point to its projection on the line connecting the first and last points
             in the variance curve, used to identify "elbow points".
     """
-    # Validation input
-    if obsm_key not in adata.obsm.keys():
-        raise ValueError("`obsm_key` must be in adata.obsm.keys()")
+    # input validation
+    _validate_aa_config(adata=adata)
     if min_a < 2:
         raise ValueError("`min_a` must be at least 2.")
     if max_a < min_a:
         raise ValueError("`max_a` must be greater than or equal to `min_a`.")
 
-    if "n_pcs" not in adata.uns:
-        raise ValueError(
-            "n_pcs not found in adata.uns. Please set the dimension for archetypal analysis with set_dimension()"
-        )
-
-    X = adata.obsm[obsm_key][:, : adata.uns["n_pcs"]]
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
 
     k_arr = np.arange(min_a, max_a + 1)
 
@@ -173,7 +248,8 @@ def bootstrap_aa(
     Parameters
     ----------
     adata : sc.AnnData
-        AnnData object containing the data. The PCA data should be stored in `adata.obsm["X_pca"]`.
+        The AnnData object containing the data to fit the archetypes. The data should be available in
+        `adata.obsm[obsm_key]`.
     n_bootstrap : int
         The number of bootstrap samples to generate.
     n_archetypes : int
@@ -200,13 +276,12 @@ def bootstrap_aa(
         - `mean_variance`: The mean variance of all archetype coordinates across bootstrap samples.
         - `variance_per_archetype`: The mean variance of each archetype coordinates across bootstrap samples.
     """
-    # Validation input
-    if "n_pcs" not in adata.uns:
-        raise ValueError(
-            "n_pcs not found in adata.uns. Please set the dimension for archetypal analysis with set_dimension()"
-        )
+    # input validation
+    _validate_aa_config(adata=adata)
 
-    X = adata.obsm["X_pca"][:, : adata.uns["n_pcs"]]
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
 
     n_samples, n_features = X.shape
     rng = np.random.default_rng(seed)
@@ -234,14 +309,14 @@ def bootstrap_aa(
 
     # Create result dataframe
     bootstrap_data = [
-        pd.DataFrame(Z, columns=[f"pc_{i}" for i in range(n_features)]).assign(
+        pd.DataFrame(Z, columns=[f"x{i}" for i in range(n_features)]).assign(
             archetype=np.arange(n_archetypes), iter=i + 1
         )
         for i, Z in enumerate(Z_list)
     ]
     bootstrap_df = pd.concat(bootstrap_data)
 
-    df = pd.DataFrame(ref_Z, columns=[f"pc_{i}" for i in range(n_features)])
+    df = pd.DataFrame(ref_Z, columns=[f"x{i}" for i in range(n_features)])
     df["archetype"] = np.arange(n_archetypes)
     df["iter"] = 0
 
@@ -262,7 +337,12 @@ def bootstrap_aa(
 
 
 def bootstrap_aa_multiple_k(
-    adata: sc.AnnData, n_bootstrap: int = 30, n_archetypes_list=None, save_to_anndata: bool = True, n_jobs: int = -1
+    adata: sc.AnnData,
+    n_bootstrap: int = 30,
+    n_archetypes_list=None,
+    save_to_anndata: bool = True,
+    n_jobs: int = -1,
+    **kwargs,
 ):
     """
     Perform bootstrap sampling across multiple numbers of archetypes to assess stability.
@@ -280,13 +360,15 @@ def bootstrap_aa_multiple_k(
     n_archetypes_list : list of int, optional (default=range(2, 8))
         A list specifying the numbers of archetypes to evaluate.
     save_to_anndata : bool, optional (default=True)
-        Whether to save the results to `adata.uns["bootstrap_aa_multiple_k"]`. If `False`, the
+        Whether to save the results to `adata.uns["AA_boostrap_multiple_k"]`. If `False`, the
         result is returned.
+    **kwargs:
+        Additional keyword arguments passed to `AA` class.
 
     Returns
     -------
     None or pd.DataFrame
-        If `save_to_anndata=True`, results are stored in `adata.uns["bootstrap_aa_multiple_k"]` as a
+        If `save_to_anndata=True`, results are stored in `adata.uns["AA_boostrap_multiple_k"]` as a
         DataFrame with the following columns:
         - `archetype`: The archetype index.
         - `variance_per_archetype`: The mean variance of each archetype's coordinates across bootstrap samples.
@@ -300,14 +382,14 @@ def bootstrap_aa_multiple_k(
     df_list = []
     for k in n_archetypes_list:
         boostrap_df = bootstrap_aa(
-            adata=adata, n_bootstrap=n_bootstrap, n_archetypes=k, save_to_anndata=False, n_jobs=n_jobs
+            adata=adata, n_bootstrap=n_bootstrap, n_archetypes=k, save_to_anndata=False, n_jobs=n_jobs, **kwargs
         )
         boostrap_df["n_archetypes"] = k  # type: ignore[index]
         df_list.append(boostrap_df)
     df = pd.concat(df_list, axis=0)
     df = df[["archetype", "variance_per_archetype", "n_archetypes"]].drop_duplicates()
     if save_to_anndata:
-        adata.uns["bootstrap_aa_multiple_k"] = df
+        adata.uns["AA_boostrap_multiple_k"] = df
     else:
         return df
 
@@ -344,68 +426,66 @@ def _project_on_affine_subspace(X, Z) -> np.ndarray:
     return proj_coord
 
 
-def compute_t_ratio(
-    X: sc.AnnData | np.ndarray,
-    Z: np.ndarray | None = None,
-) -> float | None:
+def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:
     """
-    Compute the t-ratio, which is the ratio of the volume of the polytope defined by the archetypes (Z)
-    to the volume of the convex hull of the data points (X).
+    Compute the t-ratio: volume(polytope defined by Z) / volume(convex hull of X)
 
     Parameters
     ----------
-    X : Union[sc.AnnData, np.ndarray]
-        The input data, which can be either:
-        - An AnnData object containing the following attributes:
-            - `adata.obsm["X_pca"]`: A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the data.
-            - `adata.uns["n_pcs"]`: The number of principal components used for AA.
-            - `adata.uns["archetypal_analysis"]["Z"]`: A 2D array of shape (n_archetypes, n_features) representing the archetypes.
-        - A 2D numpy array of shape (n_samples, n_features) representing the data matrix. In this case, `Z` must be provided.
-    Z : np.ndarray, optional
-        A 2D array of shape (n_archetypes, n_features) representing the archetypes. Required if `X` is a numpy array.
+    X : np.ndarray, shape (n_samples, n_features)
+        Data matrix.
+    Z : np.ndarray, shape (n_archetypes, n_features)
+        Archetypes matrix.
+
+    Returns
+    -------
+    float
+        The t-ratio.
+    """
+    D, k = X.shape[1], Z.shape[0]
+
+    if k < 2:
+        raise ValueError("At least 2 archetypes are required (k >= 2).")
+
+    if k < D + 1:
+        proj_X = _project_on_affine_subspace(X.T, Z.T).T
+        proj_Z = _project_on_affine_subspace(Z.T, Z.T).T
+        convhull_volume = ConvexHull(proj_X).volume
+        polytope_volume = ConvexHull(proj_Z).volume
+    else:
+        convhull_volume = ConvexHull(X).volume
+        polytope_volume = ConvexHull(Z).volume
+
+    return polytope_volume / convhull_volume
+
+
+def compute_t_ratio(adata) -> float | None:
+    """
+    Compute the t-ratio from either an AnnData object or raw matrices.
+
+    Parameters
+    ----------
+    adata : sc.AnnData
+        If AnnData: must contain `obsm[obsm_key]` and `uns["AA_results"]["Z"]`.
 
     Returns
     -------
     Optional[float]
-        - If `X` is an AnnData object, the t-ratio is stored in `X.uns["t_ratio"]` and nothing is returned.
-        - If `X` is a numpy array, the t-ratio is returned as a float.
+        - If input is AnnData, result is stored in `X.uns["t_ratio"]`.
+        - If input is ndarray, result is returned as float.
     """
-    adata = None
-    if isinstance(X, np.ndarray):
-        if Z is None:
-            raise ValueError("Z must be provided when input_data is a numpy.ndarray.")
-    else:
-        adata = X
-        X = adata.obsm["X_pca"][:, : adata.uns["n_pcs"]]
-        Z = adata.uns["archetypal_analysis"]["Z"]
+    # input validation
+    _validate_aa_config(adata=adata)
+    if "AA_results" not in adata.uns or "Z" not in adata.uns["AA_results"]:
+        raise ValueError("Missing archetypes in `adata.uns['AA_results']['Z']`.")
 
-    # Extract dimensions D (PCs), and number of archetypes
-    D, k = X.shape[1], Z.shape[0]  # type: ignore[union-attr]
-
-    # Input validation
-    if k < 2:
-        raise ValueError("k must satisfy 2 <= k, meaning you need at least 2 archetypes.")
-
-    if k < D + 1:
-        # project onto affine subspace spanned by Z
-        proj_X = _project_on_affine_subspace(X.T, Z.T).T  # type: ignore[union-attr]
-        proj_Z = _project_on_affine_subspace(Z.T, Z.T).T  # type: ignore[union-attr]
-
-        # Compute the convex hull volumes
-        convhull_volume = ConvexHull(proj_X).volume
-        polytope_volume = ConvexHull(proj_Z).volume
-    else:
-        # Compute the convex hull volumes directly
-        convhull_volume = ConvexHull(X).volume
-        polytope_volume = ConvexHull(Z).volume
-
-    t_ratio = polytope_volume / convhull_volume
-
-    if isinstance(adata, sc.AnnData):
-        adata.uns["t_ratio"] = t_ratio
-        return None
-    else:
-        return t_ratio
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
+    Z = adata.uns["AA_results"]["Z"]
+    t_ratio = _compute_t_ratio(X, Z)
+    adata.uns["t_ratio"] = t_ratio
+    return None
 
 
 def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
@@ -415,8 +495,8 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     Parameters
     ----------
     adata : sc.AnnData
-        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["n_pcs"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
-    rep : int, optional (default=1000)
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["aa_config"]["n_dimension"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
+    iter : int, optional (default=1000)
         Number of randomized datasets to generate.
     seed : int, optional (default=42)
         The random seed for reproducibility.
@@ -428,17 +508,20 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     float
         The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
     """
-    # Input validation
-    if "X_pca" not in adata.obsm:
-        raise ValueError("adata.obsm['X_pca'] not found.")
+    # input validation
+    _validate_aa_config(adata=adata)
+
     if "t_ratio" not in adata.uns:
         print("Computing t-ratio...")
         compute_t_ratio(adata)
 
-    X = adata.obsm["X_pca"][:, : adata.uns["n_pcs"]]
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
+
     t_ratio = adata.uns["t_ratio"]
     n_samples, n_features = X.shape
-    n_archetypes = adata.uns["archetypal_analysis"]["Z"].shape[0]
+    n_archetypes = adata.uns["AA_results"]["Z"].shape[0]
 
     rng = np.random.default_rng(seed)
 
@@ -447,7 +530,7 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
         SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
         # Compute archetypes and t-ratio for randomized data
         Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1).Z
-        return compute_t_ratio(SimplexRand1, Z_mix)
+        return _compute_t_ratio(SimplexRand1, Z_mix)
 
     # Parallelize the computation of randomized t-ratios
     RandRatio = Parallel(n_jobs=n_jobs)(
@@ -466,8 +549,8 @@ def t_ratio_significance_shuffled(adata, iter=1000, seed=42, n_jobs=-1):
     Parameters
     ----------
     adata : sc.AnnData
-        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["n_pcs"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
-    rep : int, optional (default=1000)
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["aa_config"]["n_dimension"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
+    iter : int, optional (default=1000)
         Number of randomized datasets to generate.
     seed : int, optional (default=42)
         The random seed for reproducibility.
@@ -479,27 +562,30 @@ def t_ratio_significance_shuffled(adata, iter=1000, seed=42, n_jobs=-1):
     float
         The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
     """
-    # Input validation
-    if "X_pca" not in adata.obsm:
-        raise ValueError("adata.obsm['X_pca'] not found.")
+    # input validation
+    _validate_aa_config(adata=adata)
+
     if "t_ratio" not in adata.uns:
         print("Computing t-ratio...")
         compute_t_ratio(adata)
 
-    X = adata[:, adata.var["highly_variable"]].copy().X.toarray()
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
+
     t_ratio = adata.uns["t_ratio"]
     n_samples, n_features = X.shape
-    n_archetypes = adata.uns["archetypal_analysis"]["Z"].shape[0]
+    n_archetypes = adata.uns["AA_results"]["Z"].shape[0]
 
     rng = np.random.default_rng(seed)
 
     def compute_randomized_t_ratio():
         # Shuffle each feature independently
         SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
-        SimplexRand1_pca = sc.pp.pca(SimplexRand1, n_comps=adata.uns["n_pcs"])
+        SimplexRand1_pca = sc.pp.pca(SimplexRand1, n_comps=adata.uns["aa_config"]["n_dimension"])
         # Compute archetypes and t-ratio for randomized data
         Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1_pca).Z
-        return compute_t_ratio(SimplexRand1_pca, Z_mix)
+        return _compute_t_ratio(SimplexRand1_pca, Z_mix)
 
     # Parallelize the computation of randomized t-ratios
     RandRatio = Parallel(n_jobs=n_jobs)(
@@ -543,7 +629,6 @@ def _align_archetypes(ref_arch: np.ndarray, query_arch: np.ndarray) -> np.ndarra
 def compute_archetypes(
     adata: sc.AnnData,
     n_archetypes: int,
-    obsm_key: str = "X_pca",
     init: str | None = None,
     optim: str | None = None,
     weight: None | str = None,
@@ -570,13 +655,12 @@ def compute_archetypes(
         `adata.obsm[obsm_key]`.
     n_archetypes : int
         The number of archetypes to compute.
-    obsm_key : str, optional (default="X_pca")
-        The key in `adata.obsm` that contains the data to use for fitting the archetypes (by default "X_pca").
     init : str, optional
         The initialization method for the archetypes. If not provided, the default from the AA class is used.
         Options include:
-        - "random": Random initialization.
-        - "furthest_sum": Furthest sum initialization.
+        - "uniform": Uniform initialization.
+        - "furthest_sum": Furthest sum initialization (default).
+        - "plus_plus": Archetype++ initialization.
     optim : str, optional
         The optimization method for fitting the model. If not provided, the default from the AA class is used.
         Options include:
@@ -586,7 +670,9 @@ def compute_archetypes(
     weight : str, optional
         The weighting method for the data. If not provided, the default from the AA class is used.
         Options include:
+        - None : default
         - "bisquare": Bisquare weighting.
+        - "huber": Hunber weighting.
     max_iter : int, optional
         The maximum number of iterations for the optimization. If not provided, the default from the AA class is used.
     rel_tol : float, optional
@@ -617,13 +703,12 @@ def compute_archetypes(
                 - RSS: The residual sum of squares.
                 - varexpl: The variance explained by the model.
         - If `save_to_anndata` is True:
-            - Returns `None`. Results are saved to `adata.uns["archetypal_analysis"]`.
+            - Returns `None`. Results are saved to `adata.uns["AA_results"]`.
         - If `save_to_anndata` is False:
             - Returns the results.
     """
-    # checks
-    assert obsm_key in adata.obsm.keys()
-    assert "n_pcs" in adata.uns.keys()  # TODO
+    # input validation
+    _validate_aa_config(adata=adata)
 
     # Get the signature of AA.__init__
     signature = inspect.signature(AA.__init__)
@@ -657,7 +742,10 @@ def compute_archetypes(
     )
 
     # Extract the data matrix used to fit the archetypes
-    X = adata.obsm[obsm_key][:, : adata.uns["n_pcs"]].astype(np.float32)
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
+    X = X.astype(np.float32)
 
     # Fit the model to the data
     model.fit(X)
@@ -665,11 +753,11 @@ def compute_archetypes(
     # Save the results to the AnnData object if specified
     if save_to_anndata:
         if archetypes_only:
-            adata.uns["archetypal_analysis"] = {
+            adata.uns["AA_results"] = {
                 "Z": model.Z,
             }
         else:
-            adata.uns["archetypal_analysis"] = {
+            adata.uns["AA_results"] = {
                 "A": model.A,
                 "B": model.B,
                 "Z": model.Z,

@@ -229,6 +229,9 @@ class AA:
             else:
                 raise NotImplementedError()
 
+            if self.verbose:
+                print(f"coreset size = {self.coreset_size} | coreset flavor = {self.coreset_flavor}")
+
             X = X[coreset_indices, :].copy()  # TODO: probably no copy needed here!
             A = _init_A(n_samples=self.coreset_size, n_archetypes=self.n_archetypes, seed=self.seed)
 
@@ -317,6 +320,7 @@ class AA:
             # B_full[:, coreset_indices] = B # this only works in resample is set to false
             B = B_full
             Z = B @ X_raw
+            # TODO: change to projected gradients or frank-wolfe here!
             A = _compute_A_regularized_nnls(X=X_raw, Z=Z, A=None)
 
         # If using weights, we need to recalculate A and B using the unweighted data

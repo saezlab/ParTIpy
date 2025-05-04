@@ -26,14 +26,14 @@ version = get_version("../../partipy/__init__.py")
 
 # -- General configuration
 extensions = [
+    "numpydoc",
+    "nbsphinx",
     "sphinx.ext.duration",
     "sphinx.ext.doctest",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosectionlabel",
-    "numpydoc",
-    "nbsphinx",
     "IPython.sphinxext.ipython_console_highlighting",
 ]
 
@@ -55,7 +55,7 @@ html_context = dict(
     display_github=True,  # Integrate GitHub
     github_user="saezlab",  # Username
     github_repo="ParTIpy",  # Repo name
-    github_version="master",  # Version
+    github_version="main",  # Version
     conf_py_path="/docs/source/",  # Path in the checkout to the docs root
 )
 # html_logo = 'logo.png'
@@ -67,4 +67,11 @@ html_css_files = [
 
 # -- Options for EPUB output
 epub_show_urls = "footnote"
-nbsphinx_execute = "never"
+nbsphinx_execute = "never" # notebooks are not executed
+
+nbsphinx_exclude_from_preview = {
+    # hide cells with these tags in the docs (for automatic generation of markdown)
+    "tags": ["hide-in-docs"],
+}
+
+nitpicky = True  # warns about broken links

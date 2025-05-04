@@ -5,13 +5,15 @@ import pandas as pd
 import scanpy as sc
 from scipy.spatial.distance import cdist
 
+from .paretoti import _validate_aa_config, _validate_aa_results
+
 
 def compute_archetype_weights(
-    X: np.ndarray | sc.AnnData,
-    Z: np.ndarray | None = None,
+    adata: sc.AnnData,
     mode: str = "automatic",
     length_scale: None | float = None,
-) -> None | tuple[np.ndarray | None]:
+    save_to_anndata: bool = True,
+) -> None | np.ndarray:
     """
     Calculate weights for the data points based on their distance to archetypes using a squared exponential kernel.
 
@@ -20,7 +22,7 @@ def compute_archetype_weights(
     X : Union[np.ndarray, sc.AnnData]
         The input data, which can be either:
         - A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the cells.
-        - An AnnData object containing the PCA coordinates in `.obsm["X_pca"]` and archetypes in `.uns["archetypal_analysis"]["Z"]`.
+        - An AnnData object containing the PCA coordinates in `.obsm["X_pca"]` and archetypes in `.uns["AA_results"]["Z"]`.
     Z : np.ndarray, optional
         A 2D array of shape (n_archetypes, n_features) representing the PCA coordinates of the archetypes.
         Required if `X` is not an AnnData object.
@@ -37,17 +39,14 @@ def compute_archetype_weights(
         - If `X` is an AnnData object, the weights are added to `X.obsm["cell_weights"]` and nothing is returned.
         - If `X` is a numpy array, a 2D array of shape (n_samples, n_archetypes) representing the weights for each cell-archetype pair.
     """
-    # Handle and validate input data
-    adata = None
-    if isinstance(X, sc.AnnData):
-        adata = X
-        if "archetypal_analysis" not in X.uns:
-            raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
-        Z = X.uns["archetypal_analysis"]["Z"]
-        X = X.obsm["X_pca"][:, : X.uns["n_pcs"]]
+    # input validation
+    _validate_aa_config(adata=adata)
+    _validate_aa_results(adata=adata)
 
-    if Z is None:
-        raise ValueError("Please add the archetypes coordinates as input Z")
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
+    Z = adata.uns["AA_results"]["Z"]
 
     # Calculate or validate length_scale based on mode
     if mode == "automatic":
@@ -63,8 +62,9 @@ def compute_archetype_weights(
     # Weight calculation
     euclidean_dist = cdist(X, Z)
     weights = np.exp(-(euclidean_dist**2) / (2 * length_scale**2))  # type: ignore[operator]
+    weights = weights.astype(np.float32)
 
-    if isinstance(adata, sc.AnnData):
+    if save_to_anndata:
         adata.obsm["cell_weights"] = weights
         return None
     else:

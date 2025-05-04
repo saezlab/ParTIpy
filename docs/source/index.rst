@@ -26,3 +26,4 @@ Compared to traditional clustering, **AA** avoids artificial discretization and 
    notebooks/quickstart
    notebooks/cross_condition_lupus
    notebooks/crosstalk
+   notebooks/spatial

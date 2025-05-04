@@ -21,8 +21,11 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs):
     )
     adata = sc.AnnData(X)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
-    adata.uns["archetypal_analysis"] = {"Z": Z[:, :n_pcs]}
-    adata.uns["n_pcs"] = n_pcs
+    adata.uns["aa_config"] = {
+        "obsm_key": "X_pca",
+        "n_dimension": n_pcs,
+    }
+    adata.uns["AA_results"] = {"Z": Z[:, :n_pcs]}
     compute_archetype_weights(adata)
     return adata
 
@@ -60,48 +63,18 @@ def test_compute_archetype_weights_anndata():
     )
 
 
-def test_compute_archetype_weights_array():
-    """Test array input with both automatic and manual modes.
-
-    Verifies:
-    - Saving results in `adata.obsm["cell_weights"]`
-    - Correct output shape (n_samples × n_archetypes)
-    - Weight bounds [0, 1]
-    """
-    # Setup
-    X, _, Z = simulate_archetypes(n_samples=1000, n_archetypes=5, n_dimensions=10, noise_std=0.0)
-
-    # Test automatic mode
-    weights_automatic = compute_archetype_weights(X, Z)
-    assert weights_automatic is not None, "Weights are not returned correctly"
-    assert weights_automatic.shape == (1000, 5), "Weights have wrong shape"
-    assert np.all(weights_automatic >= 0) and np.all(weights_automatic <= 1), "Weights are not between 0 and 1"
-
-    # Test manual mode
-    length_scale = 1.0
-    weights_manual = compute_archetype_weights(X, Z, mode="manual", length_scale=length_scale)
-    assert weights_manual is not None, "Weights are not returned correctly"
-    assert weights_manual.shape == (1000, 5), "Weights have wrong shape"
-    assert np.all(weights_manual >= 0) and np.all(weights_manual <= 1), "Weights are not between 0 and 1"
-
-
 def test_compute_archetype_weights_missing_archetypes():
     """Test error handling when archetype information is missing.
 
     Verifies:
-    For AnnData input: Raises ValueError when 'archetypal_analysis' is missing from .uns
+    For AnnData input: Raises ValueError when 'AA_results' is missing from .uns
     For array input: Raises ValueError when archetype coordinates (Z) are not provided
     """
     # Test adata
     adata = _simulate_adata(n_samples=1000, n_dimensions=10, n_archetypes=5, n_pcs=4)
-    del adata.uns["archetypal_analysis"]
+    del adata.uns["AA_results"]
     with pytest.raises(ValueError):
         compute_archetype_weights(adata)
-
-    # Test array
-    X = np.random.rand(10, 5)
-    with pytest.raises(ValueError):
-        compute_archetype_weights(X)
 
 
 def test_compute_archetype_weights_ground_truth():
@@ -125,7 +98,13 @@ def test_compute_archetype_weights_ground_truth():
     expected_weights = np.exp(-(expected_distances**2) / 2)
 
     # Test with manual length scale
-    weights = compute_archetype_weights(X, Z, mode="manual", length_scale=1.0)
+    adata = sc.AnnData(X=None, obsm={"X_pca": X})
+    adata.uns["AA_results"] = {"Z": Z}
+    adata.uns["aa_config"] = {
+        "obsm_key": "X_pca",
+        "n_dimension": 2,
+    }
+    weights = compute_archetype_weights(adata=adata, mode="manual", length_scale=1.0, save_to_anndata=False)
     assert np.allclose(weights, expected_weights), "Manual mode weights do not match expected values"
 
     # Test if automatic scale is computed correctly

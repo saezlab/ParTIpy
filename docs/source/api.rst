@@ -16,7 +16,7 @@ Parteto Task Inference and Archetypal Analysis:
    bootstrap_aa
    compute_archetypes
    compute_t_ratio
-   set_dimension_aa
+   set_obsm
    t_ratio_significance
    t_ratio_significance_shuffled
    var_explained_aa

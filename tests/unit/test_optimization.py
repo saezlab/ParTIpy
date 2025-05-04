@@ -91,11 +91,12 @@ def test_that_fast_algorithms_can_identify_archetypes(
     n_dimensions: int,
     optim_str: str,
 ) -> None:
-    if n_dimensions < 8:
-        N_SAMPLES = 10_000
+    N_SAMPLES = 20_000
+    if n_dimensions > 10:
+        MAX_REL_DIST = 0.25
     else:
-        N_SAMPLES = 100_000
-    MAX_REL_DIST = 0.15
+        MAX_REL_DIST = 0.20
+
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,

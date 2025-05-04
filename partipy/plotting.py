@@ -5,9 +5,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotnine as pn
 import scanpy as sc
+from mizani.palettes import hue_pal
 from scipy.spatial import ConvexHull
 
-from .paretoti import var_explained_aa
+from .paretoti import _validate_aa_config, _validate_aa_results, var_explained_aa
 
 
 def plot_var_explained(adata: sc.AnnData) -> pn.ggplot:
@@ -114,9 +115,25 @@ def plot_bootstrap_2D(adata: sc.AnnData) -> pn.ggplot:
         raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
 
     # Generate the 2D scatter plot
-    bootstrap_df = adata.uns["AA_bootstrap"]
+    plot_df = adata.uns["AA_bootstrap"].copy()
 
-    p = pn.ggplot(bootstrap_df) + pn.geom_point(pn.aes(x="pc_0", y="pc_1", color="archetype", shape="reference"))
+    if "x2" in plot_df.columns.to_list():
+        plot_df = plot_df.melt(
+            id_vars=["x0", "archetype", "reference"], value_vars=["x1", "x2"], var_name="variable", value_name="value"
+        )
+        p = (
+            pn.ggplot(plot_df)
+            + pn.geom_point(pn.aes(x="x0", y="value", color="archetype", shape="reference"))
+            + pn.facet_wrap(facets="variable", scales="fixed")
+            + pn.labs(x="First Axis", y="Second / Third Axis")
+            + pn.coord_equal()
+        )
+    else:
+        p = (
+            pn.ggplot(plot_df)
+            + pn.geom_point(pn.aes(x="x0", y="x1", color="archetype", shape="reference"))
+            + pn.coord_equal()
+        )
     return p
 
 
@@ -145,16 +162,11 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
     bootstrap_df = adata.uns["AA_bootstrap"]
     fig = px.scatter_3d(
         bootstrap_df,
-        x="pc_0",
-        y="pc_1",
-        z="pc_2",
+        x="x0",
+        y="x1",
+        z="x2",
         color="archetype",
         symbol="reference",
-        labels={
-            "pc_0": "PC 1",
-            "pc_1": "PC 2",
-            "pc_2": "PC 3",
-        },
         title="Archetypes on bootstrapepd data",
         size_max=10,
         hover_data=["iter", "archetype", "reference"],
@@ -178,7 +190,7 @@ def plot_bootstrap_multiple_k(adata: sc.AnnData) -> pn.ggplot:
     ----------
     adata : sc.AnnData
         Annotated data object containing the results from `bootstrap_aa_multiple_k` in
-        `adata.uns["bootstrap_aa_multiple_k"]`.
+        `adata.uns["AA_boostrap_multiple_k"]`.
 
     Returns
     -------
@@ -187,11 +199,11 @@ def plot_bootstrap_multiple_k(adata: sc.AnnData) -> pn.ggplot:
         - Scatter points for individual archetype variances (`variance_per_archetype`) as a function of `n_archetypes`.
         - Lines and points for the median and maximum variance across archetypes at each `n_archetypes`.
     """
-    if "bootstrap_aa_multiple_k" not in adata.uns:
+    if "AA_boostrap_multiple_k" not in adata.uns:
         raise ValueError(
             "bootstrap_aa_multiple_k not found in adata.uns. Please run bootstrap_aa_multiple_k() to compute"
         )
-    df = adata.uns["bootstrap_aa_multiple_k"]
+    df = adata.uns["AA_boostrap_multiple_k"]
     df_summary = df.groupby("n_archetypes")["variance_per_archetype"].agg(["median", "max"]).reset_index()
     df_summary = df_summary.melt(id_vars="n_archetypes", value_vars=["median", "max"])
     p = (
@@ -215,7 +227,7 @@ def plot_archetypes_2D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
     Parameters
     ----------
     adata : sc.AnnData
-        Annotated data object containing the archetypes in `adata.uns["archetypal_analysis"]["Z"]`
+        Annotated data object containing the archetypes in `adata.uns["AA_results"]["Z"]`
         and PCA-reduced data in `adata.obsm["X_pca"]`.
     color : str or None, optional
         Column name in `adata.obs` to use for coloring the data points. If None, no coloring is applied.
@@ -225,16 +237,18 @@ def plot_archetypes_2D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
     pn.ggplot
         A static 2D scatter plot showing the data and archetypes.
     """
-    if "archetypal_analysis" not in adata.uns:
-        raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
-    Z = adata.uns["archetypal_analysis"]["Z"]
-    X = adata.obsm["X_pca"][:, : adata.uns["n_pcs"]]
+    _validate_aa_config(adata)
+    _validate_aa_results(adata)
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
+    Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
     plot = plot_2D(X=X, Z=Z, color_vec=color_vec)
     return plot
 
 
-def plot_2D(X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None) -> pn.ggplot:
+def plot_2D(X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None, alpha: float = 1.0) -> pn.ggplot:
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
 
@@ -254,35 +268,57 @@ def plot_2D(X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None) -
     """
     if X.shape[1] < 2 or Z.shape[1] < 2:
         raise ValueError("Both X and Z must have at least 2 columns (PCs).")
+    if color_vec is not None:
+        if len(color_vec) != len(X):
+            raise ValueError("color_vec must have the same length as X.")
 
-    X_plot, Z_plot = X[:, :2], Z[:, :2]
-
-    # Order archetypes for plotting the polytope
-    plot_df = pd.DataFrame(X_plot, columns=["x0", "x1"])
-    order = np.argsort(np.arctan2(Z_plot[:, 1] - np.mean(Z_plot[:, 1]), Z_plot[:, 0] - np.mean(Z_plot[:, 0])))
-
-    arch_df = pd.DataFrame(Z_plot, columns=["x0", "x1"])
-    arch_df["archetype_label"] = np.arange(arch_df.shape[0])
-    arch_df = arch_df.iloc[order].reset_index(drop=True)
-    arch_df = pd.concat([arch_df, arch_df.iloc[:1]], ignore_index=True)
+    if X.shape[1] > 2:
+        data_df = pd.DataFrame(X[:, :3], columns=["x0", "x1", "x2"])
+        if color_vec is not None:
+            data_df["color_vec"] = np.array(color_vec)
+            data_df = data_df.melt(
+                id_vars=["x0", "color_vec"], value_vars=["x1", "x2"], var_name="variable", value_name="value"
+            )
+        else:
+            data_df = data_df.melt(id_vars=["x0"], value_vars=["x1", "x2"], var_name="variable", value_name="value")
+        arch_df_list = []
+        for dim in range(1, 3):
+            order = np.argsort(np.arctan2(Z[:, dim] - np.mean(Z[:, dim]), Z[:, 0] - np.mean(Z[:, 0])))
+            arch_df = pd.DataFrame(Z[:, [0, dim]], columns=["x0", "value"])
+            arch_df["variable"] = f"x{dim}"
+            arch_df["archetype_label"] = np.arange(arch_df.shape[0])
+            arch_df = arch_df.iloc[order].reset_index(drop=True)
+            arch_df = pd.concat([arch_df, arch_df.iloc[:1]], ignore_index=True)
+            arch_df_list.append(arch_df)
+        arch_df = pd.concat(arch_df_list)
+    else:
+        data_df = pd.DataFrame(X[:, :2], columns=["x0", "value"])
+        if color_vec is not None:
+            data_df["color_vec"] = np.array(color_vec)
+        data_df["variable"] = "x1"
+        order = np.argsort(np.arctan2(Z[:, 1] - np.mean(Z[:, 1]), Z[:, 0] - np.mean(Z[:, 0])))
+        arch_df = pd.DataFrame(Z[:, [0, 1]], columns=["x0", "value"])
+        arch_df["variable"] = "x1"
+        arch_df["archetype_label"] = np.arange(arch_df.shape[0])
+        arch_df = arch_df.iloc[order].reset_index(drop=True)
+        arch_df = pd.concat([arch_df, arch_df.iloc[:1]], ignore_index=True)
 
     # Generate plot
     plot = pn.ggplot()
 
     if color_vec is not None:
-        if len(color_vec) != len(plot_df):
-            raise ValueError("color_vec must have the same length as X.")
-        plot_df["color_vec"] = np.array(color_vec)
-        plot += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1", color="color_vec"), alpha=0.5)
+        plot += pn.geom_point(data=data_df, mapping=pn.aes(x="x0", y="value", color="color_vec"), alpha=alpha)
     else:
-        plot += pn.geom_point(data=plot_df, mapping=pn.aes(x="x0", y="x1"), color="black", alpha=0.5)
+        plot += pn.geom_point(data=data_df, mapping=pn.aes(x="x0", y="value"), color="black", alpha=alpha)
 
-    plot += pn.geom_point(data=arch_df, mapping=pn.aes(x="x0", y="x1"), color="red", size=1)
-    plot += pn.geom_path(data=arch_df, mapping=pn.aes(x="x0", y="x1"), color="red", size=1)
-    plot += pn.geom_label(data=arch_df, mapping=pn.aes(x="x0", y="x1", label="archetype_label"), color="black", size=12)
-
-    plot += pn.labs(x="PC 1", y="PC 2")
-    plot += pn.theme_matplotlib()
+    plot += pn.geom_point(data=arch_df, mapping=pn.aes(x="x0", y="value"), color="red", size=1)
+    plot += pn.geom_path(data=arch_df, mapping=pn.aes(x="x0", y="value"), color="red", size=1)
+    plot += pn.geom_label(
+        data=arch_df, mapping=pn.aes(x="x0", y="value", label="archetype_label"), color="black", size=12
+    )
+    plot += pn.facet_wrap(facets="variable", scales="fixed")
+    plot += pn.labs(x="First Axis", y="Second / Third Axis")
+    plot += pn.coord_equal()
 
     return plot
 
@@ -292,14 +328,14 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
     Create an interactive 3D scatter plot showing data points, archetypes and the polytope they span.
 
     This function uses the first three principal components from `adata.obsm["X_pca"]`
-    and visualizes the archetypes stored in `adata.uns["archetypal_analysis"]["Z"]`.
+    and visualizes the archetypes stored in `adata.uns["AA_results"]["Z"]`.
     If a color key is provided, it colors data points by the corresponding values from `adata.obs`.
 
     Parameters
     ----------
     adata : sc.AnnData
         Annotated data object containing the PCA-reduced data in `obsm["X_pca"]` and
-        archetypes in `uns["archetypal_analysis"]["Z"]`.
+        archetypes in `uns["AA_results"]["Z"]`.
     color : str, optional
         Name of a column in `adata.obs` to color the data points by.
 
@@ -308,10 +344,12 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
     go.Figure
         A Plotly figure object showing a 3D scatter plot of the data and archetypes.
     """
-    if "archetypal_analysis" not in adata.uns:
-        raise ValueError("Result from Archetypal Analysis not found in adata.uns. Please run AA()")
-    Z = adata.uns["archetypal_analysis"]["Z"]
-    X = adata.obsm["X_pca"][:, : adata.uns["n_pcs"]]
+    _validate_aa_config(adata)
+    _validate_aa_results(adata)
+    obsm_key = adata.uns["aa_config"]["obsm_key"]
+    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    X = adata.obsm[obsm_key][:, :n_dimensions]
+    Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
     plot = plot_3D(X=X, Z=Z, color_vec=color_vec)
     return plot
@@ -454,9 +492,13 @@ def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
     pn.ggplot.ggplot
         A stacked bar plot of metadata enrichment per archetype.
     """
-    # Prepare data
+    # prepare data
     meta_enrich = meta_enrich.reset_index().rename(columns={"index": "archetype"})
     meta_enrich_long = meta_enrich.melt(id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment")
+
+    # get unique categories and assign colors
+    categories = meta_enrich_long["Meta"].unique()
+    color_palette = hue_pal()(len(categories))
 
     # Create plot
     plot = (
@@ -466,7 +508,8 @@ def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
         )
         + pn.geom_bar(stat="identity", position="stack")
         + pn.theme_matplotlib()
-        + pn.scale_fill_brewer(type="qual", palette="Dark2")
+        # + pn.scale_fill_brewer(type="qual", palette="Dark2")
+        + pn.scale_fill_manual(values=color_palette)
         + pn.labs(
             title="Meta Enrichment Across Archetypes",
             x="Archetype",

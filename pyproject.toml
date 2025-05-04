@@ -63,6 +63,7 @@ doc = [
     "sphinx-tabs",
     "sphinxcontrib-bibtex>=1",
     "sphinxext-opengraph",
+    "numpydoc",
 ]
 
 

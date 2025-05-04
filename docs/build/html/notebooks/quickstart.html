@@ -24,7 +24,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="prev" title="Release notes" href="../release_notes.html" />
+    <link rel="next" title="Cross-Condition Analysis" href="cross_condition_lupus.html" />
+    <link rel="prev" title="API" href="../api.html" />
 </head>
 
 <body class="wy-body-for-nav">
@@ -50,6 +51,7 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../release_notes.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api.html">API</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Vignettes</span></p>
 <ul class="current">
@@ -58,13 +60,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#Data">Data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#Preprocessing">Preprocessing</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#Choosing-the-Number-of-Archetypes">Choosing the Number of Archetypes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#Archetypal-Analysis">Archetypal Analysis</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#Advanced-Topics">Advanced Topics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#Archetypal-Analysis">Archetypal Analysis</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#Accessing-the-Stability-of-the-Archetypes">Accessing the Stability of the Archetypes</a></li>
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="cross_condition_lupus.html">Cross-Condition Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="crosstalk.html">Archetype Crosstalk Network</a></li>
 </ul>
 
         </div>
@@ -83,7 +83,7 @@
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
       <li class="breadcrumb-item active">Quickstart</li>
       <li class="wy-breadcrumbs-aside">
-              <a href="https://github.com/saezlab/ParTIpy/blob/master/docs/source/notebooks/quickstart.ipynb" class="fa fa-github"> Edit on GitHub</a>
+              <a href="https://github.com/saezlab/ParTIpy/blob/main/docs/source/notebooks/quickstart.ipynb" class="fa fa-github"> Edit on GitHub</a>
       </li>
   </ul>
   <hr/>
@@ -95,13 +95,24 @@
 <h1>Quickstart<a class="headerlink" href="#Quickstart" title="Link to this heading"></a></h1>
 <section id="Packages">
 <h2>Packages<a class="headerlink" href="#Packages" title="Link to this heading"></a></h2>
-<div class="nbinput docutils container">
+<p>Install additional packages required to run this vignette.</p>
+<div class="nbinput nblast docutils container">
 <div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="o">!{</span>sys.executable<span class="o">}</span><span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--quiet<span class="w"> </span>decoupler<span class="w"> </span>liana<span class="w"> </span>requests<span class="w"> </span>ipywidgets
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">IPython.display</span><span class="w"> </span><span class="kn">import</span> <span class="n">Markdown</span> <span class="c1"># utility</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">scanpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sc</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -109,20 +120,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">decoupler</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dc</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">liana.resource</span><span class="w"> </span><span class="kn">import</span> <span class="n">translate_column</span><span class="p">,</span> <span class="n">get_hcop_orthologs</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">partipy.paretoti_funcs</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">set_dimension</span><span class="p">,</span>
-    <span class="n">var_explained_aa</span><span class="p">,</span>
-    <span class="n">plot_var_explained_aa</span><span class="p">,</span>
-    <span class="n">bootstrap_aa</span><span class="p">,</span>
-    <span class="n">plot_bootstrap_aa</span><span class="p">,</span>
-    <span class="n">compute_AA</span><span class="p">,</span>
-    <span class="n">plot_2D_adata</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">partipy.enrichment</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">calculate_weights</span><span class="p">,</span>
-    <span class="n">weighted_expr</span><span class="p">,</span>
-    <span class="n">extract_top_processes</span>
-<span class="p">)</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">partipy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
 </pre></div>
 </div>
 </div>
@@ -131,7 +129,6 @@
 </div>
 <div class="output_area stderr docutils container">
 <div class="highlight"><pre>
-/Users/pschafer/miniforge3/envs/partipy/lib/python3.11/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
 OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
 </pre></div></div>
 </div>
@@ -144,7 +141,7 @@ OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active
 <div class="line">[1] Halpern, K. B. et al. Single-cell spatial reconstruction reveals global division of labour in the mammalian liver. <em>Nature</em> <strong>542</strong>, 352–356 (2017).</div>
 </div>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">download_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
@@ -188,7 +185,7 @@ File already exists, skipping: data/GSE84498%5Fumitab.txt.gz
 </pre></div></div>
 </div>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">obs</span> <span class="o">=</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">/</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_urls</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
@@ -209,7 +206,7 @@ File already exists, skipping: data/GSE84498%5Fumitab.txt.gz
 </div>
 </div>
 <div class="nboutput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
 </pre></div>
 </div>
 <div class="output_area docutils container">
@@ -223,7 +220,7 @@ AnnData object with n_obs × n_vars = 1534 × 10400
 <h2>Preprocessing<a class="headerlink" href="#Preprocessing" title="Link to this heading"></a></h2>
 <p>Before conducting archetypal analysis (AA) on single-cell RNA-seq data, it is benefical to reduce the dimensionality of the data. To achieve this, we first scale the counts across all cells to a common value, followed by log normalization. Next, we identify highly variable genes and then apply principal component analysis using only those highly variable genes. We use <code class="docutils literal notranslate"><span class="pre">scanpy</span></code> for all these steps.</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sc</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">normalize_total</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
@@ -251,12 +248,12 @@ AnnData object with n_obs × n_vars = 1534 × 10400
 <div class="prompt empty docutils container">
 </div>
 <div class="output_area docutils container">
-<img alt="../_images/notebooks_quickstart_9_1.png" src="../_images/notebooks_quickstart_9_1.png" />
+<img alt="../_images/notebooks_quickstart_11_1.png" src="../_images/notebooks_quickstart_11_1.png" />
 </div>
 </div>
 <p>To determine the number of principal components to use for fitting the archetypes, we will examine the scree plot from the PCA. The plot indicates that the gain in explained variance becomes negligible beyond the sixth principal component.</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sc</span><span class="o">.</span><span class="n">pl</span><span class="o">.</span><span class="n">pca_variance_ratio</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_pcs</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
@@ -267,15 +264,15 @@ AnnData object with n_obs × n_vars = 1534 × 10400
 <div class="prompt empty docutils container">
 </div>
 <div class="output_area docutils container">
-<img alt="../_images/notebooks_quickstart_11_0.png" src="../_images/notebooks_quickstart_11_0.png" />
+<img alt="../_images/notebooks_quickstart_13_0.png" src="../_images/notebooks_quickstart_13_0.png" />
 </div>
 </div>
 <p>We store this setting in the adata.uns slot using the utility function <code class="docutils literal notranslate"><span class="pre">set_dimension</span></code>.</p>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">set_dimension</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_pcs</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pt</span><span class="o">.</span><span class="n">set_obsm</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">obsm_key</span><span class="o">=</span><span class="s2">&quot;X_pca&quot;</span><span class="p">,</span> <span class="n">n_dimension</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -285,14 +282,15 @@ AnnData object with n_obs × n_vars = 1534 × 10400
 <p>Now, we are ready to perform archetypal analysis, but the key question remains: how many archetypes should be used?</p>
 <p>There is no definitive ground truth for this choice, but several heuristics can guide the decision. One approach is to evaluate how much variance is explained by different numbers of archetypes.</p>
 <p>The function <code class="docutils literal notranslate"><span class="pre">var_explained_aa()</span></code> takes the reduced PCA data and computes the explained variance across a range of archetypes (from <code class="docutils literal notranslate"><span class="pre">min_a</span></code> to <code class="docutils literal notranslate"><span class="pre">max_a</span></code>). By default, this function utilizes all available CPU cores, as indicated by the <code class="docutils literal notranslate"><span class="pre">n_jobs</span></code> argument, which is set to <code class="docutils literal notranslate"><span class="pre">-1</span></code>.</p>
-<p>The results are stored in <code class="docutils literal notranslate"><span class="pre">adata.uns[&quot;AA_var&quot;]</span></code> and can be effectively visualized using plot_var_explained_aa(). The plot suggests that a reasonable choice for the number of archetypes is 3, 4, 5, or 6, as the additional explained variance becomes negligible beyond this point.</p>
-<p>For this analysis, we will proceed with 4 archetypes.</p>
+<p>Additionally the function <code class="docutils literal notranslate"><span class="pre">var_explained_aa()</span></code> computes an information criteria which was suggested by Suleman, A., 2017. Validation of archetypal analysis, in: 2017 IEEE International Conference on Fuzzy Systems (FUZZ-IEEE) pp. 1–6. <a class="reference external" href="https://doi.org/10.1109/FUZZ-IEEE.2017.8015385">https://doi.org/10.1109/FUZZ-IEEE.2017.8015385</a></p>
+<p>The results are stored in <code class="docutils literal notranslate"><span class="pre">adata.uns[&quot;AA_var&quot;]</span></code> and can be effectively visualized using plot_var_explained_aa(). The plot suggests that a reasonable choice for the number of archetypes is 3, 4, or 5, as the additional explained variance becomes negligible beyond this point and the information criterum is the lowest for 3-5 archetypes.</p>
+<p>For this analysis, we will proceed with 3 archetypes.</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">var_explained_aa</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">min_a</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">max_a</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
-<span class="n">plot_var_explained_aa</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pt</span><span class="o">.</span><span class="n">var_explained_aa</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">min_a</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">max_a</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">pt</span><span class="o">.</span><span class="n">plot_var_explained</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -300,7 +298,59 @@ AnnData object with n_obs × n_vars = 1534 × 10400
 <div class="prompt empty docutils container">
 </div>
 <div class="output_area docutils container">
-<img alt="../_images/notebooks_quickstart_16_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_16_0.png" style="width: 640px; height: 480px;" />
+<img alt="../_images/notebooks_quickstart_18_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_18_0.png" style="width: 600px; height: 300px;" />
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[9]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pt</span><span class="o">.</span><span class="n">plot_IC</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_19_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_19_0.png" style="width: 600px; height: 300px;" />
+</div>
+</div>
+<p>An important consideration is whether the positions of the archetypes remain stable for a given number of archetypes. To assess this, we apply bootstrapping and perform Archetypal Analysis (AA) on resampled datasets.</p>
+<p>By default, this function utilizes all available CPU cores, as specified by the <code class="docutils literal notranslate"><span class="pre">n_jobs</span></code> argument, which is set to <code class="docutils literal notranslate"><span class="pre">-1</span></code>. The results are stored in <code class="docutils literal notranslate"><span class="pre">adata.uns[&quot;AA_bootstrap&quot;]</span></code> and can be visualized using <code class="docutils literal notranslate"><span class="pre">pt.plot_bootstrap_2D(adata)</span></code> for the first two principal components and <code class="docutils literal notranslate"><span class="pre">pt.plot_bootstrap_3D(adata)</span></code> for the first three.</p>
+<p>Since Plotly does not render properly when exporting Jupyter notebooks, we will use only the 2D scatter plot here.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pt</span><span class="o">.</span><span class="n">bootstrap_aa</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_bootstrap</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">n_archetypes</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="c1">#pt.plot_bootstrap_3D(adata)</span>
+<span class="n">pt</span><span class="o">.</span><span class="n">plot_bootstrap_2D</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_21_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_21_0.png" style="width: 640px; height: 480px;" />
+</div>
+</div>
+<p>We can also perform this different number of archetypes, to asses the stability if we were to change the number of archetypes.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pt</span><span class="o">.</span><span class="n">bootstrap_aa_multiple_k</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_archetypes_list</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">11</span><span class="p">)))</span>
+<span class="n">pt</span><span class="o">.</span><span class="n">plot_bootstrap_multiple_k</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_23_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_23_0.png" style="width: 640px; height: 480px;" />
 </div>
 </div>
 </section>
@@ -309,34 +359,12 @@ AnnData object with n_obs × n_vars = 1534 × 10400
 <p>To compute the archetypes, we can simply use the <code class="docutils literal notranslate"><span class="pre">compute_AA</span></code> function. There are many optimization parameters which we describe in more detail in the vignette TODO.</p>
 <p>To get a feeling for the archetypes we might plot the</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[12]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">compute_AA</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_archetypes</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="s2">&quot;furthest_sum&quot;</span><span class="p">)</span>
-<span class="n">plot_2D_adata</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-<div class="nboutput nblast docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<img alt="../_images/notebooks_quickstart_19_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_19_0.png" style="width: 640px; height: 480px;" />
-</div>
-</div>
-<p>To better understand the archetypes, we aim to obtain the characteristic gene expression profile for each one.</p>
-<p>We begin by computing the archetypal weights using the <code class="docutils literal notranslate"><span class="pre">calculate_weights()</span></code> function, which assigns each cell a weight for each archetype based on its proximity to the archetype in the reduced space.</p>
-<p>Next, we generate a pseudobulk expression profile for each archetype using weighted averaging. This is achieved with the <code class="docutils literal notranslate"><span class="pre">weighted_expr()</span></code> function, which aggregates expression data across cells according to their archetypal contributions.</p>
-<p>To better illustrate this, we visualize the weights for archetype 4 using the <code class="docutils literal notranslate"><span class="pre">plot_2D_adata()</span></code> function, highlighting the extent to which each cell is associated with it.</p>
-<div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[9]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">calculate_weights</span><span class="p">(</span><span class="n">X</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;automatic&quot;</span><span class="p">)</span>
-<span class="n">pseudobulk</span> <span class="o">=</span> <span class="n">weighted_expr</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">layer</span><span class="o">=</span><span class="s2">&quot;z_scaled&quot;</span><span class="p">)</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pt</span><span class="o">.</span><span class="n">compute_archetypes</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_archetypes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-<span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">&quot;weights_archetype_4&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obsm</span><span class="p">[</span><span class="s2">&quot;cell_weights&quot;</span><span class="p">][:,</span> <span class="mi">3</span><span class="p">]</span>
-<span class="n">plot_2D_adata</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;weights_archetype_4&quot;</span><span class="p">)</span>
+<span class="n">pt</span><span class="o">.</span><span class="n">plot_archetypes_2D</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -345,28 +373,114 @@ AnnData object with n_obs × n_vars = 1534 × 10400
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Applied length scale is 4.160508202027831.
+iter: 45 | RSS: 4173.863 | rel_delta_RSS: -0.000034
+Algorithm converged after 45 iterations.
 </pre></div></div>
 </div>
 <div class="nboutput nblast docutils container">
 <div class="prompt empty docutils container">
 </div>
 <div class="output_area docutils container">
-<img alt="../_images/notebooks_quickstart_21_1.png" class="no-scaled-link" src="../_images/notebooks_quickstart_21_1.png" style="width: 640px; height: 480px;" />
+<img alt="../_images/notebooks_quickstart_26_1.png" class="no-scaled-link" src="../_images/notebooks_quickstart_26_1.png" style="width: 640px; height: 480px;" />
 </div>
 </div>
-<p>Now we can use the characteristic gene expression profile to see which genes are relatively important for each archetype. Here we will focus on archetype 3.</p>
-<p>This reveals many Cytochrome P450 enzymes, as well as genes involved in amino-acid metabolism such as Oat (Ornithine aminotransferase)</p>
-<div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[22]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pseudobulk</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">arch_idx</span> <span class="o">=</span> <span class="mi">0</span>
+</pre></div>
+</div>
+</div>
+<p>To better understand the archetypes, we aim to obtain the characteristic gene expression profile for each one.</p>
+<p>We begin by computing the archetypal weights using the <code class="docutils literal notranslate"><span class="pre">compute_archetype_weights()</span></code> function, which assigns each cell a weight for each archetype based on its proximity to the archetype in the reduced space.</p>
+<p>Next, we generate a the characteristic expression profile for each archetype using weighted averaging. This is achieved with the <code class="docutils literal notranslate"><span class="pre">compute_archetype_expression()</span></code> function, which aggregates expression data across cells according to their archetypal contributions.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">To better illustrate this, we visualize the weights for archetype **</span><span class="si">{</span><span class="n">arch_idx</span><span class="si">}</span><span class="s2">**</span>
+<span class="s2">using the `plot_2D_adata()` function, highlighting the extent to which</span>
+<span class="s2">each cell is associated with it.</span>
+<span class="s2">&quot;&quot;&quot;</span>
+<span class="n">Markdown</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="nboutput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+
+To better illustrate this, we visualize the weights for archetype **0**
+using the `plot_2D_adata()` function, highlighting the extent to which
+each cell is associated with it.
+
+</pre></div></div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[24]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">pt</span><span class="o">.</span><span class="n">compute_archetype_weights</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;automatic&quot;</span><span class="p">)</span>
+<span class="n">archetype_expression</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">compute_archetype_expression</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">layer</span><span class="o">=</span><span class="s2">&quot;z_scaled&quot;</span><span class="p">)</span>
+
+<span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;weights_archetype_</span><span class="si">{</span><span class="n">arch_idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obsm</span><span class="p">[</span><span class="s2">&quot;cell_weights&quot;</span><span class="p">][:,</span> <span class="n">arch_idx</span><span class="p">]</span>
+<span class="n">pt</span><span class="o">.</span><span class="n">plot_archetypes_2D</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;weights_archetype_</span><span class="si">{</span><span class="n">arch_idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Applied length scale is 3.8232464467434117.
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_quickstart_30_1.png" class="no-scaled-link" src="../_images/notebooks_quickstart_30_1.png" style="width: 640px; height: 480px;" />
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[25]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">Now we can use the characteristic gene expression profile to see which genes are relatively</span>
+<span class="s2">important for each archetype. Here we will focus on archetype **</span><span class="si">{</span><span class="n">arch_idx</span><span class="si">}</span><span class="s2">**.</span>
+
+<span class="s2">This reveals many Cytochrome P450 enzymes, as well as genes involved in amino-acid metabolism such</span>
+<span class="s2">as Oat (Ornithine aminotransferase)</span>
+<span class="s2">&quot;&quot;&quot;</span>
+<span class="n">Markdown</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[25]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<p>Now we can use the characteristic gene expression profile to see which genes are relatively important for each archetype. Here we will focus on archetype <strong>0</strong>.</p>
+<p>This reveals many Cytochrome P450 enzymes, as well as genes involved in amino-acid metabolism such as Oat (Ornithine aminotransferase)</p>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[17]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">archetype_expression</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="n">arch_idx</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[17]:
 </pre></div>
 </div>
 <div class="output_area rendered_html docutils container">
@@ -391,79 +505,68 @@ Applied length scale is 4.160508202027831.
       <th>0</th>
       <th>1</th>
       <th>2</th>
-      <th>3</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <th>Cyp2a5</th>
-      <td>-0.244505</td>
-      <td>-0.355785</td>
-      <td>-0.539601</td>
-      <td>1.237683</td>
+      <td>1.273673</td>
+      <td>-0.474502</td>
+      <td>-0.507549</td>
     </tr>
     <tr>
       <th>Oat</th>
-      <td>-0.314369</td>
-      <td>-0.286266</td>
-      <td>-0.439738</td>
-      <td>1.180190</td>
+      <td>1.189872</td>
+      <td>-0.424253</td>
+      <td>-0.397420</td>
     </tr>
     <tr>
       <th>Cyp2c29</th>
-      <td>-0.197813</td>
-      <td>-0.356917</td>
-      <td>-0.622412</td>
-      <td>1.144445</td>
+      <td>1.161010</td>
+      <td>-0.500166</td>
+      <td>-0.587562</td>
     </tr>
     <tr>
       <th>Cyp1a2</th>
-      <td>-0.331320</td>
-      <td>-0.238511</td>
-      <td>-0.668692</td>
-      <td>1.067805</td>
+      <td>1.099046</td>
+      <td>-0.586252</td>
+      <td>-0.501765</td>
     </tr>
     <tr>
       <th>Lect2</th>
-      <td>-0.349000</td>
-      <td>-0.227938</td>
-      <td>-0.483560</td>
-      <td>1.064875</td>
+      <td>1.095963</td>
+      <td>-0.504496</td>
+      <td>-0.368425</td>
     </tr>
     <tr>
       <th>Cyp2e1</th>
-      <td>-0.354307</td>
-      <td>-0.274553</td>
-      <td>-0.628890</td>
-      <td>1.032290</td>
-    </tr>
-    <tr>
-      <th>Cyp2c37</th>
-      <td>-0.194175</td>
-      <td>-0.316099</td>
-      <td>-0.397677</td>
-      <td>1.031174</td>
+      <td>1.056135</td>
+      <td>-0.662929</td>
+      <td>-0.437153</td>
     </tr>
     <tr>
       <th>Aldh3a2</th>
-      <td>-0.375230</td>
-      <td>-0.246598</td>
-      <td>-0.537613</td>
-      <td>1.009613</td>
+      <td>1.018457</td>
+      <td>-0.567082</td>
+      <td>-0.400217</td>
     </tr>
     <tr>
       <th>Gulo</th>
-      <td>-0.234113</td>
-      <td>-0.280211</td>
-      <td>-0.442193</td>
-      <td>1.006185</td>
+      <td>1.017270</td>
+      <td>-0.373485</td>
+      <td>-0.402643</td>
     </tr>
     <tr>
-      <th>Lhpp</th>
-      <td>-0.254370</td>
-      <td>-0.224964</td>
-      <td>-0.308826</td>
-      <td>1.001450</td>
+      <th>Rdh1</th>
+      <td>0.999380</td>
+      <td>-0.333928</td>
+      <td>-0.324017</td>
+    </tr>
+    <tr>
+      <th>Cyp2c37</th>
+      <td>0.999145</td>
+      <td>-0.339609</td>
+      <td>-0.410846</td>
     </tr>
   </tbody>
 </table>
@@ -472,7 +575,7 @@ Applied length scale is 4.160508202027831.
 <p>We can also use the characteristic gene expression profiles of each archetype to perform enrichment analysis with decoupler. Here, we focus on GO Biological Process (GO BP) terms.</p>
 <p>Since our dataset contains mouse genes, we first translate human gene symbols to their mouse equivalents using liana.</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[18]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">map_df</span> <span class="o">=</span> <span class="n">get_hcop_orthologs</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s2">&quot;https://ftp.ebi.ac.uk/pub/databases/genenames/hcop/human_mouse_hcop_fifteen_column.txt.gz&quot;</span><span class="p">)</span>
@@ -495,7 +598,7 @@ Applied length scale is 4.160508202027831.
                      <span class="o">.</span><span class="n">mean</span><span class="p">())</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">pk_genes_in_adata</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
 
-<span class="n">acts_ulm_est</span><span class="p">,</span> <span class="n">acts_ulm_est_p</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">run_ulm</span><span class="p">(</span><span class="n">mat</span> <span class="o">=</span> <span class="n">pseudobulk</span><span class="p">,</span>
+<span class="n">acts_ulm_est</span><span class="p">,</span> <span class="n">acts_ulm_est_p</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">run_ulm</span><span class="p">(</span><span class="n">mat</span> <span class="o">=</span> <span class="n">archetype_expression</span><span class="p">,</span>
                                           <span class="n">net</span> <span class="o">=</span> <span class="n">msigdb_mouse</span><span class="p">,</span>
                                           <span class="n">weight</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                           <span class="n">source</span><span class="o">=</span><span class="s2">&quot;geneset&quot;</span><span class="p">,</span>
@@ -521,11 +624,11 @@ Applied length scale is 4.160508202027831.
 <div class="highlight"><pre>
 pk_genes_in_adata=np.float64(0.5118753432180121)
 12 features of mat are empty, they will be removed.
-Running ulm on mat with 4 samples and 10388 targets for 5769 sources.
+Running ulm on mat with 3 samples and 10388 targets for 5769 sources.
 </pre></div></div>
 </div>
 <div class="nboutput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[18]:
 </pre></div>
 </div>
 <div class="output_area rendered_html docutils container">
@@ -556,61 +659,72 @@ Running ulm on mat with 4 samples and 10388 targets for 5769 sources.
   <tbody>
     <tr>
       <th>0</th>
-      <td>0.695756</td>
-      <td>-0.851369</td>
-      <td>1.210461</td>
-      <td>1.257224</td>
+      <td>-1.366888</td>
+      <td>0.402218</td>
+      <td>2.460780</td>
+      <td>0.748646</td>
     </tr>
     <tr>
       <th>1</th>
-      <td>1.219775</td>
-      <td>0.646358</td>
-      <td>-1.189453</td>
-      <td>-0.665868</td>
+      <td>1.653664</td>
+      <td>0.207410</td>
+      <td>2.262177</td>
+      <td>1.603231</td>
     </tr>
     <tr>
       <th>2</th>
-      <td>1.812730</td>
-      <td>0.297720</td>
-      <td>-1.352038</td>
-      <td>-0.383927</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>-1.388551</td>
-      <td>0.485648</td>
-      <td>2.564778</td>
-      <td>0.722032</td>
+      <td>0.761786</td>
+      <td>0.252353</td>
+      <td>-3.592598</td>
+      <td>-1.313624</td>
     </tr>
   </tbody>
 </table>
 </div></div>
 </div>
-<p>We can then extract the top <span class="math notranslate nohighlight">\(x\)</span> (here <span class="math notranslate nohighlight">\(x=25\)</span>) processes per archetype using <code class="docutils literal notranslate"><span class="pre">extract_top_processes()</span></code>.</p>
-<p>Focusing on Archetype 3 this reveals…</p>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[12]:
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[21]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">top_processes</span> <span class="o">=</span> <span class="n">extract_top_processes</span><span class="p">(</span><span class="n">est</span><span class="o">=</span><span class="n">acts_ulm_est</span><span class="p">,</span>
-                                      <span class="n">pval</span><span class="o">=</span><span class="n">acts_ulm_est_p</span><span class="p">,</span>
-                                      <span class="n">order</span><span class="o">=</span><span class="s2">&quot;desc&quot;</span><span class="p">,</span>
-                                      <span class="n">n</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span>
-                                      <span class="n">p_threshold</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">We can then extract the top $x$ (here $x=25$) processes per archetype using</span>
+<span class="s2">`extract_enriched_processes()`. Focusing on Archetype **</span><span class="si">{</span><span class="n">arch_idx</span><span class="si">}</span><span class="s2">** this reveals...</span>
+<span class="s2">&quot;&quot;&quot;</span>
+<span class="n">Markdown</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[21]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<p>We can then extract the top <span class="math notranslate nohighlight">\(x\)</span> (here <span class="math notranslate nohighlight">\(x=25\)</span>) processes per archetype using <code class="docutils literal notranslate"><span class="pre">extract_enriched_processes()</span></code>. Focusing on Archetype <strong>0</strong> this reveals…</p>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[19]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">top_processes</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">extract_enriched_processes</span><span class="p">(</span><span class="n">est</span><span class="o">=</span><span class="n">acts_ulm_est</span><span class="p">,</span>
+                                              <span class="n">pval</span><span class="o">=</span><span class="n">acts_ulm_est_p</span><span class="p">,</span>
+                                              <span class="n">order</span><span class="o">=</span><span class="s2">&quot;desc&quot;</span><span class="p">,</span>
+                                              <span class="n">n</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span>
+                                              <span class="n">p_threshold</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[13]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[20]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">][</span><span class="s2">&quot;Process&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="p">(</span>
-    <span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">][</span><span class="s2">&quot;Process&quot;</span><span class="p">],</span>
-    <span class="n">categories</span><span class="o">=</span><span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;Score&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="s2">&quot;Process&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">top_processes</span><span class="p">[</span><span class="n">arch_idx</span><span class="p">][</span><span class="s2">&quot;Process&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="p">(</span>
+    <span class="n">top_processes</span><span class="p">[</span><span class="n">arch_idx</span><span class="p">][</span><span class="s2">&quot;Process&quot;</span><span class="p">],</span>
+    <span class="n">categories</span><span class="o">=</span><span class="n">top_processes</span><span class="p">[</span><span class="n">arch_idx</span><span class="p">]</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">arch_idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="s2">&quot;Process&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
 <span class="p">)</span>
 
-<span class="p">(</span><span class="n">pn</span><span class="o">.</span><span class="n">ggplot</span><span class="p">(</span><span class="n">top_processes</span><span class="p">[</span><span class="s2">&quot;archetype_3&quot;</span><span class="p">])</span>
- <span class="o">+</span> <span class="n">pn</span><span class="o">.</span><span class="n">geom_col</span><span class="p">(</span><span class="n">pn</span><span class="o">.</span><span class="n">aes</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="s2">&quot;Process&quot;</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="s2">&quot;Score&quot;</span><span class="p">))</span>
+<span class="p">(</span><span class="n">pn</span><span class="o">.</span><span class="n">ggplot</span><span class="p">(</span><span class="n">top_processes</span><span class="p">[</span><span class="n">arch_idx</span><span class="p">])</span>
+ <span class="o">+</span> <span class="n">pn</span><span class="o">.</span><span class="n">geom_col</span><span class="p">(</span><span class="n">pn</span><span class="o">.</span><span class="n">aes</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="s2">&quot;Process&quot;</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">arch_idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
  <span class="o">+</span> <span class="n">pn</span><span class="o">.</span><span class="n">coord_flip</span><span class="p">()</span>
  <span class="o">+</span> <span class="n">pn</span><span class="o">.</span><span class="n">theme</span><span class="p">(</span><span class="n">figure_size</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">5</span><span class="p">)))</span>
 </pre></div>
@@ -620,59 +734,7 @@ Running ulm on mat with 4 samples and 10388 targets for 5769 sources.
 <div class="prompt empty docutils container">
 </div>
 <div class="output_area docutils container">
-<img alt="../_images/notebooks_quickstart_28_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_28_0.png" style="width: 800px; height: 500px;" />
-</div>
-</div>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
-</pre></div>
-</div>
-</div>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
-</pre></div>
-</div>
-</div>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
-</pre></div>
-</div>
-</div>
-<section id="Advanced-Topics">
-<h3>Advanced Topics<a class="headerlink" href="#Advanced-Topics" title="Link to this heading"></a></h3>
-</section>
-</section>
-<section id="Accessing-the-Stability-of-the-Archetypes">
-<h2>Accessing the Stability of the Archetypes<a class="headerlink" href="#Accessing-the-Stability-of-the-Archetypes" title="Link to this heading"></a></h2>
-<p>To assess the stability of the archetypes, we apply bootstrapping. For efficiency, we generate five resampled datasets and perform Archetypal Analysis (AA) on each. By default, this function utilizes all available CPU cores, as indicated by the <code class="docutils literal notranslate"><span class="pre">n_jobs</span></code> argument, which is set to <code class="docutils literal notranslate"><span class="pre">-1</span></code>.</p>
-<p>The results are stored in <code class="docutils literal notranslate"><span class="pre">adata.uns[&quot;AA_bootstrap&quot;]</span></code> and can be visualized (at least for the first 3 principal components) using plotly.</p>
-<div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[14]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">bootstrap_aa</span><span class="p">(</span><span class="n">adata</span><span class="o">=</span><span class="n">adata</span><span class="p">,</span> <span class="n">n_bootstrap</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">n_archetypes</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
-
-<span class="n">plot_bootstrap</span> <span class="o">=</span> <span class="n">plot_bootstrap_aa</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
-<span class="n">plot_bootstrap</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
-</pre></div>
-</div>
-</div>
-<div class="nboutput nblast docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<div class="admonition warning">
-<p>Data type cannot be displayed: application/vnd.plotly.v1+json</p>
-</div>
+<img alt="../_images/notebooks_quickstart_37_0.png" class="no-scaled-link" src="../_images/notebooks_quickstart_37_0.png" style="width: 800px; height: 500px;" />
 </div>
 </div>
 <div class="nbinput nblast docutils container">
@@ -706,7 +768,8 @@ Running ulm on mat with 4 samples and 10388 targets for 5769 sources.
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="../release_notes.html" class="btn btn-neutral float-left" title="Release notes" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../api.html" class="btn btn-neutral float-left" title="API" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="cross_condition_lupus.html" class="btn btn-neutral float-right" title="Cross-Condition Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
