@@ -39,7 +39,7 @@ repos:
       - id: pytest
         name: Run pytest
         #entry: pytest --cov partipy --cov-report=html # will fail because files are changed?
-        entry: pytest tests/unit/test_initialization.py
+        entry: pytest
         language: system
         types: [python]
         pass_filenames: false # ignore file changes?

@@ -7,14 +7,12 @@ Code adapted from https://github.com/atmguille/archetypal-analysis (by Guillermo
 """
 
 import numpy as np
-from scipy.optimize import nnls
 
 from .const import (
     DEFAULT_INIT,
     DEFAULT_OPTIM,
     DEFAULT_WEIGHT,
     INIT_ALGS,
-    LAMBDA,
     MIN_ITERATIONS,
     OPTIM_ALGS,
     WEIGHT_ALGS,
@@ -254,10 +252,6 @@ class AA:
 
         TSS = RSS = np.sum(X * X)
 
-        if self.weighting_flavor == "mair_brefeld_2019":
-            # we can store
-            Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
-
         convergence_flag = False
         for n_iter in range(self.max_iter):
             if self.weighting_flavor is None:
@@ -271,24 +265,22 @@ class AA:
                 Z = B @ WX
             elif self.weighting_flavor == "mair_brefeld_2019":
                 # compute A using the unweighted data X
-                A = _compute_A_projected_gradients(X=X, Z=Z, A=A)
+                A = _compute_A_projected_gradients(X=X, Z=Z, A=A, **self.optim_kwargs)
 
                 # weight A and X
                 WA = W[:, None] * A
-                WX = W[:, None] * X  # TODO: is we use coreset I should not be recomputin this term!
+                WX = W[:, None] * X  # TODO: is we use coreset I should not be recomputing this term!
 
-                # compute Z given WX and WA
-                # Z = np.linalg.lstsq(a=np.dot(WA.T, WA), b=np.dot(WA.T, WX), rcond=None)[0].astype(np.float32) # TODO: benchmark against this
-                Z = np.linalg.lstsq(a=WA, b=WX, rcond=None)[0].astype(np.float32)
+                ## compute Z given WX and WA
+                # Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
+                #  = np.linalg.lstsq(a=WA, b=WX, rcond=None)[0].astype(np.float32)
+                ## now compute optimal B given Z and X
+                # Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
+                # B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :], maxiter=5 * Xt_padded.shape[1])[0] for k in range(Z.shape[0])]).astype(np.float32)
 
-                # now compute optimal B given Z and X
-                Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
-                B = np.array(
-                    [nnls(A=Xt_padded, b=Z_padded[k, :], maxiter=5 * Xt_padded.shape[1])[0] for k in range(Z.shape[0])]
-                ).astype(np.float32)
+                B = _compute_B_projected_gradients(X=X, A=WA, B=B, WX=WX, **self.optim_kwargs)
+
                 Z = B @ X
-                # B = _compute_B_projected_gradients(X=X, A=WA, B=B, WX=WX)
-                # Z = B @ X
 
             else:
                 raise NotImplementedError()

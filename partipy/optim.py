@@ -240,6 +240,8 @@ def _compute_B_projected_gradients(
     # works for weighted and unweighted version
     if WX is None:
         WX = X
+    else:
+        assert (WX.shape[0] == X.shape[0]) and (WX.shape[1] == X.shape[1])
 
     # inspecing (for debugging)
     # print(_inspect_array(X))
@@ -252,12 +254,12 @@ def _compute_B_projected_gradients(
     )
 
 
-@jit(
-    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
-    nopython=True,
-    cache=True,
-    fastmath=True,
-)
+# @jit(
+#    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
+#    nopython=True,
+#    cache=True,
+#    fastmath=True,
+# )
 def _compute_B_projected_gradients_jit(
     X: np.ndarray,
     A: np.ndarray,
@@ -271,28 +273,28 @@ def _compute_B_projected_gradients_jit(
     mu = np.float32(1.0)
     min_mu = np.float32(1e-6)
 
-    # explicitly making sure everything is contiguous (C-roder)
+    # explicitly making sure everything is contiguous (C-order)
     X = np.ascontiguousarray(X)
     A = np.ascontiguousarray(A)
     B = np.ascontiguousarray(B)
     WX = np.ascontiguousarray(WX)
 
     # terms that can be pre-computed
-    AT_X_WXT = np.dot(np.dot(A.T, X), WX.T)
+    AT_WX_XT = np.dot(np.dot(A.T, WX), X.T)
     AT_A = np.dot(A.T, A)
 
     for _ in range(derivative_max_iter):
         # brackets are VERY important to save time
-        G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, WX)), WX.T) - AT_X_WXT)  # G has shape K x N
+        G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection
 
         # line search for optimal step size
-        prev_RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
+        prev_RSS = np.linalg.norm(WX - A @ (B @ X)) ** 2
         prev_B = B
         for _ in range(20):
             B = (prev_B - mu * G).clip(0)
-            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # Avoid division by zero
-            RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
+            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # avoid division by zero
+            RSS = np.linalg.norm(WX - A @ (B @ X)) ** 2
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
                 break
