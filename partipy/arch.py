@@ -26,6 +26,7 @@ from .optim import (
     _compute_B_frank_wolfe,
     _compute_B_projected_gradients,
     _compute_B_regularized_nnls,
+    _compute_RSS_AZ,
 )
 from .weights import compute_bisquare_weights, compute_huber_weights
 
@@ -148,14 +149,6 @@ class AA:
                 "It is not yet implemented to use robust archetypal analysis and coresets at the same time"
             )
 
-        # harcoding the weighting flavor for now
-        if self.use_coreset:
-            self.weighting_flavor = "mair_brefeld_2019"
-        elif self.weight:
-            self.weighting_flavor = "eugster_leisch_2011"
-        else:
-            self.weighting_flavor = None  # type: ignore[assignment]
-
     def fit(self, X: np.ndarray):
         """
         Computes the archetypes and the RSS from the data X, which are stored
@@ -249,52 +242,39 @@ class AA:
         # initialize weights
         if self.weight:
             W = np.ones(X.shape[0], dtype=np.float32)
+        elif self.use_coreset:
+            # if we use coreset we only have to weight X a single time
+            WX = W[:, None] * X  # same as np.diag(W) @ X
 
         TSS = RSS = np.sum(X * X)
 
         convergence_flag = False
         for n_iter in range(self.max_iter):
-            if self.weighting_flavor is None:
-                A = compute_A(X, Z, A, **self.optim_kwargs)
-                B = compute_B(X, A, B, **self.optim_kwargs)
-                Z = B @ X
-            elif self.weighting_flavor == "eugster_leisch_2011":
-                WX = W[:, None] * X  # same as np.diag(W) @ X
+            if self.weight:
+                WX = W[:, None] * X
                 A = compute_A(WX, Z, A, **self.optim_kwargs)
                 B = compute_B(WX, A, B, **self.optim_kwargs)
                 Z = B @ WX
-            elif self.weighting_flavor == "mair_brefeld_2019":
-                # compute A using the unweighted data X
-                A = _compute_A_projected_gradients(X=X, Z=Z, A=A, **self.optim_kwargs)
 
-                # weight A and X
-                WA = W[:, None] * A
-                WX = W[:, None] * X  # TODO: is we use coreset I should not be recomputing this term!
-
-                ## compute Z given WX and WA
-                # Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
-                #  = np.linalg.lstsq(a=WA, b=WX, rcond=None)[0].astype(np.float32)
-                ## now compute optimal B given Z and X
-                # Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
-                # B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :], maxiter=5 * Xt_padded.shape[1])[0] for k in range(Z.shape[0])]).astype(np.float32)
-
-                B = _compute_B_projected_gradients(X=X, A=WA, B=B, WX=WX, **self.optim_kwargs)
-
-                Z = B @ X
-
-            else:
-                raise NotImplementedError()
-
-            if self.weight:
-                # compute residuals using the original data (to recompute the weights)
+                # recompute weights based on the original, which are computed using the original data
                 A_0 = compute_A(X, Z, A, **self.optim_kwargs)
                 R = X - A_0 @ Z
                 W = compute_weights(R)
+
+            elif self.use_coreset:
+                # compute A using the unweighted data X
+                A = compute_A(X=X, Z=Z, A=A, **self.optim_kwargs)
+                WA = W[:, None] * A
+                B = compute_B(X=X, A=WA, B=B, WX=WX, **self.optim_kwargs)
+                Z = B @ X
+
             else:
-                R = X - A @ Z
+                A = compute_A(X, Z, A, **self.optim_kwargs)
+                B = compute_B(X, A, B, **self.optim_kwargs)
+                Z = B @ X
 
             # compute RSS and check for convergence
-            RSS = np.linalg.norm(R) ** 2
+            RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
             self.RSS_trace[n_iter] = float(RSS)
             max_window = min(n_iter, 20)
             rel_delta_RSS_mean_last_n = (

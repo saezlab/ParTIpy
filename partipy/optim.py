@@ -49,10 +49,23 @@ def _inspect_array(arr: np.ndarray) -> dict:
     }
 
 
-@jit(nopython=True, cache=True, fastmath=True)
-def _compute_RSS(X, A, Z):
+@jit([float32(float32[:, :], float32[:, :], float32[:, :])], nopython=True, cache=True, fastmath=True)
+def _compute_RSS_AZ(X, A, Z):
+    X = np.ascontiguousarray(X)
+    Z = np.ascontiguousarray(Z)
+    A = np.ascontiguousarray(A)
     diff = X - np.dot(A, Z)
-    return np.sum(diff * diff)  # Faster than norm squared
+    return np.sum(diff * diff)
+
+
+@jit([float32(float32[:, :], float32[:, :], float32[:, :], float32[:, :])], nopython=True, cache=True, fastmath=True)
+def _compute_RSS_ABX(X, A, B, WX):
+    X = np.ascontiguousarray(X)
+    A = np.ascontiguousarray(A)
+    B = np.ascontiguousarray(B)
+    WX = np.ascontiguousarray(WX)
+    diff = WX - np.dot(A, np.dot(B, X))
+    return np.sum(diff * diff)
 
 
 def _compute_A_regularized_nnls(
@@ -74,10 +87,16 @@ def _compute_B_regularized_nnls(
     X: np.ndarray,
     A: np.ndarray,
     B: np.ndarray | None = None,
+    WX: np.ndarray = None,  # type: ignore[assignment]
 ) -> np.ndarray:
-    Z = np.linalg.lstsq(a=A, b=X, rcond=None)[0]
+    # works for weighted and unweighted version
+    if WX is None:
+        WX = X
+    else:
+        assert (WX.shape[0] == X.shape[0]) and (WX.shape[1] == X.shape[1])
+    Z = np.linalg.lstsq(a=A, b=WX, rcond=None)[0]
     Z_padded = np.hstack([Z, (LAMBDA * np.ones(Z.shape[0]))[:, None]])
-    Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])
+    Xt_padded = np.vstack([X.T, LAMBDA * np.ones(X.shape[0])])  # this should actually be precomputed once
     B = np.array([nnls(A=Xt_padded, b=Z_padded[k, :], maxiter=5 * Xt_padded.shape[1])[0] for k in range(Z.shape[0])])
     B = B.astype(np.float32)
     return B
@@ -117,17 +136,12 @@ def _compute_A_projected_gradients(
     # check and other things
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
 
-    # inspecing (for debugging)
-    # print(_inspect_array(X))
-    # print(_inspect_array(Z))
-    # print(_inspect_array(A))
-
     # ensure correct data type for parameters
     derivative_max_iter = np.int32(derivative_max_iter)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
 
-    # compute
+    # optimize A
     A = _compute_A_projected_gradients_jit(
         X=X, Z=Z, A=A, derivative_max_iter=derivative_max_iter, rel_tol_ls=rel_tol_ls, rel_tol_conv=rel_tol_conv
     )
@@ -162,19 +176,17 @@ def _compute_A_projected_gradients_jit(
     ZZT = np.dot(Z, Z.T)
 
     for _ in range(derivative_max_iter):
-        # brackets are VERY important to save time
+        # make sure to multiply things in the right order to keep matrix sizes minimal
         G = np.float32(2.0) * (np.dot(A, ZZT) - XZT)  # G has shape N x K
         G = G - np.sum(A * G, axis=1)[:, None]  # chain rule of projection
 
         # line search for optimal step size
-        prev_RSS = _compute_RSS(X=X, A=A, Z=Z)
+        prev_RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
         prev_A = A
         for _ in range(20):
             A = (prev_A - mu * G).clip(0)
             A = A / (np.sum(A, axis=1)[:, None] + np.finfo(np.float32).eps)  # Avoid division by zero
-            RSS = _compute_RSS(
-                X=X, A=A, Z=Z
-            )  # /Users/pschafer/Projects/ParTIpy/partipy/optim.py:137: NumbaPerformanceWarning: np.dot() is faster on contiguous arrays, called on (Array(float32, 2, 'C', False, aligned=True), Array(float32, 2, 'A', False, aligned=True))
+            RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
                 break
@@ -243,23 +255,19 @@ def _compute_B_projected_gradients(
     else:
         assert (WX.shape[0] == X.shape[0]) and (WX.shape[1] == X.shape[1])
 
-    # inspecing (for debugging)
-    # print(_inspect_array(X))
-    # print(_inspect_array(A))
-    # print(_inspect_array(B))
-    # print(_inspect_array(WX))
-
-    return _compute_B_projected_gradients_jit(
+    # optimize B
+    B = _compute_B_projected_gradients_jit(
         X=X, A=A, B=B, WX=WX, derivative_max_iter=derivative_max_iter, rel_tol_ls=rel_tol_ls, rel_tol_conv=rel_tol_conv
     )
+    return B
 
 
-# @jit(
-#    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
-#    nopython=True,
-#    cache=True,
-#    fastmath=True,
-# )
+@jit(
+    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
+    nopython=True,
+    cache=True,
+    fastmath=True,
+)
 def _compute_B_projected_gradients_jit(
     X: np.ndarray,
     A: np.ndarray,
@@ -284,17 +292,17 @@ def _compute_B_projected_gradients_jit(
     AT_A = np.dot(A.T, A)
 
     for _ in range(derivative_max_iter):
-        # brackets are VERY important to save time
+        # make sure to multiply things in the right order to keep matrix sizes minimal
         G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection
 
         # line search for optimal step size
-        prev_RSS = np.linalg.norm(WX - A @ (B @ X)) ** 2
+        prev_RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
         prev_B = B
         for _ in range(20):
             B = (prev_B - mu * G).clip(0)
             B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # avoid division by zero
-            RSS = np.linalg.norm(WX - A @ (B @ X)) ** 2
+            RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
                 break
@@ -331,20 +339,48 @@ def _add_argmins_per_row_p(mtx, argmins, mu):
     return mtx
 
 
-@jit(nopython=True, cache=True, fastmath=True)
 def _compute_A_frank_wolfe(
     X: np.ndarray,
     Z: np.ndarray,
     A: np.ndarray,
-    derivative_max_iter: int = 80,
+    derivative_max_iter: int | np.int32 = 80,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
 ) -> np.ndarray:
+    # check and other things
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
+
+    # ensure correct data type for parameters
+    derivative_max_iter = np.int32(derivative_max_iter)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
 
-    # terms that can be pre-computed
+    # optimize A
+    A = _compute_A_frank_wolfe_jit(
+        X=X, Z=Z, A=A, derivative_max_iter=derivative_max_iter, rel_tol_ls=rel_tol_ls, rel_tol_conv=rel_tol_conv
+    )
+    return A
+
+
+@jit(
+    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
+    nopython=True,
+    cache=True,
+    fastmath=True,
+)
+def _compute_A_frank_wolfe_jit(
+    X: np.ndarray,
+    Z: np.ndarray,
+    A: np.ndarray,
+    derivative_max_iter: np.int32,
+    rel_tol_ls: np.float32,
+    rel_tol_conv: np.float32,
+) -> np.ndarray:
+    # explicitly making sure everything is contiguous (C-roder)
+    X = np.ascontiguousarray(X)
+    Z = np.ascontiguousarray(Z)
+    A = np.ascontiguousarray(A)
+
     # terms that can be pre-computed
     XZT = np.dot(X, Z.T)
     ZZT = np.dot(Z, Z.T)
@@ -360,12 +396,12 @@ def _compute_A_frank_wolfe(
         argmins = np.argmin(G, axis=1)
 
         # line search
-        prev_RSS = _compute_RSS(X=X, A=A, Z=Z)
+        prev_RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
         prev_A = A
         for _ in range(20):
             A = (np.float32(1.0) - mu) * prev_A
             A = _add_argmins_per_row(mtx=A, argmins=argmins, mu=mu)
-            RSS = _compute_RSS(X=X, A=A, Z=Z)
+            RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
                 break
@@ -379,40 +415,78 @@ def _compute_A_frank_wolfe(
     return A
 
 
-@jit(nopython=True, cache=True, fastmath=True)
 def _compute_B_frank_wolfe(
     X: np.ndarray,
     A: np.ndarray,
     B: np.ndarray,
-    derivative_max_iter: int = 80,
+    WX: np.ndarray = None,  # type: ignore[assignment]
+    derivative_max_iter: int | np.int32 = 80,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
 ) -> np.ndarray:
+    # checks
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
+
+    # ensure correct data type for parameters
+    derivative_max_iter = np.int32(derivative_max_iter)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
 
+    # works for weighted and unweighted version
+    if WX is None:
+        WX = X
+    else:
+        assert (WX.shape[0] == X.shape[0]) and (WX.shape[1] == X.shape[1])
+
+    # optimize B
+    B = _compute_B_frank_wolfe_jit(
+        X=X, A=A, B=B, WX=WX, derivative_max_iter=derivative_max_iter, rel_tol_ls=rel_tol_ls, rel_tol_conv=rel_tol_conv
+    )
+    return B
+
+
+@jit(
+    [float32[:, :](float32[:, :], float32[:, :], float32[:, :], float32[:, :], int32, float32, float32)],
+    nopython=True,
+    cache=True,
+    fastmath=True,
+)
+def _compute_B_frank_wolfe_jit(
+    X: np.ndarray,
+    A: np.ndarray,
+    B: np.ndarray,
+    WX: np.ndarray,
+    derivative_max_iter: np.int32,
+    rel_tol_ls: np.float32,
+    rel_tol_conv: np.float32,
+) -> np.ndarray:
+    # explicitly making sure everything is contiguous (C-order)
+    X = np.ascontiguousarray(X)
+    A = np.ascontiguousarray(A)
+    B = np.ascontiguousarray(B)
+    WX = np.ascontiguousarray(WX)
+
     # terms that can be pre-computed
-    ATA = np.dot(A.T, A)
-    ATXXT = np.dot(np.dot(A.T, X), X.T)
+    AT_WX_XT = np.dot(np.dot(A.T, WX), X.T)
+    AT_A = np.dot(A.T, A)
 
     for iter in range(derivative_max_iter):
         # frank wolfe step size
         mu = np.float32(2 / (iter + 2))
 
         # compute the gradient
-        G = np.float32(2.0) * (np.dot(np.dot(ATA, np.dot(B, X)), X.T) - ATXXT)  # G has shape K x N
+        G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
 
         # for each archetype, get the sample column with the most negative gradient
         argmins = np.argmin(G, axis=1)
 
         # line search for optimal step size
-        prev_RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
+        prev_RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
         prev_B = B
         for _ in range(20):
             B = (np.float32(1.0) - mu) * prev_B
             B = _add_argmins_per_row(mtx=B, argmins=argmins, mu=mu)
-            RSS = np.linalg.norm(X - A @ (B @ X)) ** 2
+            RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
                 break
