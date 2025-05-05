@@ -98,7 +98,7 @@ def test_compute_archetype_weights_ground_truth():
     expected_weights = np.exp(-(expected_distances**2) / 2)
 
     # Test with manual length scale
-    adata = sc.AnnData(X=None, obsm={"X_pca": X})
+    adata = sc.AnnData(X=X, obsm={"X_pca": X})
     adata.uns["AA_results"] = {"Z": Z}
     adata.uns["aa_config"] = {
         "obsm_key": "X_pca",

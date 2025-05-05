@@ -172,7 +172,7 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
         hover_data=["iter", "archetype", "reference"],
         opacity=0.5,
     )
-    fig.update_layout(template="none")
+    fig.update_layout(template=None)
 
     return fig
 
@@ -471,7 +471,7 @@ def plot_3D(
             )
         )
 
-    fig.update_layout(template="none")
+    fig.update_layout(template=None)
     return fig
 
 
