@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64.0", "wheel"]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
 
 [project]
 name = "partipy"
@@ -13,62 +13,104 @@ authors = [
     { name = "Leoni Zimmermann", email = "leoni.zimmermann@stud.uni-heidelberg.de" }
 ]
 requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 dependencies = [
-    "tqdm",
-    "joblib",
-    "numpy",
-    "numba",
-    "pandas",
-    "scipy",
-    "plotnine",
-    "matplotlib",
-    "scanpy",
-    "plotly",
-    "nbformat"
+  "tqdm",
+  "joblib",
+  "numpy",
+  "numba",
+  "pandas",
+  "scipy",
+  "plotnine",
+  "matplotlib",
+  "scanpy",
+  "plotly",
+  "nbformat",
+  # for debug logging (referenced from the issue template)
+  "session-info2",
 ]
-
-[project.urls]
+optional-dependencies.dev = [
+  "ruff",
+  "mypy",
+  "pre-commit",
+  "twine>=4.0.2",
+]
+optional-dependencies.test = [
+  "pytest",
+  "coverage",
+  "pytest-cov",
+  "pytest-randomly",
+  "pytest-qt",
+  "pytest-xvfb",
+  "ipytest",
+  "hypothesis",
+  "PyQt5", # needed for hatch test!?
+  "tomli>=2.0.1; python_version < '3.11'",  # Only install on older Python
+]
+optional-dependencies.doc = [
+  "docutils>=0.8,!=0.18.*,!=0.19.*",
+  "ipykernel",
+  "ipython",
+  "myst-nb>=1.1",
+  "sphinx>=4",
+  "sphinx-autodoc-typehints",
+  "sphinx-book-theme>=1",
+  "sphinx-copybutton",
+  "sphinx-tabs",
+  "sphinxcontrib-bibtex>=1",
+  "sphinxext-opengraph",
+  "numpydoc",
+]
 # https://docs.pypi.org/project_metadata/#project-urls
-Homepage = "https://github.com/saezlab/partipy"
-Bug = "https://github.com/saezlab/partipy/issues"
-Changelog = "https://github.com/saezlab/partipy/CHANGELOG.md"
-#Documentation = "https://github.com/saezlab/partipy/issues" # TODO
+urls.Homepage = "https://github.com/saezlab/partipy"
+urls.Source = "https://github.com/saezlab/partipy"
+urls.Bug = "https://github.com/saezlab/partipy/issues"
+urls.Changelog = "https://github.com/saezlab/partipy/CHANGELOG.md"
+urls.Documentation = "https://partipy.readthedocs.io/en/latest/"
 
-[project.optional-dependencies]
-dev = [
-    "ruff",
-    "mypy",
-    "pre-commit"
-]
-tests = [
-    "pytest",
-    "coverage",
-    "pytest-cov",
-    "pytest-randomly",
-    "pytest-qt",
-    "pytest-xvfb",
-    "ipytest",
-    "hypothesis",
-]
-doc = [
-    "docutils>=0.8,!=0.18.*,!=0.19.*",
-    "ipykernel",
-    "ipython",
-    "myst-nb>=1.1",
-    "setuptools",
-    "sphinx>=4",
-    "sphinx-autodoc-typehints",
-    "sphinx-book-theme>=1",
-    "sphinx-copybutton",
-    "sphinx-tabs",
-    "sphinxcontrib-bibtex>=1",
-    "sphinxext-opengraph",
-    "numpydoc",
+# default environment that is used by hatch, installs the dev dependencies
+# and we use uv to manage environments and installling dependencies, see options here: https://hatch.pypa.io/latest/how-to/environment/select-installer/
+[tool.hatch.envs.default]
+installer = "uv"
+features = [ "dev" ]
+
+[tool.hatch.envs.docs]
+features = [ "doc" ]
+scripts.build = "sphinx-build -M html docs docs/_build {args}"
+scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
+scripts.clean = "git clean -fdX -- {args:docs}"
+
+# all hatch-test environments are using the optional test dependencies
+[tool.hatch.envs.hatch-test]
+features = [ "test" ]
+
+# test the lowest and highest supported Python versions with normal deps
+[[tool.hatch.envs.hatch-test.matrix]]
+deps = [ "stable" ]
+python = [ "3.10", "3.13" ]
+
+# test the newest supported Python version also with pre-release deps
+[[tool.hatch.envs.hatch-test.matrix]]
+deps = [ "pre" ]
+python = [ "3.13" ]
+
+[tool.hatch.envs.hatch-test.overrides]
+# If the matrix variable `deps` is set to "pre",
+# set the environment variable `UV_PRERELEASE` to "allow".
+matrix.deps.env-vars = [
+  { key = "UV_PRERELEASE", value = "allow", if = [ "pre" ] },
 ]
 
-
-[tool.setuptools.packages.find]
-include = ["partipy*"]
+# another local test environment, that I use in pre-commit for now
+[tool.hatch.envs.test]
+features = ["test"]
+python = "3.10"  # or your local dev Python version
 
 [tool.ruff]
 line-length = 120 # more generous that standard 79
@@ -115,6 +157,7 @@ lint.pydocstyle.convention = "numpy"
 testpaths = [ "tests" ]
 # tests that should fail (marked by @pytest.mark.xfail) but actually pass should be considered failures
 xfail_strict = true
+# TODO: Check if we need this
 pythonpath = [
   "."
 ]
@@ -123,10 +166,13 @@ filterwarnings = [
     # ignore UserWarnings for now?
     "ignore::UserWarning"
 ]
+addopts = [
+  "--import-mode=importlib", # allow using test files with same name
+]
 
 [tool.coverage.run]
 source = [ "partipy" ]
-# ignore all files that start with "test_" and enc with ".py"
+# ignore all files that start with "test_" and end with ".py"
 omit = [ "**/test_*.py" ]
 
 [tool.mypy]

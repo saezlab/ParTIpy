@@ -1,20 +1,19 @@
-# compiled code
-*.pyc
-
 # IDE stuff
 .vscode/
 
-# caches
+# caches and compiled files
+*.pyc
 __pycache__/
 .mypy_cache
 .ruff_cache
 .pytest_cache
+.venv/
 
 # data directory
 data/*
 *.h5ad
 
-# mac stuff
+# temp files
 .DS_Store
 
 # package stuff
@@ -27,7 +26,10 @@ docs/source/notebooks/data
 docs/source/notebooks/*.txt
 docs/source/notebooks/*.txt.gz
 docs/source/notebooks/*.sqlite
+docs/source/generated/*
 docs/build/*
+docs/generated/*
+docs/_build/*
 
 # log files
 *.log

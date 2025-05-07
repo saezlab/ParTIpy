@@ -8,7 +8,12 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import pytest
-import tomllib
+
+# for Python < 3.11 compatibility
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    import tomli as tomllib  # type: ignore[import-not-found, no-redef]
 
 # --- Setup ---
 PROJECT_ROOT = Path(__file__).parent.parent

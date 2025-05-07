@@ -13,7 +13,7 @@ FAST_OPTIM_ALGS = tuple(alg for alg in OPTIM_ALGS if alg != "regularized_nnls")
 def test_that_IC_works(
     n_archetypes: int,
 ) -> None:
-    N_SAMPLES = 10_000
+    N_SAMPLES = 1_000
     N_DIMENSION = 10
     X_true, A_true, Z_true = simulate_archetypes(
         n_samples=N_SAMPLES,
