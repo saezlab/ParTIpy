@@ -1,1 +1,32 @@
-# partipy
+# ParTIpy: Pareto Task Inference in Python
+
+`partipy` provides a scalable and user-friendly implementation of the Pareto Task Inference (ParTI) framework [1,2] for analyzing functional trade-offs in single-cell and spatial omics data.
+
+ParTI models gene expression variability within a cell type by capturing functional trade-offs - e.g., glycolysis vs. gluconeogenesis. The framework posits that cells lie along Pareto fronts, where improving one biological task inherently compromises another, forming a functional landscape represented as a polytope. Vertices of this polytope correspond to specialist cells optimized for distinct tasks, while generalists occupy interior regions balancing multiple functions.
+
+To infer this structure, *Archetypal Analysis (AA)* models each cell as a convex combination of extremal points, called archetypes. These archetypes are constrained to lie within the convex hull of the data, ensuring interpretability and biological plausibility. In contrast to clustering methods that impose hard boundaries, AA preserves the continuous nature of gene expression variability and reveals functional trade-offs without artificial discretization.
+
+`partipy` integrates with the scverse ecosystem, supports AnnData, and employs coreset-based optimization for scalability to millions of cells.
+
+[1] Hart et al., *Nat Methods* (2015). https://doi.org/10.1038/nmeth.3254
+[2] Adler et al., *Cell Systems* (2019). https://doi.org/10.1016/j.cels.2018.12.008
+
+## Documentation
+
+For further information and example tutorials, please check our [documentation](https://partipy.readthedocs.io).
+
+## Installation
+
+While `partipy` is under active development, it can currently be installed from GitHub via:
+
+```
+pip install git+https://github.com/saezlab/partipy.git
+```
+
+## Questions & Issues
+
+If you have any questions or issues, do not hesitate to open an [issue](https://github.com/saezlab/ParTIpy/issues).
+
+## Citation
+
+TBD
