@@ -1,5 +1,9 @@
 # ParTIpy: Pareto Task Inference in Python
-
+<!-- badges: start -->
+[![codecov](https://codecov.io/gh/saezlab/partipy/branch/main/graph/badge.svg)](https://codecov.io/gh/saezlab/partipy)
+[![Documentation Status](https://readthedocs.org/projects/partipy/badge/?version=latest)](https://partipy.readthedocs.io/en/latest/?badge=latest)
+[![GitHub issues](https://img.shields.io/github/issues/saezlab/partipy.svg)](https://github.com/saezlab/partipy/issues/)
+<!-- badges: end -->
 `partipy` provides a scalable and user-friendly implementation of the Pareto Task Inference (ParTI) framework [1,2] for analyzing functional trade-offs in single-cell and spatial omics data.
 
 ParTI models gene expression variability within a cell type by capturing functional trade-offs - e.g., glycolysis vs. gluconeogenesis. The framework posits that cells lie along Pareto fronts, where improving one biological task inherently compromises another, forming a functional landscape represented as a polytope. Vertices of this polytope correspond to specialist cells optimized for distinct tasks, while generalists occupy interior regions balancing multiple functions.
