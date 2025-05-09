@@ -93,7 +93,7 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
     return p
 
 
-def plot_bootstrap_2D(adata: sc.AnnData, show_two_panels: bool = True) -> pn.ggplot:
+def plot_bootstrap_2D(adata: sc.AnnData, n_archetypes: int, show_two_panels: bool = True) -> pn.ggplot:
     """
     Visualize the distribution and stability of archetypes across bootstrap samples in 2D PCA space.
 
@@ -104,6 +104,10 @@ def plot_bootstrap_2D(adata: sc.AnnData, show_two_panels: bool = True) -> pn.ggp
     ----------
     adata : sc.AnnData
         Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
+    n_archetypes : int
+        The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
+    show_two_panels : bool, optional
+        If True, the plot will be split into two panels showing the archetypes from different orientations if there are more than 2 dimensions in the data.
 
     Returns
     -------
@@ -114,8 +118,13 @@ def plot_bootstrap_2D(adata: sc.AnnData, show_two_panels: bool = True) -> pn.ggp
     if "AA_bootstrap" not in adata.uns:
         raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
 
+    if n_archetypes not in adata.uns["AA_bootstrap"].keys():
+        raise ValueError(
+            f"n_archetypes {n_archetypes} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
+        )
+
     # Generate the 2D scatter plot
-    plot_df = adata.uns["AA_bootstrap"].copy()
+    plot_df = adata.uns["AA_bootstrap"][n_archetypes].copy()
 
     if ("x2" in plot_df.columns.to_list()) and show_two_panels:
         plot_df = plot_df.melt(
@@ -137,7 +146,7 @@ def plot_bootstrap_2D(adata: sc.AnnData, show_two_panels: bool = True) -> pn.ggp
     return p
 
 
-def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
+def plot_bootstrap_3D(adata: sc.AnnData, n_archetypes: int) -> go.Figure:
     """
     Interactive 3D visualization of archetypes from bootstrap samples to assess their variability.
 
@@ -148,6 +157,8 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
     ----------
     adata : sc.AnnData
         Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
+    n_archetypes : int
+        The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
 
     Returns
     -------
@@ -158,8 +169,13 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
     if "AA_bootstrap" not in adata.uns:
         raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
 
+    if n_archetypes not in adata.uns["AA_bootstrap"].keys():
+        raise ValueError(
+            f"n_archetypes {n_archetypes} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
+        )
+
     # Generate the 3D scatter plot
-    bootstrap_df = adata.uns["AA_bootstrap"]
+    bootstrap_df = adata.uns["AA_bootstrap"][n_archetypes].copy()
     fig = px.scatter_3d(
         bootstrap_df,
         x="x0",
@@ -177,7 +193,7 @@ def plot_bootstrap_3D(adata: sc.AnnData) -> go.Figure:
     return fig
 
 
-def plot_bootstrap_multiple_k(adata: sc.AnnData) -> pn.ggplot:
+def plot_bootstrap_variance(adata: sc.AnnData) -> pn.ggplot:
     """
     Visualize archetype stability as a function of the number of archetypes.
 
@@ -189,8 +205,8 @@ def plot_bootstrap_multiple_k(adata: sc.AnnData) -> pn.ggplot:
     Parameters
     ----------
     adata : sc.AnnData
-        Annotated data object containing the results from `bootstrap_aa_multiple_k` in
-        `adata.uns["AA_boostrap_multiple_k"]`.
+        Annotated data object containing the results from `bootstrap_aa` in
+        `adata.uns["AA_boostrap"]`.
 
     Returns
     -------
@@ -199,18 +215,38 @@ def plot_bootstrap_multiple_k(adata: sc.AnnData) -> pn.ggplot:
         - Scatter points for individual archetype variances (`variance_per_archetype`) as a function of `n_archetypes`.
         - Lines and points for the median and maximum variance across archetypes at each `n_archetypes`.
     """
-    if "AA_boostrap_multiple_k" not in adata.uns:
+    if "AA_bootstrap" not in adata.uns:
         raise ValueError(
             "bootstrap_aa_multiple_k not found in adata.uns. Please run bootstrap_aa_multiple_k() to compute"
         )
-    df = adata.uns["AA_boostrap_multiple_k"]
-    df_summary = df.groupby("n_archetypes")["variance_per_archetype"].agg(["median", "max"]).reset_index()
-    df_summary = df_summary.melt(id_vars="n_archetypes", value_vars=["median", "max"])
+    df_list = []
+    df_dict = adata.uns["AA_bootstrap"]
+    for n_archetypes, df in df_dict.items():
+        # Add 'n_archetypes' column
+        df = df.copy()
+        df["n_archetypes"] = n_archetypes
+
+        # Drop duplicates
+        df = df[["archetype", "variance_per_archetype", "n_archetypes"]].drop_duplicates()
+
+        df_list.append(df)
+
+    # Combine all into one DataFrame
+    full_df = pd.concat(df_list, axis=0, ignore_index=True)
+
+    # Group and summarize
+    df_summary = full_df.groupby("n_archetypes")["variance_per_archetype"].agg(["median", "max"]).reset_index()
+
+    # Melt for plotting or tabular output
+    df_melted = df_summary.melt(
+        id_vars="n_archetypes", value_vars=["median", "max"], var_name="variable", value_name="value"
+    )
+
     p = (
         pn.ggplot()
-        + pn.geom_point(data=df, mapping=pn.aes(x="n_archetypes", y="variance_per_archetype"), alpha=0.5, size=3)
-        + pn.geom_line(data=df_summary, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
-        + pn.geom_point(data=df_summary, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
+        + pn.geom_point(data=full_df, mapping=pn.aes(x="n_archetypes", y="variance_per_archetype"), alpha=0.5, size=3)
+        + pn.geom_line(data=df_melted, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
+        + pn.geom_point(data=df_melted, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
         + pn.labs(x="Number of Archetypes", y="Value", color="Variance\nSummary")
     )
     return p

@@ -19,7 +19,7 @@ from partipy.plotting import (
     plot_archetypes_3D,
     plot_bootstrap_2D,
     plot_bootstrap_3D,
-    plot_bootstrap_multiple_k,
+    plot_bootstrap_variance,
     plot_IC,
     plot_var_explained,
     radarplot_meta_enrichment,
@@ -32,8 +32,7 @@ def _mock_adata():
     adata = sc.AnnData(X=np.random.rand(1000, 50))
     sc.pp.pca(adata)
     pt.set_obsm(adata, "X_pca", 4)
-    pt.bootstrap_aa(adata=adata, n_bootstrap=10, n_archetypes=3)
-    pt.bootstrap_aa_multiple_k(adata=adata, n_bootstrap=10, n_archetypes_list=range(3, 4))
+    pt.bootstrap_aa(adata=adata, n_bootstrap=10, n_archetypes_list=range(3, 4))
     pt.compute_archetypes(adata, n_archetypes=4)
     return adata
 
@@ -110,7 +109,7 @@ def test_plot_archetypes_3D(mock_adata=mock_adata):
 
 @pytest.mark.github_actions
 def test_plot_bootstrap_2D(mock_adata=mock_adata):
-    p = plot_bootstrap_2D(mock_adata)
+    p = plot_bootstrap_2D(mock_adata, n_archetypes=3)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
 
 
@@ -121,7 +120,7 @@ def test_plot_bootstrap_2D(mock_adata=mock_adata):
 def test_plot_bootstrap_3D(mock_adata=mock_adata):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        p = plot_bootstrap_3D(mock_adata)
+        p = plot_bootstrap_3D(mock_adata, n_archetypes=3)
         assert isinstance(p, go.Figure), "Expected a plotly graph_objects Figure"
 
 
@@ -129,8 +128,8 @@ def test_plot_bootstrap_3D(mock_adata=mock_adata):
 
 
 @pytest.mark.github_actions
-def test_plot_bootstrap_multiple_k(mock_adata=mock_adata):
-    p = plot_bootstrap_multiple_k(mock_adata)
+def test_plot_bootstrap_variance(mock_adata=mock_adata):
+    p = plot_bootstrap_variance(mock_adata)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
 
 

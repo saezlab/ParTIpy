@@ -230,7 +230,7 @@ def var_explained_aa(
 def bootstrap_aa(
     adata: sc.AnnData,
     n_bootstrap: int,
-    n_archetypes: int,
+    n_archetypes_list: int | list[int] | None = None,
     optim: str = DEFAULT_OPTIM,
     init: str = DEFAULT_INIT,
     seed: int = 42,
@@ -252,14 +252,16 @@ def bootstrap_aa(
         `adata.obsm[obsm_key]`.
     n_bootstrap : int
         The number of bootstrap samples to generate.
-    n_archetypes : int
-        The number of archetypes to compute for each bootstrap sample.
+    n_archetypes_list : Union[int, List[int]], optional (default=range(2, 8))
+        A list specifying the numbers of archetypes to evaluate. an also be a single int.
     optim : str, optional (default=DEFAULT_OPTIM)
         The optimization function to use for Archetypal Analysis.
     init : str, optional (default=DEFAULT_INIT)
         The initialization function to use for Archetypal Analysis.
     seed : int, optional (default=42)
         The random seed for reproducibility.
+    save_to_anndata : bool, optional (default=True)
+        Whether to save the results to `adata.uns["AA_bootstrap"]`. If `False`, the result is returned.
     n_jobs : int, optional (default=-1)
         The number of jobs to run in parallel. `-1` uses all available cores.
     **kwargs:
@@ -269,7 +271,7 @@ def bootstrap_aa(
     -------
     None
         The results are stored in `adata.uns["AA_bootstrap"]` as a DataFrame with the following columns:
-        - `pc_i`: The coordinates of the archetypes in the i-th principal component.
+        - `x_i`: The coordinates of the archetypes in the i-th principal component.
         - `archetype`: The archetype index.
         - `iter`: The bootstrap iteration index (0 for the reference archetypes).
         - `reference`: A boolean indicating whether the archetype is from the reference model.
@@ -279,6 +281,11 @@ def bootstrap_aa(
     # input validation
     _validate_aa_config(adata=adata)
 
+    if n_archetypes_list is None:
+        n_archetypes_list = list(range(2, 8))
+    elif isinstance(n_archetypes_list, int):
+        n_archetypes_list = [n_archetypes_list]
+
     obsm_key = adata.uns["aa_config"]["obsm_key"]
     n_dimensions = adata.uns["aa_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
@@ -286,112 +293,56 @@ def bootstrap_aa(
     n_samples, n_features = X.shape
     rng = np.random.default_rng(seed)
 
-    # Reference archetypes
-    ref_Z = AA(n_archetypes=n_archetypes, optim=optim, init=init, **kwargs).fit(X).Z
+    df_dict = {}
+    for k in n_archetypes_list:
+        # Reference archetypes
+        ref_Z = AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X).Z
 
-    # Generate bootstrap samples
-    idx_bootstrap = rng.choice(n_samples, size=(n_bootstrap, n_samples), replace=True)
+        # Generate bootstrap samples
+        idx_bootstrap = rng.choice(n_samples, size=(n_bootstrap, n_samples), replace=True)
 
-    # Define function for parallel computation
-    def compute_bootstrap_z(idx):
-        return AA(n_archetypes=n_archetypes, optim=optim, init=init, **kwargs).fit(X[idx, :]).Z
+        # Define function for parallel computation
+        def compute_bootstrap_z(idx, k=k):
+            return AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X[idx, :]).Z
 
-    # Parallel computation of AA on bootstrap samples
-    Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)
+        # Parallel computation of AA on bootstrap samples
+        Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)
 
-    # Align archetypes
-    Z_list = [_align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]
+        # Align archetypes
+        Z_list = [_align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]
 
-    # Compute variance per archetype
-    Z_stack = np.stack(Z_list)
-    var_per_archetype = Z_stack.var(axis=0).mean(axis=1)
-    mean_variance = var_per_archetype.mean()
+        # Compute variance per archetype
+        Z_stack = np.stack(Z_list)
+        var_per_archetype = Z_stack.var(axis=0).mean(axis=1)
+        mean_variance = var_per_archetype.mean()
 
-    # Create result dataframe
-    bootstrap_data = [
-        pd.DataFrame(Z, columns=[f"x{i}" for i in range(n_features)]).assign(
-            archetype=np.arange(n_archetypes), iter=i + 1
-        )
-        for i, Z in enumerate(Z_list)
-    ]
-    bootstrap_df = pd.concat(bootstrap_data)
+        # Create result dataframe
+        bootstrap_data = [
+            pd.DataFrame(Z, columns=[f"x{i}" for i in range(n_features)]).assign(archetype=np.arange(k), iter=i + 1)
+            for i, Z in enumerate(Z_list)
+        ]
+        bootstrap_df = pd.concat(bootstrap_data)
 
-    df = pd.DataFrame(ref_Z, columns=[f"x{i}" for i in range(n_features)])
-    df["archetype"] = np.arange(n_archetypes)
-    df["iter"] = 0
+        df = pd.DataFrame(ref_Z, columns=[f"x{i}" for i in range(n_features)])
+        df["archetype"] = np.arange(k)
+        df["iter"] = 0
 
-    bootstrap_df = pd.concat((bootstrap_df, df), axis=0)
-    bootstrap_df["reference"] = bootstrap_df["iter"] == 0
-    bootstrap_df["archetype"] = pd.Categorical(bootstrap_df["archetype"])
+        bootstrap_df = pd.concat((bootstrap_df, df), axis=0)
+        bootstrap_df["reference"] = bootstrap_df["iter"] == 0
+        bootstrap_df["archetype"] = pd.Categorical(bootstrap_df["archetype"])
 
-    bootstrap_df["mean_variance"] = mean_variance
+        bootstrap_df["mean_variance"] = mean_variance
 
-    archetype_variance_map = dict(zip(np.arange(n_archetypes), var_per_archetype, strict=False))
-    bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].astype(int).map(archetype_variance_map)
+        archetype_variance_map = dict(zip(np.arange(k), var_per_archetype, strict=False))
+        bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].astype(int).map(archetype_variance_map)
+
+        df_dict[k] = bootstrap_df
 
     if save_to_anndata:
-        adata.uns["AA_bootstrap"] = bootstrap_df
+        adata.uns["AA_bootstrap"] = df_dict
         return None
     else:
-        return bootstrap_df
-
-
-def bootstrap_aa_multiple_k(
-    adata: sc.AnnData,
-    n_bootstrap: int = 30,
-    n_archetypes_list=None,
-    save_to_anndata: bool = True,
-    n_jobs: int = -1,
-    **kwargs,
-):
-    """
-    Perform bootstrap sampling across multiple numbers of archetypes to assess stability.
-
-    This function repeatedly applies bootstrap sampling and Archetypal Analysis (AA) for different
-    numbers of archetypes, aggregates the archetype stability metrics, and allows for evaluating
-    how stability varies with model complexity.
-
-    Parameters
-    ----------
-    adata : sc.AnnData
-        AnnData object containing the data. The PCA data should be stored in `adata.obsm["X_pca"]`.
-    n_bootstrap : int, optional (default=30)
-        The number of bootstrap samples to generate for each number of archetypes.
-    n_archetypes_list : list of int, optional (default=range(2, 8))
-        A list specifying the numbers of archetypes to evaluate.
-    save_to_anndata : bool, optional (default=True)
-        Whether to save the results to `adata.uns["AA_boostrap_multiple_k"]`. If `False`, the
-        result is returned.
-    **kwargs:
-        Additional keyword arguments passed to `AA` class.
-
-    Returns
-    -------
-    None or pd.DataFrame
-        If `save_to_anndata=True`, results are stored in `adata.uns["AA_boostrap_multiple_k"]` as a
-        DataFrame with the following columns:
-        - `archetype`: The archetype index.
-        - `variance_per_archetype`: The mean variance of each archetype's coordinates across bootstrap samples.
-        - `n_archetypes`: The number of archetypes used for the corresponding bootstrap analysis.
-
-        If `save_to_anndata=False`, the DataFrame is returned.
-    """
-    if n_archetypes_list is None:
-        n_archetypes_list = list(range(2, 8))
-
-    df_list = []
-    for k in n_archetypes_list:
-        boostrap_df = bootstrap_aa(
-            adata=adata, n_bootstrap=n_bootstrap, n_archetypes=k, save_to_anndata=False, n_jobs=n_jobs, **kwargs
-        )
-        boostrap_df["n_archetypes"] = k  # type: ignore[index]
-        df_list.append(boostrap_df)
-    df = pd.concat(df_list, axis=0)
-    df = df[["archetype", "variance_per_archetype", "n_archetypes"]].drop_duplicates()
-    if save_to_anndata:
-        adata.uns["AA_boostrap_multiple_k"] = df
-    else:
-        return df
+        return df_dict
 
 
 def _project_on_affine_subspace(X, Z) -> np.ndarray:  # pragma: no cover

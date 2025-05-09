@@ -10,7 +10,6 @@ from .enrichment import (
 )
 from .paretoti import (
     bootstrap_aa,
-    bootstrap_aa_multiple_k,
     compute_archetypes,
     compute_t_ratio,
     set_obsm,
@@ -29,7 +28,7 @@ from .plotting import (
     plot_archetypes_3D,
     plot_bootstrap_2D,
     plot_bootstrap_3D,
-    plot_bootstrap_multiple_k,
+    plot_bootstrap_variance,
     plot_IC,
     plot_var_explained,
     radarplot_meta_enrichment,
