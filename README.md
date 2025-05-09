@@ -3,6 +3,7 @@
 [![codecov](https://codecov.io/gh/saezlab/partipy/branch/main/graph/badge.svg)](https://codecov.io/gh/saezlab/partipy)
 [![Documentation Status](https://readthedocs.org/projects/partipy/badge/?version=latest)](https://partipy.readthedocs.io/en/latest/?badge=latest)
 [![GitHub issues](https://img.shields.io/github/issues/saezlab/partipy.svg)](https://github.com/saezlab/partipy/issues/)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/saezlab/ParTIpy/main.svg)](https://results.pre-commit.ci/latest/github/saezlab/ParTIpy/main)
 <!-- badges: end -->
 `partipy` provides a scalable and user-friendly implementation of the Pareto Task Inference (ParTI) framework [1,2] for analyzing functional trade-offs in single-cell and spatial omics data.
 
