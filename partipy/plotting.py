@@ -93,7 +93,7 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
     return p
 
 
-def plot_bootstrap_2D(adata: sc.AnnData) -> pn.ggplot:
+def plot_bootstrap_2D(adata: sc.AnnData, show_two_panels: bool = True) -> pn.ggplot:
     """
     Visualize the distribution and stability of archetypes across bootstrap samples in 2D PCA space.
 
@@ -117,7 +117,7 @@ def plot_bootstrap_2D(adata: sc.AnnData) -> pn.ggplot:
     # Generate the 2D scatter plot
     plot_df = adata.uns["AA_bootstrap"].copy()
 
-    if "x2" in plot_df.columns.to_list():
+    if ("x2" in plot_df.columns.to_list()) and show_two_panels:
         plot_df = plot_df.melt(
             id_vars=["x0", "archetype", "reference"], value_vars=["x1", "x2"], var_name="variable", value_name="value"
         )
@@ -216,7 +216,9 @@ def plot_bootstrap_multiple_k(adata: sc.AnnData) -> pn.ggplot:
     return p
 
 
-def plot_archetypes_2D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot:
+def plot_archetypes_2D(
+    adata: sc.AnnData, color: str | None = None, alpha: float = 1.0, show_two_panels: bool = True
+) -> pn.ggplot:
     """
     Generate a static 2D scatter plot showing data points, archetypes and the polytope they span.
 
@@ -244,11 +246,13 @@ def plot_archetypes_2D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
-    plot = plot_2D(X=X, Z=Z, color_vec=color_vec)
+    plot = plot_2D(X=X, Z=Z, color_vec=color_vec, alpha=alpha, show_two_panels=show_two_panels)
     return plot
 
 
-def plot_2D(X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None, alpha: float = 1.0) -> pn.ggplot:
+def plot_2D(
+    X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None, alpha: float = 1.0, show_two_panels: bool = True
+) -> pn.ggplot:
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
 
@@ -272,7 +276,7 @@ def plot_2D(X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None, a
         if len(color_vec) != len(X):
             raise ValueError("color_vec must have the same length as X.")
 
-    if X.shape[1] > 2:
+    if (X.shape[1] > 2) and show_two_panels:
         data_df = pd.DataFrame(X[:, :3], columns=["x0", "x1", "x2"])
         if color_vec is not None:
             data_df["color_vec"] = np.array(color_vec)

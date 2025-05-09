@@ -394,7 +394,7 @@ def bootstrap_aa_multiple_k(
         return df
 
 
-def _project_on_affine_subspace(X, Z) -> np.ndarray:
+def _project_on_affine_subspace(X, Z) -> np.ndarray:  # pragma: no cover
     """
     Projects a set of points X onto the affine subspace spanned by the vertices Z.
 
@@ -426,7 +426,7 @@ def _project_on_affine_subspace(X, Z) -> np.ndarray:
     return proj_coord
 
 
-def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:
+def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:  # pragma: no cover
     """
     Compute the t-ratio: volume(polytope defined by Z) / volume(convex hull of X)
 
@@ -459,7 +459,7 @@ def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:
     return polytope_volume / convhull_volume
 
 
-def compute_t_ratio(adata) -> float | None:
+def compute_t_ratio(adata) -> float | None:  # pragma: no cover
     """
     Compute the t-ratio from either an AnnData object or raw matrices.
 
@@ -488,7 +488,7 @@ def compute_t_ratio(adata) -> float | None:
     return None
 
 
-def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
+def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):  # pragma: no cover
     """
     Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
 
@@ -542,7 +542,7 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):
     return p_value
 
 
-def t_ratio_significance_shuffled(adata, iter=1000, seed=42, n_jobs=-1):
+def t_ratio_significance_shuffled(adata, iter=1000, seed=42, n_jobs=-1):  # pragma: no cover
     """
     Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
 

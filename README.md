@@ -9,6 +9,7 @@ To infer this structure, *Archetypal Analysis (AA)* models each cell as a convex
 `partipy` integrates with the scverse ecosystem, supports AnnData, and employs coreset-based optimization for scalability to millions of cells.
 
 [1] Hart et al., *Nat Methods* (2015). https://doi.org/10.1038/nmeth.3254
+
 [2] Adler et al., *Cell Systems* (2019). https://doi.org/10.1016/j.cels.2018.12.008
 
 ## Documentation

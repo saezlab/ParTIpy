@@ -40,7 +40,7 @@ repos:
         name: Run pytest
         #entry: pytest --cov partipy --cov-report=html # will fail because files are changed?
         #entry: hatch test --all
-        entry: hatch run test:pytest
+        entry: uvx hatch run test:pytest
         language: system
         types: [python]
         pass_filenames: false # ignore file changes?

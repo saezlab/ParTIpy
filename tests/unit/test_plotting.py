@@ -6,6 +6,7 @@ import pandas as pd
 import partipy as pt
 import plotly.graph_objects as go
 import plotnine as pn
+import pytest
 import scanpy as sc
 from partipy.plotting import (
     barplot_enrichment_comparison,
@@ -67,6 +68,7 @@ mock_meta_enrich_table = _mock_meta_enrich_table()
 ### plot_2D ###
 
 
+@pytest.mark.github_actions
 def test_plot_2D(mock_adata=mock_adata):
     p = plot_2D(mock_adata.X, mock_adata.uns["AA_results"]["Z"])
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -75,6 +77,7 @@ def test_plot_2D(mock_adata=mock_adata):
 ### plot_3D ###
 
 
+@pytest.mark.github_actions
 def test_plot_3D(mock_adata=mock_adata):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -85,6 +88,7 @@ def test_plot_3D(mock_adata=mock_adata):
 ### plot_archetypes_2D ###
 
 
+@pytest.mark.github_actions
 def test_plot_archetypes_2D(mock_adata=mock_adata):
     p = plot_archetypes_2D(mock_adata)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -93,6 +97,7 @@ def test_plot_archetypes_2D(mock_adata=mock_adata):
 ### plot_archetypes_3D ###
 
 
+@pytest.mark.github_actions
 def test_plot_archetypes_3D(mock_adata=mock_adata):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -103,6 +108,7 @@ def test_plot_archetypes_3D(mock_adata=mock_adata):
 ### plot_bootstrap_2D ###
 
 
+@pytest.mark.github_actions
 def test_plot_bootstrap_2D(mock_adata=mock_adata):
     p = plot_bootstrap_2D(mock_adata)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -111,6 +117,7 @@ def test_plot_bootstrap_2D(mock_adata=mock_adata):
 ### plot_bootstrap_3D ###
 
 
+@pytest.mark.github_actions
 def test_plot_bootstrap_3D(mock_adata=mock_adata):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -121,6 +128,7 @@ def test_plot_bootstrap_3D(mock_adata=mock_adata):
 ### plot_bootstrap_multiple_k ###
 
 
+@pytest.mark.github_actions
 def test_plot_bootstrap_multiple_k(mock_adata=mock_adata):
     p = plot_bootstrap_multiple_k(mock_adata)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -129,6 +137,7 @@ def test_plot_bootstrap_multiple_k(mock_adata=mock_adata):
 ### plot_IC ###
 
 
+@pytest.mark.github_actions
 def test_plot_IC(mock_adata=mock_adata):
     p = plot_IC(mock_adata)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -137,6 +146,7 @@ def test_plot_IC(mock_adata=mock_adata):
 ### plot_var_explained ###
 
 
+@pytest.mark.github_actions
 def test_plot_var_explained(mock_adata=mock_adata):
     p = plot_var_explained(mock_adata)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -145,6 +155,7 @@ def test_plot_var_explained(mock_adata=mock_adata):
 ### barplot_enrichment_comparison ###
 
 
+@pytest.mark.github_actions
 def test_barplot_enrichment_comparison(mock_enrich_table=mock_enrich_table):
     p = barplot_enrichment_comparison(mock_enrich_table[0])
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -153,6 +164,7 @@ def test_barplot_enrichment_comparison(mock_enrich_table=mock_enrich_table):
 ### barplot_functional_enrichment ###
 
 
+@pytest.mark.github_actions
 def test_barplot_functional_enrichment(mock_enrich_table=mock_enrich_table):
     p = barplot_functional_enrichment(mock_enrich_table, show=False)
     assert p is not None, "Object is None"
@@ -161,6 +173,7 @@ def test_barplot_functional_enrichment(mock_enrich_table=mock_enrich_table):
 ### barplot_meta_enrichment ###
 
 
+@pytest.mark.github_actions
 def test_barplot_meta_enrichment(mock_meta_enrich_table=mock_meta_enrich_table):
     p = barplot_meta_enrichment(mock_meta_enrich_table)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -169,6 +182,7 @@ def test_barplot_meta_enrichment(mock_meta_enrich_table=mock_meta_enrich_table):
 ### heatmap_meta_enrichment ###
 
 
+@pytest.mark.github_actions
 def test_heatmap_meta_enrichment(mock_meta_enrich_table=mock_meta_enrich_table):
     p = heatmap_meta_enrichment(mock_meta_enrich_table)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
@@ -177,6 +191,7 @@ def test_heatmap_meta_enrichment(mock_meta_enrich_table=mock_meta_enrich_table):
 ### radarplot_meta_enrichment ###
 
 
+@pytest.mark.github_actions
 def test_radarplot_meta_enrichment(mock_meta_enrich_table=mock_meta_enrich_table):
     p = radarplot_meta_enrichment(mock_meta_enrich_table)
     assert isinstance(p, types.ModuleType), "Expected a ModuleType"

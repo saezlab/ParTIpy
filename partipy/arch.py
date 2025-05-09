@@ -223,9 +223,9 @@ class AA:
             if self.coreset_flavor == "default":
                 coreset_indices, W = construct_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
             elif self.coreset_flavor == "lightweight_kmeans":
-                coreset_indices, W = construct_uniform_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
-            elif self.coreset_flavor == "uniform":
                 coreset_indices, W = construct_lightweight_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
+            elif self.coreset_flavor == "uniform":
+                coreset_indices, W = construct_uniform_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
             else:
                 raise NotImplementedError()
 

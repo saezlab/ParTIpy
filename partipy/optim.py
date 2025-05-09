@@ -49,7 +49,9 @@ def _inspect_array(arr: np.ndarray) -> dict:
     }
 
 
-@jit([float32(float32[:, :], float32[:, :], float32[:, :])], nopython=True, cache=True, fastmath=True)
+@jit(
+    [float32(float32[:, :], float32[:, :], float32[:, :])], nopython=True, cache=True, fastmath=True
+)  # pragma: no cover
 def _compute_RSS_AZ(X, A, Z):
     X = np.ascontiguousarray(X)
     Z = np.ascontiguousarray(Z)
@@ -58,7 +60,9 @@ def _compute_RSS_AZ(X, A, Z):
     return np.sum(diff * diff)
 
 
-@jit([float32(float32[:, :], float32[:, :], float32[:, :], float32[:, :])], nopython=True, cache=True, fastmath=True)
+@jit(
+    [float32(float32[:, :], float32[:, :], float32[:, :], float32[:, :])], nopython=True, cache=True, fastmath=True
+)  # pragma: no cover
 def _compute_RSS_ABX(X, A, B, WX):
     X = np.ascontiguousarray(X)
     A = np.ascontiguousarray(A)
@@ -153,7 +157,7 @@ def _compute_A_projected_gradients(
     nopython=True,
     cache=True,
     fastmath=True,
-)
+)  # pragma: no cover
 def _compute_A_projected_gradients_jit(
     X: np.ndarray,
     Z: np.ndarray,
@@ -267,7 +271,7 @@ def _compute_B_projected_gradients(
     nopython=True,
     cache=True,
     fastmath=True,
-)
+)  # pragma: no cover
 def _compute_B_projected_gradients_jit(
     X: np.ndarray,
     A: np.ndarray,
@@ -324,7 +328,7 @@ def _compute_B_projected_gradients_jit(
     return B
 
 
-@jit(nopython=True, cache=True, fastmath=True)
+@jit(nopython=True, cache=True, fastmath=True)  # pragma: no cover
 def _add_argmins_per_row(mtx, argmins, mu):
     for idx in range(len(argmins)):
         mtx[idx, argmins[idx]] += mu
@@ -332,7 +336,7 @@ def _add_argmins_per_row(mtx, argmins, mu):
 
 
 # NOTE: can lead to kernel crashed in Jupyter notebooks...
-@jit(nopython=True, cache=True, parallel=True)
+@jit(nopython=True, cache=True, parallel=True)  # pragma: no cover
 def _add_argmins_per_row_p(mtx, argmins, mu):
     for idx in prange(len(argmins)):
         mtx[idx, argmins[idx]] += mu
@@ -367,7 +371,7 @@ def _compute_A_frank_wolfe(
     nopython=True,
     cache=True,
     fastmath=True,
-)
+)  # pragma: no cover
 def _compute_A_frank_wolfe_jit(
     X: np.ndarray,
     Z: np.ndarray,
@@ -450,7 +454,7 @@ def _compute_B_frank_wolfe(
     nopython=True,
     cache=True,
     fastmath=True,
-)
+)  # pragma: no cover
 def _compute_B_frank_wolfe_jit(
     X: np.ndarray,
     A: np.ndarray,

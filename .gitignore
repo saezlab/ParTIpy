@@ -33,3 +33,5 @@ docs/_build/*
 
 # log files
 *.log
+.coverage*
+coverage.xml

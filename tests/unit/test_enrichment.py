@@ -33,6 +33,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs):
 ### compute_archetype_weights ###
 
 
+@pytest.mark.github_actions
 def test_compute_archetype_weights_anndata():
     """Test AnnData input with automatic and manual mode.
 
@@ -63,6 +64,7 @@ def test_compute_archetype_weights_anndata():
     )
 
 
+@pytest.mark.github_actions
 def test_compute_archetype_weights_missing_archetypes():
     """Test error handling when archetype information is missing.
 
@@ -77,6 +79,7 @@ def test_compute_archetype_weights_missing_archetypes():
         compute_archetype_weights(adata)
 
 
+@pytest.mark.github_actions
 def test_compute_archetype_weights_ground_truth():
     """Test known example to verify correct weight computation.
 
@@ -117,6 +120,7 @@ def test_compute_archetype_weights_ground_truth():
 ### compute_archetype_expression ###
 
 
+@pytest.mark.github_actions
 def test_compute_archetype_expression_result_shape():
     """Test output shape.
 
@@ -127,6 +131,7 @@ def test_compute_archetype_expression_result_shape():
     assert compute_archetype_expression(adata).shape == (5, 10), "Did not return expected shape"
 
 
+@pytest.mark.github_actions
 def test_compute_archetype_expression_ground_truth():
     """Test correct pseudobulk expression per archetype from known input.
 
@@ -167,6 +172,7 @@ def test_compute_archetype_expression_ground_truth():
     )
 
 
+@pytest.mark.github_actions
 def test_compute_archetype_expression_input_validation():
     """Tets if input validation works as intended.
 
@@ -188,6 +194,7 @@ def test_compute_archetype_expression_input_validation():
 ### extract_enriched_processes ###
 
 
+@pytest.mark.github_actions
 def test_extract_enriched_processes_shape():
     """Test output shape
 
@@ -222,6 +229,7 @@ def test_extract_enriched_processes_shape():
     assert result[1].shape == (3, 4), "Did not return expected shape for A1"
 
 
+@pytest.mark.github_actions
 def test_extract_enriched_processes_order():
     """Test process ordering.
 
@@ -266,6 +274,7 @@ def test_extract_enriched_processes_order():
     assert result_asc[1].iloc[0]["1"] == -1.0, "Enrichment score not as expected for ascending order, A1"
 
 
+@pytest.mark.github_actions
 def test_extract_enriched_processes_pvalue_filtering():
     """Test p-value filtering.
 
@@ -305,6 +314,7 @@ def test_extract_enriched_processes_pvalue_filtering():
     )
 
 
+@pytest.mark.github_actions
 def test_extract_enriched_processes_specificity():
     """Test specificity computation based on known input.
 
@@ -348,6 +358,7 @@ def test_extract_enriched_processes_specificity():
     result[2]
 
 
+@pytest.mark.github_actions
 def test_extract_enriched_processes_input_validation():
     """Tets if input validation works as intended.
 
@@ -389,6 +400,7 @@ def test_extract_enriched_processes_input_validation():
 ### extract_specific_processes ###
 
 
+@pytest.mark.github_actions
 def test_extract_specific_processes_shape():
     """Test output shape
 
@@ -423,6 +435,7 @@ def test_extract_specific_processes_shape():
     assert result[1].shape == (3, 4), "Did not return expected shape for A1"
 
 
+@pytest.mark.github_actions
 def test_extract_specific_processes_pvalue_filtering():
     """Test p-value filtering.
 
@@ -462,6 +475,7 @@ def test_extract_specific_processes_pvalue_filtering():
     )
 
 
+@pytest.mark.github_actions
 def test_extract_specific_processes_specificity():
     """Test specificity computation based on known input.
 
@@ -504,6 +518,7 @@ def test_extract_specific_processes_specificity():
     assert np.allclose(result[2]["specificity"], [0.5, -0.7, -1.0]), "Unexpected specificity for A2"
 
 
+@pytest.mark.github_actions
 def test_extract_specific_processes_input_validation():
     """Tets if input validation works as intended.
 
@@ -541,6 +556,7 @@ def test_extract_specific_processes_input_validation():
 ### compute_meta_enrichment ###
 
 
+@pytest.mark.github_actions
 def test_compute_meta_enrichment_correct_assigned():
     """
     Test whether meta-enrichment correctly assigns dominant labels to archetypes.
@@ -575,6 +591,7 @@ def test_compute_meta_enrichment_correct_assigned():
     assert np.allclose(result.sum(axis=1), [1.0, 1.0]), "Meta-enrichment rows do not sum to 1"
 
 
+@pytest.mark.github_actions
 def test_compute_meta_enrichment_input_validation():
     """Tests if input validation works as intended.
 
@@ -596,6 +613,7 @@ def test_compute_meta_enrichment_input_validation():
         compute_meta_enrichment(adata, meta_col="group")
 
 
+@pytest.mark.github_actions
 def test_compute_meta_enrichment_normalization():
     """
     Test whether meta-enrichment correctly normalizes the contributions across archetypes based on known input.
@@ -625,6 +643,7 @@ def test_compute_meta_enrichment_normalization():
     assert np.isclose(result.loc[1, "Z"], 0.333, atol=0.01), "Archetype 1 Z contribution not as expected"
 
 
+@pytest.mark.github_actions
 def test_compute_meta_enrichment_datatype_identification_and_shape():
     """
     Test whether compute_meta_enrichment correctly identifies and processes
@@ -648,6 +667,7 @@ def test_compute_meta_enrichment_datatype_identification_and_shape():
     )
 
 
+@pytest.mark.github_actions
 def test_compute_meta_enrichment_continuous_data():
     """
     Test whether compute_meta_enrichment correctly computes weighted averages

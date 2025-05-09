@@ -11,6 +11,35 @@ from scipy.spatial.distance import cdist
 FAST_OPTIM_ALGS = tuple(alg for alg in OPTIM_ALGS if alg != "regularized_nnls")
 
 
+@pytest.mark.github_actions
+@pytest.mark.parametrize("optim_str", OPTIM_ALGS)
+@pytest.mark.parametrize("init_str", INIT_ALGS)
+def test_that_archetypes_can_be_identified_gh(
+    optim_str: str,
+    init_str: str,
+) -> None:
+    n_archetypes = 3
+    n_dimensions = 2
+    N_SAMPLES = 200
+    MAX_REL_DIST = 0.10
+    X, A, Z = simulate_archetypes(
+        n_samples=N_SAMPLES,
+        n_archetypes=n_archetypes,
+        n_dimensions=n_dimensions,
+        noise_std=0.05,
+        seed=0,
+    )
+    AA_object = AA(n_archetypes=n_archetypes, optim=optim_str, init=init_str)
+    AA_object.fit(X)
+    Z_hat = AA_object.Z
+
+    Z_hat = align_archetypes(Z, Z_hat)
+
+    rel_dist_between_archetypes = compute_relative_rowwise_l2_distance(Z, Z_hat)
+
+    assert np.any(rel_dist_between_archetypes < MAX_REL_DIST)
+
+
 @pytest.mark.parametrize(
     "n_archetypes, n_dimensions",
     [(n_a, n_d) for n_a in range(2, 9) for n_d in range(2, 19, 4) if n_a <= n_d],

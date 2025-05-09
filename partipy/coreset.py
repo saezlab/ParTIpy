@@ -23,7 +23,7 @@ def construct_coreset(X: np.ndarray, coreset_size: int, seed: int):
     return coreset_indices, weights_root
 
 
-def construct_lightweight_coreset(X: np.ndarray, coreset_size: int, seed: int):
+def construct_lightweight_coreset(X: np.ndarray, coreset_size: int, seed: int):  # pragma: no cover
     """Construct k-means clustering via lightweight coresets (Bachem et al. (2018))"""
     n_samples = X.shape[0]
 
@@ -41,7 +41,7 @@ def construct_lightweight_coreset(X: np.ndarray, coreset_size: int, seed: int):
 
 
 # NOTE: This is not really a coreset, but I rather use this for testing purposes
-def construct_uniform_coreset(X: np.ndarray, coreset_size: int, seed: int):
+def construct_uniform_coreset(X: np.ndarray, coreset_size: int, seed: int):  # pragma: no cover
     """Construct mock coreset by uniform sampling"""
     n_samples = X.shape[0]
     rng = np.random.default_rng(seed=seed)

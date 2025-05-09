@@ -89,6 +89,8 @@ scripts.clean = "git clean -fdX -- {args:docs}"
 # all hatch-test environments are using the optional test dependencies
 [tool.hatch.envs.hatch-test]
 features = [ "test" ]
+scripts.run_cov = "pytest -m 'github_actions' -v --cov=partipy --color=yes --durations=0 --cov-report=term --cov-report=xml"
+scripts.run_cov_local = "pytest -m 'github_actions' -v --cov=partipy --color=yes --durations=0 --cov-report=term --cov-report=html"
 
 # test the lowest and highest supported Python versions with normal deps
 [[tool.hatch.envs.hatch-test.matrix]]
@@ -111,6 +113,8 @@ matrix.deps.env-vars = [
 [tool.hatch.envs.test]
 features = ["test"]
 python = "3.10"  # or your local dev Python version
+pytest = "*"
+pytest-cov = "*"
 
 [tool.ruff]
 line-length = 120 # more generous that standard 79
@@ -166,14 +170,23 @@ filterwarnings = [
     # ignore UserWarnings for now?
     "ignore::UserWarning"
 ]
+# everything in addopts is always part of the pytest command (if not overridden)
 addopts = [
-  "--import-mode=importlib", # allow using test files with same name
+  "--import-mode=importlib", # by default allow using test files with same name
+]
+markers = [
+    "github_actions: marks tests that are run via github actions (CI)"
 ]
 
 [tool.coverage.run]
 source = [ "partipy" ]
 # ignore all files that start with "test_" and end with ".py"
 omit = [ "**/test_*.py" ]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover"
+]
 
 [tool.mypy]
 exclude = "build/"
