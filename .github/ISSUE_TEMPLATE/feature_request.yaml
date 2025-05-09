@@ -1,0 +1,11 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for the Partipy package.
+labels: enhancement
+body:
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: Describe the feature you are requesting. It might help to describe a problem or use case. If applicable, mention any alternative approaches you have considered.
+    validations:
+      required: true

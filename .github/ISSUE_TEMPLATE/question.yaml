@@ -1,0 +1,13 @@
+name: Question
+description: Ask a question about how to use the Partipy package or about the underlying theory.
+labels: question
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: Describe your question. If it relates to a specific function or workflow in Partipy, please mention it. Feel free to include example code or errors you're encountering.
+      placeholder: |
+        Example: 
+    validations:
+      required: true
