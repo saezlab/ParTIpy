@@ -1,4 +1,8 @@
 fail_fast: false # do not stop after failure (can still interupt manually...)
+
+ci:
+    skip: [testing] # pre-commit.ci should ignore the testing hook
+
 repos:
   # Add some general purpose useful hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -36,7 +40,7 @@ repos:
   # pytest hook to run tests on commit
   - repo: local
     hooks:
-      - id: pytest
+      - id: testing
         name: Run pytest
         #entry: pytest --cov partipy --cov-report=html # will fail because files are changed?
         #entry: hatch test --all

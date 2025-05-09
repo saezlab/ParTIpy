@@ -22,7 +22,13 @@ For further information and example tutorials, please check our [documentation](
 
 ## Installation
 
-While `partipy` is under active development, it can currently be installed from GitHub via:
+`partipy` can be installed from pip:
+
+```
+pip install partipy
+```
+
+Alternatively, the newest unreleased version can be directly installed from GitHub:
 
 ```
 pip install git+https://github.com/saezlab/partipy.git
