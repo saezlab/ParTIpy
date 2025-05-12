@@ -14,7 +14,6 @@ from .paretoti import (
     compute_t_ratio,
     set_obsm,
     t_ratio_significance,
-    t_ratio_significance_shuffled,
     var_explained_aa,
 )
 from .plotting import (

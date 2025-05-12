@@ -28,6 +28,7 @@ repos:
       # Check for python syntax errors
       - id: check-ast
 
+  # formating / linting with ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.10
     hooks:
@@ -37,21 +38,19 @@ repos:
       - id: ruff-format
         types_or: [python] # ignore jupyter for now [python, jupyter]
 
-  # pytest hook to run tests on commit
-  - repo: local
-    hooks:
-      - id: testing
-        name: Run pytest
-        #entry: pytest --cov partipy --cov-report=html # will fail because files are changed?
-        #entry: hatch test --all
-        entry: uvx hatch run test:pytest
-        language: system
-        types: [python]
-        pass_filenames: false # ignore file changes?
-        always_run: true
-
   # type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.15.0
     hooks:
       - id: mypy
+
+  # pytest hook to run tests on commit
+  - repo: local
+    hooks:
+      - id: testing
+        name: Run pytest
+        entry: uvx hatch run hatch-test.py3.10-stable:pytest
+        language: system
+        types: [python]
+        pass_filenames: false # ignore file changes?
+        always_run: true

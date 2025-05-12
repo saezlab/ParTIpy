@@ -345,36 +345,39 @@ def bootstrap_aa(
         return df_dict
 
 
-def _project_on_affine_subspace(X, Z) -> np.ndarray:  # pragma: no cover
+# TODO: I could also just use any of the compute_A functions to achieve this more robustly!
+def _project_on_affine_subspace(X, Z) -> np.ndarray:
     """
     Projects a set of points X onto the affine subspace spanned by the vertices Z.
 
     Parameters
     ----------
     X : numpy.ndarray
-        A (D x n) array of n points in D-dimensional space to be projected.
+        N x D array of N points in D-dimensional space to be projected.
     Z : numpy.ndarray
-        A (D x k) array of k vertices (archetypes) defining the affine subspace in D-dimensional space.
+        K x D array of K vertices (archetypes) defining the affine subspace in D-dimensional space.
 
     Returns
     -------
-    proj_coord : numpy.ndarray
+    X_proj : numpy.ndarray
         The coordinates of the projected points in the subspace defined by Z.
     """
-    D, k = Z.shape
+    # arbitrarily define the first archetype as translation vector for the affine subspace spanned by the archetypes
+    translation_vector = Z[0, :]  # D x 1 dimensions
 
-    # Compute the projection vectors (basis for the affine subspace)
-    if k == 2:
-        # For a line (k=2), the projection vector is simply the difference between the two vertices
-        proj_vec = (Z[:, 1] - Z[:, 0])[:, None]
-    else:
-        # For higher dimensions, compute the projection vectors relative to the first vertex
-        proj_vec = Z[:, 1:] - Z[:, 0][:, None]
+    # the other archetypes, then define the linear subspace onto which we project the data
+    # (after we subtract the translation vector from the coordinates of the other archetypes)
+    projection_matrix = Z[1:, :].copy()
+    projection_matrix -= translation_vector
+    projection_matrix = projection_matrix.T  # D x (K-1) dimensions
+    # pseudoinverse = np.linalg.inv(projection_matrix.T @ projection_matrix) @ projection_matrix.T
+    pseudoinverse = np.linalg.pinv(projection_matrix)
 
-    # Compute the coordinates of the projected points in the subspace
-    proj_coord = np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T @ (X - Z[:, 0][:, None])
+    X_proj = X.copy()
+    X_proj -= translation_vector
+    X_proj = X_proj @ pseudoinverse.T
 
-    return proj_coord
+    return X_proj
 
 
 def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:  # pragma: no cover
@@ -393,14 +396,14 @@ def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:  # pragma: no cover
     float
         The t-ratio.
     """
-    D, k = X.shape[1], Z.shape[0]
+    n_features, n_archetypes = X.shape[1], Z.shape[0]
 
-    if k < 2:
+    if n_archetypes < 2:
         raise ValueError("At least 2 archetypes are required (k >= 2).")
 
-    if k < D + 1:
-        proj_X = _project_on_affine_subspace(X.T, Z.T).T
-        proj_Z = _project_on_affine_subspace(Z.T, Z.T).T
+    if n_archetypes < (n_features + 1):
+        proj_X = _project_on_affine_subspace(X, Z)
+        proj_Z = _project_on_affine_subspace(Z, Z)
         convhull_volume = ConvexHull(proj_X).volume
         polytope_volume = ConvexHull(proj_Z).volume
     else:
@@ -410,7 +413,7 @@ def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:  # pragma: no cover
     return polytope_volume / convhull_volume
 
 
-def compute_t_ratio(adata) -> float | None:  # pragma: no cover
+def compute_t_ratio(adata) -> None:  # pragma: no cover
     """
     Compute the t-ratio from either an AnnData object or raw matrices.
 
@@ -439,7 +442,9 @@ def compute_t_ratio(adata) -> float | None:  # pragma: no cover
     return None
 
 
-def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):  # pragma: no cover
+def t_ratio_significance(
+    adata, n_iter=100, seed=42, n_jobs=-1, save_permutation_results: bool = False
+):  # pragma: no cover
     """
     Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
 
@@ -447,7 +452,7 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):  # pragma: no co
     ----------
     adata : sc.AnnData
         An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["aa_config"]["n_dimension"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
-    iter : int, optional (default=1000)
+    n_iter : int, optional (default=1000)
         Number of randomized datasets to generate.
     seed : int, optional (default=42)
         The random seed for reproducibility.
@@ -471,81 +476,37 @@ def t_ratio_significance(adata, iter=1000, seed=42, n_jobs=-1):  # pragma: no co
     X = adata.obsm[obsm_key][:, :n_dimensions]
 
     t_ratio = adata.uns["t_ratio"]
+    rss = adata.uns["AA_results"]["RSS"][-1]
     n_samples, n_features = X.shape
     n_archetypes = adata.uns["AA_results"]["Z"].shape[0]
 
-    rng = np.random.default_rng(seed)
+    rng_master = np.random.default_rng(seed)
+    rng_list = [np.random.default_rng(rng_master.integers(1e9)) for _ in range(n_iter)]
 
-    def compute_randomized_t_ratio():
-        # Shuffle each feature independently
-        SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
-        # Compute archetypes and t-ratio for randomized data
-        Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1).Z
-        return _compute_t_ratio(SimplexRand1, Z_mix)
+    def compute_randomized_metrics(rng_inner):
+        X_perm = np.column_stack([rng_inner.permutation(X[:, col_idx]) for col_idx in range(n_features)])
+        AA_perm = AA(n_archetypes=n_archetypes)
+        AA_perm.fit(X_perm)
+        Z_perm = AA_perm.Z
+        rss_perm = AA_perm.RSS
+        t_ratio_perm = _compute_t_ratio(X_perm, Z_perm)
+        return t_ratio_perm, rss_perm
 
-    # Parallelize the computation of randomized t-ratios
-    RandRatio = Parallel(n_jobs=n_jobs)(
-        delayed(compute_randomized_t_ratio)() for _ in tqdm(range(iter), desc="Randomizing")
+    # Parallel computation
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(compute_randomized_metrics)(rng) for rng in tqdm(rng_list, desc="Randomizing")
     )
 
-    # Calculate the p-value
-    p_value = np.sum(np.array(RandRatio) > t_ratio) / iter
-    return p_value
+    t_ratios_perm, rss_perm = map(np.array, zip(*results, strict=False))
 
-
-def t_ratio_significance_shuffled(adata, iter=1000, seed=42, n_jobs=-1):  # pragma: no cover
-    """
-    Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
-
-    Parameters
-    ----------
-    adata : sc.AnnData
-        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["aa_config"]["n_dimension"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
-    iter : int, optional (default=1000)
-        Number of randomized datasets to generate.
-    seed : int, optional (default=42)
-        The random seed for reproducibility.
-    n_jobs : int, optional
-        Number of jobs for parallelization (default: 1). Use -1 to use all available cores.
-
-    Returns
-    -------
-    float
-        The proportion of randomized datasets with a t-ratio greater than the original t-ratio (p-value).
-    """
-    # input validation
-    _validate_aa_config(adata=adata)
-
-    if "t_ratio" not in adata.uns:
-        print("Computing t-ratio...")
-        compute_t_ratio(adata)
-
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
-
-    t_ratio = adata.uns["t_ratio"]
-    n_samples, n_features = X.shape
-    n_archetypes = adata.uns["AA_results"]["Z"].shape[0]
-
-    rng = np.random.default_rng(seed)
-
-    def compute_randomized_t_ratio():
-        # Shuffle each feature independently
-        SimplexRand1 = np.array([rng.permutation(X[:, i]) for i in range(n_features)]).T
-        SimplexRand1_pca = sc.pp.pca(SimplexRand1, n_comps=adata.uns["aa_config"]["n_dimension"])
-        # Compute archetypes and t-ratio for randomized data
-        Z_mix = AA(n_archetypes=n_archetypes).fit(SimplexRand1_pca).Z
-        return _compute_t_ratio(SimplexRand1_pca, Z_mix)
-
-    # Parallelize the computation of randomized t-ratios
-    RandRatio = Parallel(n_jobs=n_jobs)(
-        delayed(compute_randomized_t_ratio)() for _ in tqdm(range(iter), desc="Randomizing")
-    )
+    if save_permutation_results:
+        adata.uns["AA_permutation"] = {"t_ratio": t_ratios_perm, "rss": rss_perm}
 
     # Calculate the p-value
-    p_value = np.sum(np.array(RandRatio) > t_ratio) / iter
-    return p_value
+    t_ratio_p_value = 1 - np.mean(t_ratio > t_ratios_perm)
+    rss_p_value = 1 - np.mean(rss < rss_perm)
+
+    return {"t_ratio_p_value": t_ratio_p_value, "rss_p_value": rss_p_value}
 
 
 def _align_archetypes(ref_arch: np.ndarray, query_arch: np.ndarray) -> np.ndarray:

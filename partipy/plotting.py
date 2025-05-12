@@ -465,9 +465,6 @@ def plot_3D(
             opacity=0.5,
         )
 
-    # Compute the convex hull of the archetypes
-    hull = ConvexHull(Z_plot)
-
     # Add archetypes to the plot
     archetype_labels = [f"Archetype {i}" for i in range(Z_plot.shape[0])]
     fig.add_trace(
@@ -483,28 +480,29 @@ def plot_3D(
         )
     )
 
-    # Add the polytope (convex hull) to the plot
-    fig.add_trace(
-        go.Mesh3d(
-            x=Z_plot[:, 0],
-            y=Z_plot[:, 1],
-            z=Z_plot[:, 2],
-            i=hull.simplices[:, 0],
-            j=hull.simplices[:, 1],
-            k=hull.simplices[:, 2],
-            color=color_polyhedron,
-            opacity=0.1,
+    if Z_plot.shape[0] > Z_plot.shape[1]:
+        # Add the polytope (convex hull) to the plot
+        hull = ConvexHull(Z_plot)
+        fig.add_trace(
+            go.Mesh3d(
+                x=Z_plot[:, 0],
+                y=Z_plot[:, 1],
+                z=Z_plot[:, 2],
+                i=hull.simplices[:, 0],
+                j=hull.simplices[:, 1],
+                k=hull.simplices[:, 2],
+                color=color_polyhedron,
+                opacity=0.1,
+            )
         )
-    )
 
     # Add edges of the polytope to the plot
-    for simplex in hull.simplices:
-        simplex = np.append(simplex, simplex[0])
+    for arch_idx in range(Z_plot.shape[0]):
         fig.add_trace(
             go.Scatter3d(
-                x=Z_plot[simplex, 0],
-                y=Z_plot[simplex, 1],
-                z=Z_plot[simplex, 2],
+                x=[Z_plot[arch_idx, 0]],
+                y=[Z_plot[arch_idx, 1]],
+                z=[Z_plot[arch_idx, 2]],
                 mode="lines",
                 line={"color": color_polyhedron, "width": 4},
                 showlegend=False,

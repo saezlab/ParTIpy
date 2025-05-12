@@ -109,13 +109,6 @@ matrix.deps.env-vars = [
   { key = "UV_PRERELEASE", value = "allow", if = [ "pre" ] },
 ]
 
-# another local test environment, that I use in pre-commit for now
-[tool.hatch.envs.test]
-features = ["test"]
-python = "3.10"  # or your local dev Python version
-pytest = "*"
-pytest-cov = "*"
-
 [tool.ruff]
 line-length = 120 # more generous that standard 79
 src = ["partipy"]
