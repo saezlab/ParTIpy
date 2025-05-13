@@ -8,6 +8,6 @@ body:
       label: Your Question
       description: Describe your question. If it relates to a specific function or workflow in Partipy, please mention it. Feel free to include example code or errors you're encountering.
       placeholder: |
-        Example: 
+        Example:
     validations:
       required: true
