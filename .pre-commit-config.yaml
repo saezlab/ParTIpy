@@ -29,7 +29,7 @@ repos:
       - id: check-ast
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.9
+    rev: v0.11.10
     hooks:
       - id: ruff
         types_or: [python] # ignore jupyter for now [python, jupyter]
