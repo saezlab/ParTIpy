@@ -674,6 +674,7 @@ def compute_archetypes(
                 "B": model.B,
                 "Z": model.Z,
                 "RSS": model.RSS_trace,
+                "RSS_full": model.RSS,
                 "varexpl": model.varexpl,
             }
         return None

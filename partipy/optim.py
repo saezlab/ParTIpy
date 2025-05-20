@@ -170,7 +170,7 @@ def _compute_A_projected_gradients_jit(
     mu = np.float32(1.0)
     min_mu = np.float32(1e-6)
 
-    # explicitly making sure everything is contiguous (C-roder)
+    # explicitly making sure everything is contiguous (C-order)
     X = np.ascontiguousarray(X)
     Z = np.ascontiguousarray(Z)
     A = np.ascontiguousarray(A)
