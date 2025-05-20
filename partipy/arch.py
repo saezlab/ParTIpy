@@ -341,7 +341,7 @@ class AA:
         self.Z = Z
         self.A = A
         self.B = B
-        self.RSS = np.linalg.norm(X - A @ Z) ** 2 # RSS on full TS
+        self.RSS = np.linalg.norm(X_raw - A @ Z) ** 2 # RSS on full TS
         self.RSS_trace = self.RSS_trace[self.RSS_trace > 0.0]
         self.varexpl = (TSS - RSS) / TSS
         self.fitting_info = {

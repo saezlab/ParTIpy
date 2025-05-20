@@ -91,6 +91,8 @@ scripts.clean = "git clean -fdX -- {args:docs}"
 features = [ "test" ]
 scripts.run_cov = "pytest -m 'github_actions' -v --cov=partipy --color=yes --durations=0 --cov-report=term --cov-report=xml"
 scripts.run_cov_local = "pytest -m 'github_actions' -v --cov=partipy --color=yes --durations=0 --cov-report=term --cov-report=html"
+scripts.run_gh_tests = "pytest -m 'github_actions' -v --cov=partipy --color=yes --durations=0"
+scripts.run_all_tests = "pytest -v --cov=partipy --color=yes --durations=0"
 
 # test the lowest and highest supported Python versions with normal deps
 [[tool.hatch.envs.hatch-test.matrix]]
