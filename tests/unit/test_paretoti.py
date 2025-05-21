@@ -155,12 +155,12 @@ def test_bootstrap_aa_output_correct_shape(_mock_adata):
         "mean_variance",
         "variance_per_archetype",
     ]
-    assert all(col in adata.uns["AA_bootstrap"][3].columns for col in expected_columns), (
+    assert all(col in adata.uns["AA_bootstrap"]["3"].columns for col in expected_columns), (
         "AA_bootstrap does not have the correct column names"
     )
 
     # Check shape
-    assert adata.uns["AA_bootstrap"][3].shape == (33, len(expected_columns)), (
+    assert adata.uns["AA_bootstrap"]["3"].shape == (33, len(expected_columns)), (
         "AA_bootstrap does not have the correct shape"
     )
 
@@ -180,13 +180,13 @@ def test_bootstrap_aa_with_noisy_and_non_noisy_data():
     bootstrap_aa(adata03, n_bootstrap=10, n_archetypes_list=5)
 
     # Compare mean variance
-    mean_variance_adata0 = adata0.uns["AA_bootstrap"][5]["mean_variance"].mean()
-    mean_variance_adata03 = adata03.uns["AA_bootstrap"][5]["mean_variance"].mean()
+    mean_variance_adata0 = adata0.uns["AA_bootstrap"]["5"]["mean_variance"].mean()
+    mean_variance_adata03 = adata03.uns["AA_bootstrap"]["5"]["mean_variance"].mean()
     assert mean_variance_adata0 < mean_variance_adata03, "Mean variance should be higher for noisy data."
 
     # Compare variance per archetype
-    max_variance_adata0 = adata0.uns["AA_bootstrap"][5]["variance_per_archetype"].max()
-    min_variance_adata03 = adata03.uns["AA_bootstrap"][5]["variance_per_archetype"].min()
+    max_variance_adata0 = adata0.uns["AA_bootstrap"]["5"]["variance_per_archetype"].max()
+    min_variance_adata03 = adata03.uns["AA_bootstrap"]["5"]["variance_per_archetype"].min()
     assert max_variance_adata0 < min_variance_adata03, (
         "Max variance of non-noisy data should be less than min variance of noisy data."
     )

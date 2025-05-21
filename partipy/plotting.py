@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotnine as pn
 import scanpy as sc
+from matplotlib import ticker
 from mizani.palettes import hue_pal
 from scipy.spatial import ConvexHull
 
@@ -93,7 +94,9 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
     return p
 
 
-def plot_bootstrap_2D(adata: sc.AnnData, n_archetypes: int, show_two_panels: bool = True) -> pn.ggplot:
+def plot_bootstrap_2D(
+    adata: sc.AnnData, n_archetypes: int, show_two_panels: bool = True, alpha: float = 1.0, size: float | None = None
+) -> pn.ggplot:
     """
     Visualize the distribution and stability of archetypes across bootstrap samples in 2D PCA space.
 
@@ -108,45 +111,54 @@ def plot_bootstrap_2D(adata: sc.AnnData, n_archetypes: int, show_two_panels: boo
         The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
     show_two_panels : bool, optional
         If True, the plot will be split into two panels showing the archetypes from different orientations if there are more than 2 dimensions in the data.
+    size : float or None, optional
+        Size of the points in the scatter plot. If None, uses the default size of the plotting library.
 
     Returns
     -------
     pn.ggplot
         A 2D scatter plot visualizing the bootstrap results for the archetypes.
     """
+    n_archetypes_str = str(n_archetypes)
     # Validation input
     if "AA_bootstrap" not in adata.uns:
         raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
 
-    if n_archetypes not in adata.uns["AA_bootstrap"].keys():
+    if n_archetypes_str not in adata.uns["AA_bootstrap"].keys():
         raise ValueError(
-            f"n_archetypes {n_archetypes} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
+            f"n_archetypes {n_archetypes_str} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
         )
-
     # Generate the 2D scatter plot
-    plot_df = adata.uns["AA_bootstrap"][n_archetypes].copy()
+    plot_df = adata.uns["AA_bootstrap"][n_archetypes_str].copy()
 
     if ("x2" in plot_df.columns.to_list()) and show_two_panels:
         plot_df = plot_df.melt(
             id_vars=["x0", "archetype", "reference"], value_vars=["x1", "x2"], var_name="variable", value_name="value"
         )
-        p = (
-            pn.ggplot(plot_df)
-            + pn.geom_point(pn.aes(x="x0", y="value", color="archetype", shape="reference"))
-            + pn.facet_wrap(facets="variable", scales="fixed")
-            + pn.labs(x="First Axis", y="Second / Third Axis")
-            + pn.coord_equal()
+        p = pn.ggplot(plot_df) + pn.geom_point(
+            pn.aes(x="x0", y="value", color="archetype", shape="reference"), alpha=alpha
         )
+        if size is not None:
+            p += pn.geom_point(size=size)
+        p += pn.facet_wrap(facets="variable", scales="fixed")
+        p += pn.labs(x="First Axis", y="Second / Third Axis") + pn.coord_equal()
     else:
-        p = (
-            pn.ggplot(plot_df)
-            + pn.geom_point(pn.aes(x="x0", y="x1", color="archetype", shape="reference"))
-            + pn.coord_equal()
+        p = pn.ggplot(plot_df) + pn.geom_point(
+            pn.aes(x="x0", y="x1", color="archetype", shape="reference"), alpha=alpha
         )
+        if size is not None:
+            p += pn.geom_point(size=size)
+        p += pn.coord_equal()
+
     return p
 
 
-def plot_bootstrap_3D(adata: sc.AnnData, n_archetypes: int) -> go.Figure:
+def plot_bootstrap_3D(
+    adata: sc.AnnData,
+    n_archetypes: int,
+    size: float = 6,
+    alpha: float = 0.5,
+) -> go.Figure:
     """
     Interactive 3D visualization of archetypes from bootstrap samples to assess their variability.
 
@@ -159,23 +171,28 @@ def plot_bootstrap_3D(adata: sc.AnnData, n_archetypes: int) -> go.Figure:
         Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
     n_archetypes : int
         The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
+    size : float, default=6
+        Size of the points in the scatter plot.
+    alpha : float, default=0.5
+        Opacity of the points in the scatter plot (0.0 to 1.0).
 
     Returns
     -------
     go.Figure
         A 3D scatter plot visualizing the bootstrap results for the archetypes.
     """
+    n_archetypes_str = str(n_archetypes)
     # Validation input
     if "AA_bootstrap" not in adata.uns:
         raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
 
-    if n_archetypes not in adata.uns["AA_bootstrap"].keys():
+    if n_archetypes_str not in adata.uns["AA_bootstrap"].keys():
         raise ValueError(
-            f"n_archetypes {n_archetypes} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
+            f"n_archetypes {n_archetypes_str} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
         )
 
     # Generate the 3D scatter plot
-    bootstrap_df = adata.uns["AA_bootstrap"][n_archetypes].copy()
+    bootstrap_df = adata.uns["AA_bootstrap"][n_archetypes_str].copy()
     fig = px.scatter_3d(
         bootstrap_df,
         x="x0",
@@ -184,10 +201,10 @@ def plot_bootstrap_3D(adata: sc.AnnData, n_archetypes: int) -> go.Figure:
         color="archetype",
         symbol="reference",
         title="Archetypes on bootstrapepd data",
-        size_max=10,
         hover_data=["iter", "archetype", "reference"],
-        opacity=0.5,
+        opacity=alpha,
     )
+    fig.update_traces(marker={"size": size})
     fig.update_layout(template=None)
 
     return fig
@@ -224,7 +241,7 @@ def plot_bootstrap_variance(adata: sc.AnnData) -> pn.ggplot:
     for n_archetypes, df in df_dict.items():
         # Add 'n_archetypes' column
         df = df.copy()
-        df["n_archetypes"] = n_archetypes
+        df["n_archetypes"] = int(n_archetypes)
 
         # Drop duplicates
         df = df[["archetype", "variance_per_archetype", "n_archetypes"]].drop_duplicates()
@@ -253,7 +270,11 @@ def plot_bootstrap_variance(adata: sc.AnnData) -> pn.ggplot:
 
 
 def plot_archetypes_2D(
-    adata: sc.AnnData, color: str | None = None, alpha: float = 1.0, show_two_panels: bool = True
+    adata: sc.AnnData,
+    color: str | None = None,
+    alpha: float = 1.0,
+    size: float | None = None,
+    show_two_panels: bool = True,
 ) -> pn.ggplot:
     """
     Generate a static 2D scatter plot showing data points, archetypes and the polytope they span.
@@ -282,12 +303,17 @@ def plot_archetypes_2D(
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
-    plot = plot_2D(X=X, Z=Z, color_vec=color_vec, alpha=alpha, show_two_panels=show_two_panels)
+    plot = plot_2D(X=X, Z=Z, color_vec=color_vec, alpha=alpha, size=size, show_two_panels=show_two_panels)
     return plot
 
 
 def plot_2D(
-    X: np.ndarray, Z: np.ndarray, color_vec: np.ndarray | None = None, alpha: float = 1.0, show_two_panels: bool = True
+    X: np.ndarray,
+    Z: np.ndarray,
+    color_vec: np.ndarray | None = None,
+    alpha: float = 1.0,
+    size: float | None = None,
+    show_two_panels: bool = True,
 ) -> pn.ggplot:
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
@@ -347,9 +373,19 @@ def plot_2D(
     plot = pn.ggplot()
 
     if color_vec is not None:
-        plot += pn.geom_point(data=data_df, mapping=pn.aes(x="x0", y="value", color="color_vec"), alpha=alpha)
+        if size is not None:
+            plot += pn.geom_point(
+                data=data_df, mapping=pn.aes(x="x0", y="value", color="color_vec"), alpha=alpha, size=size
+            )
+        else:
+            plot += pn.geom_point(data=data_df, mapping=pn.aes(x="x0", y="value", color="color_vec"), alpha=alpha)
     else:
-        plot += pn.geom_point(data=data_df, mapping=pn.aes(x="x0", y="value"), color="black", alpha=alpha)
+        if size is not None:
+            plot += pn.geom_point(
+                data=data_df, mapping=pn.aes(x="x0", y="value"), color="black", alpha=alpha, size=size
+            )
+        else:
+            plot += pn.geom_point(data=data_df, mapping=pn.aes(x="x0", y="value"), color="black", alpha=alpha)
 
     plot += pn.geom_point(data=arch_df, mapping=pn.aes(x="x0", y="value"), color="red", size=1)
     plot += pn.geom_path(data=arch_df, mapping=pn.aes(x="x0", y="value"), color="red", size=1)
@@ -363,7 +399,7 @@ def plot_2D(
     return plot
 
 
-def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot:
+def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, marker_size: int = 4) -> pn.ggplot:
     """
     Create an interactive 3D scatter plot showing data points, archetypes and the polytope they span.
 
@@ -378,6 +414,8 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
         archetypes in `uns["AA_results"]["Z"]`.
     color : str, optional
         Name of a column in `adata.obs` to color the data points by.
+    marker_size : int, optional (default=4)
+        The size of the markers for the data points in `X`.
 
     Returns
     -------
@@ -391,7 +429,7 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None) -> pn.ggplot
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
-    plot = plot_3D(X=X, Z=Z, color_vec=color_vec)
+    plot = plot_3D(X=X, Z=Z, color_vec=color_vec, marker_size=marker_size)
     return plot
 
 
@@ -700,11 +738,12 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
     """
     # Prepare data
     meta_enrich = meta_enrich.T.reset_index().rename(columns={"index": "Meta_feature"})
+    numeric_meta_enrich = meta_enrich.drop(columns=["Meta_feature"]).astype(float)
 
     # Function to create a radar plot for a given row
     def make_radar(row, title, color):
         # Set number of meta categories
-        categories = list(meta_enrich)[1:]
+        categories = list(numeric_meta_enrich.columns)
         N = len(categories)
 
         # Calculate angles for the radar plot
@@ -718,42 +757,61 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
         ax.set_theta_offset(np.pi / 2)
         ax.set_theta_direction(-1)
 
-        # One axe per variable and add labels
-        archetype_label = [f"A{i}" for i in range(len(list(meta_enrich)[1:]))]
+        # Axis labels
+        archetype_label = [f"A{i}" for i in range(len(categories))]
         plt.xticks(angles[:-1], archetype_label, color="grey", size=8)
 
-        # Draw ylabels
+        # Values for this radar
+        values = numeric_meta_enrich.loc[row].values.flatten().tolist()
+        values += values[:1]
+
+        # Y-axis handling
+        if np.allclose(numeric_meta_enrich.sum(axis=0), 1):
+            ax.set_ylim(0, 1)
+            ax.set_yticks([0, 0.25, 0.5, 0.75, 1])
+            ax.set_yticklabels(["0", "0.25", "0.50", "0.75", "1.0"], color="grey", size=7)
+        else:
+            raw_ymax = max(values)
+            locator = ticker.MaxNLocator(4)
+            yticks = locator.tick_values(0, raw_ymax)
+            ymax = yticks[-1]
+
+            if ymax < 0.1:
+                ytick_labels = [f"{y:.2e}" for y in yticks]
+            elif ymax < 1:
+                ytick_labels = [f"{y:.2f}" for y in yticks]
+            elif ymax < 10:
+                ytick_labels = [f"{y:.1f}" for y in yticks]
+            else:
+                ytick_labels = [f"{int(y)}" for y in yticks]
+
+            ax.set_ylim(0, ymax)
+            ax.set_yticks(yticks)
+            ax.set_yticklabels(ytick_labels, color="grey", size=7)
+
         ax.set_rlabel_position(0)
-        plt.yticks(
-            [0, 0.25, 0.5, 0.75, 1],
-            ["0", "0.25", "0.50", "0.75", "1.0"],
-            color="grey",
-            size=7,
-        )
-        plt.ylim(0, 1)
 
         # Draw plot
-        values = meta_enrich.loc[row].drop("Meta_feature").values.flatten().tolist()
-        values += values[:1]
         ax.plot(angles, values, color=color, linewidth=2, linestyle="solid")
         ax.fill(angles, values, color=color, alpha=0.4)
 
-        # Add a title
+        # Add title
         plt.title(title, size=11, color=color, y=1.065)
 
-    # Initialize the figure
+    # Initialize figure
     my_dpi = 96
-    plt.figure(figsize=(1000 / my_dpi, 1000 / my_dpi), dpi=my_dpi)
+    fig = plt.figure(figsize=(1000 / my_dpi, 1000 / my_dpi), dpi=my_dpi)
 
-    # Create a color palette:
+    # Create color palette
     my_palette = plt.colormaps.get_cmap("Dark2")
 
-    # Loop to plot
-    for row in range(0, len(meta_enrich.index)):
+    # Generate plots
+    for row in range(len(meta_enrich.index)):
         make_radar(
             row=row,
             title=f"Feature: {meta_enrich['Meta_feature'][row]}",
             color=my_palette(row),
         )
 
-    return plt
+    plt.close(fig)
+    return fig

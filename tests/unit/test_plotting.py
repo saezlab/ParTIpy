@@ -1,6 +1,6 @@
-import types
 import warnings
 
+import matplotlib
 import numpy as np
 import pandas as pd
 import partipy as pt
@@ -193,4 +193,4 @@ def test_heatmap_meta_enrichment(mock_meta_enrich_table=mock_meta_enrich_table):
 @pytest.mark.github_actions
 def test_radarplot_meta_enrichment(mock_meta_enrich_table=mock_meta_enrich_table):
     p = radarplot_meta_enrichment(mock_meta_enrich_table)
-    assert isinstance(p, types.ModuleType), "Expected a ModuleType"
+    assert isinstance(p, matplotlib.figure.Figure), "Expected a ModuleType"

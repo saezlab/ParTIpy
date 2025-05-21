@@ -303,7 +303,8 @@ def bootstrap_aa(
 
         # Define function for parallel computation
         def compute_bootstrap_z(idx, k=k):
-            return AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X[idx, :]).Z
+            X_copy = X.copy()
+            return AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X_copy[idx, :]).Z
 
         # Parallel computation of AA on bootstrap samples
         Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)
@@ -336,7 +337,7 @@ def bootstrap_aa(
         archetype_variance_map = dict(zip(np.arange(k), var_per_archetype, strict=False))
         bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].astype(int).map(archetype_variance_map)
 
-        df_dict[k] = bootstrap_df
+        df_dict[str(k)] = bootstrap_df
 
     if save_to_anndata:
         adata.uns["AA_bootstrap"] = df_dict
