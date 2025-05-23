@@ -111,6 +111,8 @@ def plot_bootstrap_2D(
         The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
     show_two_panels : bool, optional
         If True, the plot will be split into two panels showing the archetypes from different orientations if there are more than 2 dimensions in the data.
+    alpha : float, default=1.0
+        Opacity of the points in the scatter plot (0.0 to 1.0).
     size : float or None, optional
         Size of the points in the scatter plot. If None, uses the default size of the plotting library.
 
@@ -131,23 +133,23 @@ def plot_bootstrap_2D(
     # Generate the 2D scatter plot
     plot_df = adata.uns["AA_bootstrap"][n_archetypes_str].copy()
 
+    point_args = {"alpha": alpha}
+    if size is not None:
+        point_args["size"] = size
+
     if ("x2" in plot_df.columns.to_list()) and show_two_panels:
         plot_df = plot_df.melt(
             id_vars=["x0", "archetype", "reference"], value_vars=["x1", "x2"], var_name="variable", value_name="value"
         )
         p = pn.ggplot(plot_df) + pn.geom_point(
-            pn.aes(x="x0", y="value", color="archetype", shape="reference"), alpha=alpha
+            pn.aes(x="x0", y="value", color="archetype", shape="reference"), **point_args
         )
-        if size is not None:
-            p += pn.geom_point(size=size)
         p += pn.facet_wrap(facets="variable", scales="fixed")
         p += pn.labs(x="First Axis", y="Second / Third Axis") + pn.coord_equal()
     else:
         p = pn.ggplot(plot_df) + pn.geom_point(
-            pn.aes(x="x0", y="x1", color="archetype", shape="reference"), alpha=alpha
+            pn.aes(x="x0", y="x1", color="archetype", shape="reference"), **point_args
         )
-        if size is not None:
-            p += pn.geom_point(size=size)
         p += pn.coord_equal()
 
     return p
@@ -290,6 +292,12 @@ def plot_archetypes_2D(
         and PCA-reduced data in `adata.obsm["X_pca"]`.
     color : str or None, optional
         Column name in `adata.obs` to use for coloring the data points. If None, no coloring is applied.
+    alpha : float, optional (default=1.0)
+        Opacity of the points in the scatter plot (0.0 to 1.0).
+    size : float or None, optional
+        Size of the points in the scatter plot. If None, uses the default size of the plotting library.
+    show_two_panels : bool, optional (default=True)
+        If True, the plot will be split into two panels showing the archetypes from different orientations
 
     Returns
     -------
@@ -326,6 +334,12 @@ def plot_2D(
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
     color_vec : np.ndarray, optional
         A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
+    alpha : float, optional (default=1.0)
+        Opacity of the points in the scatter plot (0.0 to 1.0).
+    size : float or None, optional
+        Size of the points in the scatter plot. If None, uses the default size of the plotting library.
+    show_two_panels : bool, optional (default=True)
+        If True, the plot will be split into two panels showing the archetypes from different orientations
 
     Returns
     -------
@@ -399,7 +413,7 @@ def plot_2D(
     return plot
 
 
-def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, marker_size: int = 4) -> pn.ggplot:
+def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, size: int = 4, alpha: float = 0.5) -> pn.ggplot:
     """
     Create an interactive 3D scatter plot showing data points, archetypes and the polytope they span.
 
@@ -414,8 +428,10 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, marker_size:
         archetypes in `uns["AA_results"]["Z"]`.
     color : str, optional
         Name of a column in `adata.obs` to color the data points by.
-    marker_size : int, optional (default=4)
+    size : int, optional (default=4)
         The size of the markers for the data points in `X`.
+    alpha : float, optional (default=0.5)
+        Opacity of the points in the scatter plot (0.0 to 1.0).
 
     Returns
     -------
@@ -429,7 +445,7 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, marker_size:
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
-    plot = plot_3D(X=X, Z=Z, color_vec=color_vec, marker_size=marker_size)
+    plot = plot_3D(X=X, Z=Z, color_vec=color_vec, size=size, alpha=alpha)
     return plot
 
 
@@ -437,7 +453,8 @@ def plot_3D(
     X: np.ndarray,
     Z: np.ndarray,
     color_vec: np.ndarray | None = None,
-    marker_size: int = 4,
+    size: int = 4,
+    alpha: float = 0.5,
     color_polyhedron: str = "green",
 ) -> go.Figure:
     """
@@ -451,8 +468,10 @@ def plot_3D(
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
     color_vec : np.ndarray, optional
         A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
-    marker_size : int, optional (default=4)
+    size : int, optional (default=4)
         The size of the markers for the data points in `X`.
+    alpha : float, optional (default=0.5)
+        Opacity of the points in the scatter plot (0.0 to 1.0).
     color_polyhedron : str, optional (default="green")
         The color of the polytope defined by the archetypes.
 
@@ -471,7 +490,6 @@ def plot_3D(
     X_plot, Z_plot = X[:, :3], Z[:, :3]
 
     plot_df = pd.DataFrame(X_plot, columns=["x0", "x1", "x2"])
-    plot_df["marker_size"] = np.repeat(marker_size, X_plot.shape[0])
 
     # Create the 3D scatter plot
     if color_vec is not None:
@@ -486,9 +504,7 @@ def plot_3D(
             labels={"x0": "PC 1", "x1": "PC 2", "x2": "PC 3"},
             title="3D polytope",
             color="color_vec",
-            size="marker_size",
-            size_max=10,
-            opacity=0.5,
+            opacity=alpha,
         )
     else:
         fig = px.scatter_3d(
@@ -498,10 +514,10 @@ def plot_3D(
             z="x2",
             labels={"x0": "PC 1", "x1": "PC 2", "x2": "PC 3"},
             title="3D polytope",
-            size="marker_size",
-            size_max=10,
-            opacity=0.5,
+            opacity=alpha,
         )
+
+    fig.update_traces(marker={"size": size})
 
     # Add archetypes to the plot
     archetype_labels = [f"Archetype {i}" for i in range(Z_plot.shape[0])]
@@ -546,7 +562,6 @@ def plot_3D(
                 showlegend=False,
             )
         )
-
     fig.update_layout(template=None)
     return fig
 
