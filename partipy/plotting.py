@@ -142,15 +142,17 @@ def plot_bootstrap_2D(
             id_vars=["x0", "archetype", "reference"], value_vars=["x1", "x2"], var_name="variable", value_name="value"
         )
         p = pn.ggplot(plot_df) + pn.geom_point(
-            pn.aes(x="x0", y="value", color="archetype", shape="reference"), **point_args
+            pn.aes(x="x0", y="value", color="archetype", shape="reference"),
+            **point_args,  # type: ignore[arg-type]
         )
         p += pn.facet_wrap(facets="variable", scales="fixed")
-        p += pn.labs(x="First Axis", y="Second / Third Axis") + pn.coord_equal()
+        p += pn.labs(x="First Axis", y="Second / Third Axis")
     else:
         p = pn.ggplot(plot_df) + pn.geom_point(
-            pn.aes(x="x0", y="x1", color="archetype", shape="reference"), **point_args
+            pn.aes(x="x0", y="x1", color="archetype", shape="reference"),
+            **point_args,  # type: ignore[arg-type]
         )
-        p += pn.coord_equal()
+    p += pn.coord_equal()
 
     return p
 

@@ -237,7 +237,7 @@ def bootstrap_aa(
     save_to_anndata: bool = True,
     n_jobs: int = -1,
     **kwargs,
-) -> None | pd.DataFrame:
+) -> None | dict[str, pd.DataFrame]:
     """
     Perform bootstrap sampling to compute archetypes and assess their stability.
 
@@ -253,7 +253,7 @@ def bootstrap_aa(
     n_bootstrap : int
         The number of bootstrap samples to generate.
     n_archetypes_list : Union[int, List[int]], optional (default=range(2, 8))
-        A list specifying the numbers of archetypes to evaluate. an also be a single int.
+        A list specifying the numbers of archetypes to evaluate. Can also be a single int.
     optim : str, optional (default=DEFAULT_OPTIM)
         The optimization function to use for Archetypal Analysis.
     init : str, optional (default=DEFAULT_INIT)
@@ -482,7 +482,7 @@ def t_ratio_significance(
     n_archetypes = adata.uns["AA_results"]["Z"].shape[0]
 
     rng_master = np.random.default_rng(seed)
-    rng_list = [np.random.default_rng(rng_master.integers(1e9)) for _ in range(n_iter)]
+    rng_list = [np.random.default_rng(rng_master.integers(int(1e9))) for _ in range(n_iter)]
 
     def compute_randomized_metrics(rng_inner):
         X_perm = np.column_stack([rng_inner.permutation(X[:, col_idx]) for col_idx in range(n_features)])
@@ -613,7 +613,8 @@ def compute_archetypes(
                 - A: The matrix of weights for the data points (n_samples, n_archetypes).
                 - B: The matrix of weights for the archetypes (n_archetypes, n_samples).
                 - Z: The archetypes matrix (n_archetypes, n_features).
-                - RSS: The residual sum of squares.
+                - RSS: The trace of residual sum of squares from optimization.
+                - RSS_full: The residual sum of squares on the full dataset.
                 - varexpl: The variance explained by the model.
         - If `save_to_anndata` is True:
             - Returns `None`. Results are saved to `adata.uns["AA_results"]`.

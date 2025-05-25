@@ -40,6 +40,8 @@ optional-dependencies.dev = [
   "mypy",
   "pre-commit",
   "twine>=4.0.2",
+  "pandas-stubs",
+  "types-tqdm",
 ]
 optional-dependencies.test = [
   "pytest",

@@ -201,9 +201,6 @@ class AA:
         # ensure C-contiguous format for numba (plus using np.float32 datatype)
         X = np.ascontiguousarray(X, dtype=np.float32)
 
-        # keep the raw X
-        X_raw = X
-
         # center X by substracting the feature means
         if self.centering:
             feature_means = X.mean(axis=0, keepdims=True)
@@ -214,6 +211,9 @@ class AA:
         if self.scaling:
             global_scale = np.linalg.norm(X) / np.sqrt(np.prod(X.shape))
             X /= global_scale
+
+        # keep the raw X
+        X_raw = X.copy()
 
         # construct the coreset and initialize A
         if self.use_coreset:
@@ -317,7 +317,6 @@ class AA:
             B_full = np.zeros((self.n_archetypes, self.n_samples))
             for B_col_idx, coreset_idx in enumerate(coreset_indices):
                 B_full[:, coreset_idx] += B[:, B_col_idx]
-            # B_full[:, coreset_indices] = B # this only works in resample is set to false
             B = B_full
             Z = B @ X_raw
             # TODO: change to projected gradients or frank-wolfe here!
@@ -328,22 +327,26 @@ class AA:
             A = compute_A(X, Z, A, **self.optim_kwargs)
             B = compute_B(X, A, B, **self.optim_kwargs)
             Z = B @ X
-            RSS = np.linalg.norm(X - A @ Z) ** 2
 
         if self.scaling:
             X *= global_scale
+            X_raw *= global_scale
             Z *= global_scale
 
         if self.centering:
             X += feature_means
+            X_raw += feature_means
             Z += feature_means
 
+        # save the output
+        TSS = np.sum(X_raw * X_raw)
+        RSS = np.linalg.norm(X_raw - A @ Z) ** 2  # RSS on full TS
+        self.RSS = RSS
+        self.varexpl = (TSS - RSS) / TSS
         self.Z = Z
         self.A = A
         self.B = B
-        self.RSS = np.linalg.norm(X_raw - A @ Z) ** 2  # RSS on full TS
         self.RSS_trace = self.RSS_trace[self.RSS_trace > 0.0]
-        self.varexpl = (TSS - RSS) / TSS
         self.fitting_info = {
             "conv": convergence_flag if self.max_iter > 0 else None,
             "n_iter": n_iter if self.max_iter > 0 else None,
