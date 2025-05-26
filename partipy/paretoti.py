@@ -303,8 +303,7 @@ def bootstrap_aa(
 
         # Define function for parallel computation
         def compute_bootstrap_z(idx, k=k):
-            X_copy = X.copy()
-            return AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X_copy[idx, :]).Z
+            return AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X[idx, :].copy()).Z
 
         # Parallel computation of AA on bootstrap samples
         Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)

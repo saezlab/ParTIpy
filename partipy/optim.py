@@ -205,7 +205,7 @@ def _compute_A_projected_gradients_jit(
                     break
 
         # check for convergence
-        if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
+        if (np.abs(prev_RSS - RSS) / (prev_RSS + 1e-9)) < rel_tol_conv:
             break
 
     A = np.ascontiguousarray(A)  # TODO: check if we need this line
@@ -321,7 +321,7 @@ def _compute_B_projected_gradients_jit(
                     break
 
         # check for convergence
-        if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
+        if (np.abs(prev_RSS - RSS) / (prev_RSS + 1e-9)) < rel_tol_conv:
             break
 
     B = np.ascontiguousarray(B)  # TODO: check if we need this line
@@ -413,7 +413,7 @@ def _compute_A_frank_wolfe_jit(
                 mu *= np.float32(0.5)
 
         # check for convergence
-        if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
+        if (np.abs(prev_RSS - RSS) / (prev_RSS + 1e-9)) < rel_tol_conv:
             break
 
     return A
@@ -498,7 +498,7 @@ def _compute_B_frank_wolfe_jit(
                 mu *= np.float32(0.5)
 
         # check for convergence
-        if (np.abs(prev_RSS - RSS) / prev_RSS) < rel_tol_conv:
+        if (np.abs(prev_RSS - RSS) / (prev_RSS + 1e-9)) < rel_tol_conv:
             break
 
     return B
