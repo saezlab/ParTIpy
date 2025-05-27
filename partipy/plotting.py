@@ -741,12 +741,14 @@ def barplot_enrichment_comparison(specific_processes_arch: pd.DataFrame):
     return plot
 
 
-def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
+def radarplot_meta_enrichment(meta_enrich: pd.DataFrame, color_map: None | dict = None):
     """
     Parameters
     ----------
     meta_enrich: pd.DataFrame
         Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
+    color_map: None | dict
+        Dictionary where each condition is mapped to a color
 
     Returns
     -------
@@ -755,6 +757,11 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
     """
     # Prepare data
     meta_enrich = meta_enrich.T.reset_index().rename(columns={"index": "Meta_feature"})
+    if color_map:
+        color_list = [color_map[feat] for feat in meta_enrich["Meta_feature"]]
+    else:
+        default_palette = plt.colormaps.get_cmap("Dark2")
+        color_list = [default_palette(idx) for idx in range(len(meta_enrich))]
     numeric_meta_enrich = meta_enrich.drop(columns=["Meta_feature"]).astype(float)
 
     # Function to create a radar plot for a given row
@@ -819,15 +826,12 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame):
     my_dpi = 96
     fig = plt.figure(figsize=(1000 / my_dpi, 1000 / my_dpi), dpi=my_dpi)
 
-    # Create color palette
-    my_palette = plt.colormaps.get_cmap("Dark2")
-
     # Generate plots
-    for row in range(len(meta_enrich.index)):
+    for row, color in zip(range(len(meta_enrich.index)), color_list, strict=False):
         make_radar(
             row=row,
             title=f"Feature: {meta_enrich['Meta_feature'][row]}",
-            color=my_palette(row),
+            color=color,
         )
 
     plt.close(fig)

@@ -199,7 +199,9 @@ class AA:
                 raise NotImplementedError()
 
         # ensure C-contiguous format for numba (plus using np.float32 datatype)
-        X = np.ascontiguousarray(X, dtype=np.float32)  # TODO: do we need to explicityl call  copy here?
+        X = np.ascontiguousarray(
+            X, dtype=np.float32
+        ).copy()  # if we don't explicitly copy here, multiprocessing can fail
 
         # center X by substracting the feature means
         if self.centering:
