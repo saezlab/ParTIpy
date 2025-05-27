@@ -23,16 +23,16 @@ For further information and example tutorials, please check our [documentation](
 
 ## Installation
 
-`partipy` can be installed from pip:
-
-```
-pip install partipy
-```
-
-Alternatively, the newest unreleased version can be directly installed from GitHub:
+Since `partipy` is still in the beta stage and updated frequently, we recommend installing it directly from GitHub:
 
 ```
 pip install git+https://github.com/saezlab/partipy.git
+```
+
+Alternatively, `partipy` can be installed from PyPI:
+
+```
+pip install partipy
 ```
 
 ## Questions & Issues
