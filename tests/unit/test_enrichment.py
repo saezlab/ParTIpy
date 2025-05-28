@@ -21,7 +21,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs):
     )
     adata = sc.AnnData(X)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
-    adata.uns["aa_config"] = {
+    adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
         "n_dimension": n_pcs,
     }
@@ -103,7 +103,7 @@ def test_compute_archetype_weights_ground_truth():
     # Test with manual length scale
     adata = sc.AnnData(X=X, obsm={"X_pca": X})
     adata.uns["AA_results"] = {"Z": Z}
-    adata.uns["aa_config"] = {
+    adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
         "n_dimension": 2,
     }

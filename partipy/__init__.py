@@ -9,12 +9,12 @@ from .enrichment import (
     extract_specific_processes,
 )
 from .paretoti import (
-    bootstrap_aa,
     compute_archetypes,
+    compute_bootstrap_variance,
+    compute_selection_metrics,
     compute_t_ratio,
     set_obsm,
     t_ratio_significance,
-    var_explained_aa,
 )
 from .plotting import (
     barplot_enrichment_comparison,

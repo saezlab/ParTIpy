@@ -43,8 +43,8 @@ def compute_archetype_weights(
     _validate_aa_config(adata=adata)
     _validate_aa_results(adata=adata)
 
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
 

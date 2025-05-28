@@ -9,20 +9,24 @@ from matplotlib import ticker
 from mizani.palettes import hue_pal
 from scipy.spatial import ConvexHull
 
-from .paretoti import _validate_aa_config, _validate_aa_results, var_explained_aa
+from .paretoti import _validate_aa_config, _validate_aa_results, compute_selection_metrics
 
 
-def plot_var_explained(adata: sc.AnnData) -> pn.ggplot:
+def plot_var_explained(adata: sc.AnnData, ymin: None | float = None, ymax: None | float = None) -> pn.ggplot:
     """
     Generate an elbow plot of the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
-    The data is retrieved from `adata.uns["AA_var"]`. If `adata.uns["AA_var"]` is not found, `var_explained_aa` is called.
+    The data is retrieved from `adata.uns["AA_metrics"]`. If `adata.uns["AA_metrics"]` is not found, `var_explained_aa` is called.
 
     Parameters
     ----------
     adata : sc.AnnData
-        AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
+        AnnData object containing the variance explained data in `adata.uns["AA_metrics"]`.
+    ymin : None | float
+
+    ymax : None | float
+        specify y
 
     Returns
     -------
@@ -30,31 +34,43 @@ def plot_var_explained(adata: sc.AnnData) -> pn.ggplot:
         A ggplot object showing the variance explained plot.
     """
     # Validation input
-    if "AA_var" not in adata.uns:
+    if "AA_metrics" not in adata.uns:
         print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
-        var_explained_aa(adata=adata)
+        compute_selection_metrics(adata=adata)
+    if ymin:
+        assert (ymin >= 0.0) and (ymin < 1.0)
+    if ymax:
+        assert (ymax > 0.0) and (ymax <= 1.0)
+    if ymin and ymax:
+        assert ymax > ymin
 
-    plot_df = adata.uns["AA_var"]
+    plot_df = adata.uns["AA_metrics"]
+    plot_df_summary = plot_df.groupby("k")["varexpl"].mean().reset_index()
 
     # Create data for the diagonal line
     diag_data = pd.DataFrame(
         {
-            "k": [plot_df["k"].min(), plot_df["k"].max()],
-            "varexpl": [plot_df["varexpl"].min(), plot_df["varexpl"].max()],
+            "k": [plot_df_summary["k"].min(), plot_df_summary["k"].max()],
+            "varexpl": [plot_df_summary["varexpl"].min(), plot_df_summary["varexpl"].max()],
         }
     )
 
     p = (
-        pn.ggplot(plot_df)
-        + pn.geom_line(mapping=pn.aes(x="k", y="varexpl"), color="black")
-        + pn.geom_point(mapping=pn.aes(x="k", y="varexpl"), color="black")
+        pn.ggplot()
+        + pn.geom_line(data=plot_df_summary, mapping=pn.aes(x="k", y="varexpl"), color="black", linetype="dashed")
+        + pn.geom_point(data=plot_df, mapping=pn.aes(x="k", y="varexpl"), color="black")
         + pn.geom_line(data=diag_data, mapping=pn.aes(x="k", y="varexpl"), color="gray")
         + pn.labs(x="Number of Archetypes (k)", y="Variance Explained")
-        + pn.lims(y=[0, 1])
         + pn.scale_x_continuous(breaks=list(np.arange(plot_df["k"].min(), plot_df["k"].max() + 1)))
         + pn.theme_matplotlib()
         + pn.theme(panel_grid_major=pn.element_line(color="gray", size=0.5, alpha=0.5), figure_size=(6, 3))
     )
+    if ymin and ymax:
+        p += pn.ylim((ymin, ymax))
+    elif ymin:
+        p += pn.ylim((ymin, None))
+    elif ymax:
+        p += pn.ylim((None, ymax))
     return p
 
 
@@ -63,12 +79,12 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
     Generate a plot showing an information criteria for a range of archetypes.
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
-    The data is retrieved from `adata.uns["AA_var"]`. If `adata.uns["AA_var"]` is not found, `var_explained_aa` is called.
+    The data is retrieved from `adata.uns["AA_metrics"]`. If `adata.uns["AA_metrics"]` is not found, `var_explained_aa` is called.
 
     Parameters
     ----------
     adata : sc.AnnData
-        AnnData object containing the variance explained data in `adata.uns["AA_var"]`.
+        AnnData object containing the variance explained data in `adata.uns["AA_metrics"]`.
 
     Returns
     -------
@@ -76,16 +92,17 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
         A ggplot object showing the variance explained plot.
     """
     # Validation input
-    if "AA_var" not in adata.uns:
+    if "AA_metrics" not in adata.uns:
         print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
-        var_explained_aa(adata=adata)
+        compute_selection_metrics(adata=adata)
 
-    plot_df = adata.uns["AA_var"]
+    plot_df = adata.uns["AA_metrics"]
+    plot_df_summary = plot_df.groupby("k")["IC"].mean().reset_index()
 
     p = (
-        pn.ggplot(plot_df)
-        + pn.geom_line(mapping=pn.aes(x="k", y="IC"), color="black")
-        + pn.geom_point(mapping=pn.aes(x="k", y="IC"), color="black")
+        pn.ggplot()
+        + pn.geom_line(data=plot_df_summary, mapping=pn.aes(x="k", y="IC"), color="black", linetype="dashed")
+        + pn.geom_point(data=plot_df, mapping=pn.aes(x="k", y="IC"), color="black")
         + pn.labs(x="Number of Archetypes (k)", y="Information Criteria")
         + pn.scale_x_continuous(breaks=list(np.arange(plot_df["k"].min(), plot_df["k"].max() + 1)))
         + pn.theme_matplotlib()
@@ -95,7 +112,7 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
 
 
 def plot_bootstrap_2D(
-    adata: sc.AnnData, n_archetypes: int, show_two_panels: bool = True, alpha: float = 1.0, size: float | None = None
+    adata: sc.AnnData, n_archetypes: int, show_two_panels: bool = False, alpha: float = 1.0, size: float | None = None
 ) -> pn.ggplot:
     """
     Visualize the distribution and stability of archetypes across bootstrap samples in 2D PCA space.
@@ -146,7 +163,7 @@ def plot_bootstrap_2D(
             **point_args,  # type: ignore[arg-type]
         )
         p += pn.facet_wrap(facets="variable", scales="fixed")
-        p += pn.labs(x="First Axis", y="Second / Third Axis")
+        p += pn.labs(x="First PC", y="Second / Third PC")
     else:
         p = pn.ggplot(plot_df) + pn.geom_point(
             pn.aes(x="x0", y="x1", color="archetype", shape="reference"),
@@ -265,10 +282,17 @@ def plot_bootstrap_variance(adata: sc.AnnData) -> pn.ggplot:
 
     p = (
         pn.ggplot()
+        + pn.geom_line(
+            data=df_melted,
+            mapping=pn.aes(x="n_archetypes", y="value", linetype="variable"),
+            size=1.5,
+            alpha=0.5,
+            color="grey",
+        )
         + pn.geom_point(data=full_df, mapping=pn.aes(x="n_archetypes", y="variance_per_archetype"), alpha=0.5, size=3)
-        + pn.geom_line(data=df_melted, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
-        + pn.geom_point(data=df_melted, mapping=pn.aes(x="n_archetypes", y="value", color="variable"))
-        + pn.labs(x="Number of Archetypes", y="Value", color="Variance\nSummary")
+        + pn.labs(x="Number of Archetypes", y="Variance per Archetype", linetype="Variance\nSummary")
+        + pn.scale_linetype_manual(values={"median": "dotted", "max": "solid"})
+        + pn.theme(figure_size=(6, 3))
     )
     return p
 
@@ -278,7 +302,7 @@ def plot_archetypes_2D(
     color: str | None = None,
     alpha: float = 1.0,
     size: float | None = None,
-    show_two_panels: bool = True,
+    show_two_panels: bool = False,
 ) -> pn.ggplot:
     """
     Generate a static 2D scatter plot showing data points, archetypes and the polytope they span.
@@ -308,12 +332,14 @@ def plot_archetypes_2D(
     """
     _validate_aa_config(adata)
     _validate_aa_results(adata)
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
     plot = plot_2D(X=X, Z=Z, color_vec=color_vec, alpha=alpha, size=size, show_two_panels=show_two_panels)
+    if color:
+        plot += pn.labs(color=color)
     return plot
 
 
@@ -323,7 +349,7 @@ def plot_2D(
     color_vec: np.ndarray | None = None,
     alpha: float = 1.0,
     size: float | None = None,
-    show_two_panels: bool = True,
+    show_two_panels: bool = False,
 ) -> pn.ggplot:
     """
     2D plot of the datapoints in X and the 2D polytope enclosed by the archetypes in Z.
@@ -409,13 +435,15 @@ def plot_2D(
         data=arch_df, mapping=pn.aes(x="x0", y="value", label="archetype_label"), color="black", size=12
     )
     plot += pn.facet_wrap(facets="variable", scales="fixed")
-    plot += pn.labs(x="First Axis", y="Second / Third Axis")
+    plot += pn.labs(x="First PC", y="Second / Third PC")
     plot += pn.coord_equal()
 
     return plot
 
 
-def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, size: int = 4, alpha: float = 0.5) -> pn.ggplot:
+def plot_archetypes_3D(
+    adata: sc.AnnData, color: str | None = None, size: int = 4, alpha: float = 0.5, alpha_hull: float = 0.2
+) -> pn.ggplot:
     """
     Create an interactive 3D scatter plot showing data points, archetypes and the polytope they span.
 
@@ -434,6 +462,8 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, size: int = 
         The size of the markers for the data points in `X`.
     alpha : float, optional (default=0.5)
         Opacity of the points in the scatter plot (0.0 to 1.0).
+    alpha : float, optional (default=0.2)
+        Opacity of the polytope spanned by the archetypes (0.0 to 1.0).
 
     Returns
     -------
@@ -442,12 +472,12 @@ def plot_archetypes_3D(adata: sc.AnnData, color: str | None = None, size: int = 
     """
     _validate_aa_config(adata)
     _validate_aa_results(adata)
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
-    plot = plot_3D(X=X, Z=Z, color_vec=color_vec, size=size, alpha=alpha)
+    plot = plot_3D(X=X, Z=Z, color_vec=color_vec, size=size, alpha=alpha, alpha_hull=alpha_hull)
     return plot
 
 
@@ -457,6 +487,7 @@ def plot_3D(
     color_vec: np.ndarray | None = None,
     size: int = 4,
     alpha: float = 0.5,
+    alpha_hull: float = 0.2,
     color_polyhedron: str = "green",
 ) -> go.Figure:
     """
@@ -548,7 +579,7 @@ def plot_3D(
                 j=hull.simplices[:, 1],
                 k=hull.simplices[:, 2],
                 color=color_polyhedron,
-                opacity=0.1,
+                opacity=alpha_hull,
             )
         )
 
@@ -560,7 +591,7 @@ def plot_3D(
                 y=[Z_plot[arch_idx, 1]],
                 z=[Z_plot[arch_idx, 2]],
                 mode="lines",
-                line={"color": color_polyhedron, "width": 4},
+                line={"color": color_polyhedron, "width": 5},
                 showlegend=False,
             )
         )
@@ -755,7 +786,7 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame, color_map: None | dict 
     plt.pyplot.Figure
         Radar plots for all archetypes.
     """
-    # Prepare data
+    # prepare data
     meta_enrich = meta_enrich.T.reset_index().rename(columns={"index": "Meta_feature"})
     if color_map:
         color_list = [color_map[feat] for feat in meta_enrich["Meta_feature"]]
@@ -764,32 +795,32 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame, color_map: None | dict 
         color_list = [default_palette(idx) for idx in range(len(meta_enrich))]
     numeric_meta_enrich = meta_enrich.drop(columns=["Meta_feature"]).astype(float)
 
-    # Function to create a radar plot for a given row
+    # function to create a radar plot for a given row
     def make_radar(row, title, color):
-        # Set number of meta categories
+        # set number of meta categories
         categories = list(numeric_meta_enrich.columns)
         N = len(categories)
 
-        # Calculate angles for the radar plot
+        # calculate angles for the radar plot
         angles = [n / float(N) * 2 * np.pi for n in range(N)]
         angles += angles[:1]
 
-        # Initialise the radar plot
+        # initialise the radar plot
         ax = plt.subplot(int(np.ceil(len(meta_enrich) / 2)), 2, row + 1, polar=True)
 
-        # Put first axis on top:
+        # put first axis on top:
         ax.set_theta_offset(np.pi / 2)
         ax.set_theta_direction(-1)
 
-        # Axis labels
+        # axis labels
         archetype_label = [f"A{i}" for i in range(len(categories))]
         plt.xticks(angles[:-1], archetype_label, color="grey", size=8)
 
-        # Values for this radar
+        # values for this radar
         values = numeric_meta_enrich.loc[row].values.flatten().tolist()
         values += values[:1]
 
-        # Y-axis handling
+        # y-axis handling
         if np.allclose(numeric_meta_enrich.sum(axis=0), 1):
             ax.set_ylim(0, 1)
             ax.set_yticks([0, 0.25, 0.5, 0.75, 1])

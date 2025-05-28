@@ -20,7 +20,7 @@ def set_obsm(adata: sc.AnnData, obsm_key: str, n_dimension: int) -> None:
 
     This function verifies that the specified `obsm_key` exists in `adata.obsm` and that the
     requested number of dimensions does not exceed the available dimensions in that matrix.
-    The configuration is stored in `adata.uns["aa_config"]`.
+    The configuration is stored in `adata.uns["AA_config"]`.
 
     Parameters
     ----------
@@ -38,7 +38,7 @@ def set_obsm(adata: sc.AnnData, obsm_key: str, n_dimension: int) -> None:
     Returns
     -------
     None
-        The AA configuration is stored in `adata.uns["aa_config"]`.
+        The AA configuration is stored in `adata.uns["AA_config"]`.
     """
     if obsm_key not in adata.obsm:
         raise ValueError(f"'{obsm_key}' not found in adata.obsm. Available keys are: {list(adata.obsm.keys())}")
@@ -49,10 +49,10 @@ def set_obsm(adata: sc.AnnData, obsm_key: str, n_dimension: int) -> None:
             f"Requested {n_dimension} dimensions from '{obsm_key}', but only {available_dim} are available."
         )
 
-    if "aa_config" in adata.uns:
+    if "AA_config" in adata.uns:
         print("Warning: 'aa_config' already exists in adata.uns and will be overwritten.")
 
-    adata.uns["aa_config"] = {
+    adata.uns["AA_config"] = {
         "obsm_key": obsm_key,
         "n_dimension": n_dimension,
     }
@@ -63,7 +63,7 @@ def _validate_aa_config(adata: sc.AnnData) -> None:
     Validates that the AnnData object is properly configured for archetypal analysis (AA).
 
     This function checks that:
-    - `adata.uns["aa_config"]` exists,
+    - `adata.uns["AA_config"]` exists,
     - it contains the keys "obsm_key" and "n_dimension",
     - the specified `obsm_key` exists in `adata.obsm`,
     - and that the requested number of dimensions does not exceed the available dimensions.
@@ -71,7 +71,7 @@ def _validate_aa_config(adata: sc.AnnData) -> None:
     Parameters
     ----------
     adata : sc.AnnData
-        AnnData object expected to contain AA configuration in `adata.uns["aa_config"]`.
+        AnnData object expected to contain AA configuration in `adata.uns["AA_config"]`.
 
     Returns
     -------
@@ -82,10 +82,10 @@ def _validate_aa_config(adata: sc.AnnData) -> None:
     ValueError
         If the configuration is missing, incomplete, or inconsistent with the contents of `adata.obsm`.
     """
-    if "aa_config" not in adata.uns:
+    if "AA_config" not in adata.uns:
         raise ValueError("AA configuration not found in `adata.uns['aa_config']`.")
 
-    config = adata.uns["aa_config"]
+    config = adata.uns["AA_config"]
 
     if not isinstance(config, dict):
         raise ValueError("`adata.uns['aa_config']` must be a dictionary.")
@@ -129,29 +129,31 @@ def _validate_aa_results(adata: sc.AnnData) -> None:
         )
 
 
-def var_explained_aa(
+def compute_selection_metrics(
     adata: sc.AnnData,
-    min_a: int = 2,
-    max_a: int = 10,
+    min_k: int = 2,
+    max_k: int = 10,
+    n_restarts: int = 5,
     optim: str = DEFAULT_OPTIM,
     init: str = DEFAULT_INIT,
     n_jobs: int = -1,
+    seed: int = 42,
     **kwargs,
 ) -> None:
     """
     Compute the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
-    This function performs Archetypal Analysis (AA) across a range of archetype counts (`min_a` to `max_a`)
+    This function performs Archetypal Analysis (AA) across a range of archetype counts (`min_k` to `max_k`)
     on the PCA representation stored in `adata.obsm[obsm_key]`. It stores the explained variance and other
-    diagnostics in `adata.uns["AA_var"]`.
+    diagnostics in `adata.uns["AA_metrics"]`.
 
     Parameters
     ----------
     adata: sc.AnnData
         AnnData object containing adata.obsm["obsm_key"].
-    min_a : int, optional (default=2)
+    min_k : int, optional (default=2)
         Minimum number of archetypes to test.
-    max_a : int, optional (default=10)
+    max_k : int, optional (default=10)
         Maximum number of archetypes to test.
     optim : str, optional (default=DEFAULT_OPTIM)
         The optimization function to use for Archetypal Analysis.
@@ -165,69 +167,54 @@ def var_explained_aa(
     Returns
     -------
     None
-        The results are stored in `adata.uns["AA_var"]` as a DataFrame with the following columns:
+        The results are stored in `adata.uns["AA_metrics"]` as a DataFrame with the following columns:
         - `k`: The number of archetypes.
         - `varexpl`: Variance explained by the AA model with `k` archetypes.
-        - `varexpl_ontop`: Incremental variance explained compared to `k-1` archetypes.
-        - `dist_to_projected`: Distance from each point to its projection on the line connecting the first and last points
-            in the variance curve, used to identify "elbow points".
     """
     # input validation
     _validate_aa_config(adata=adata)
-    if min_a < 2:
-        raise ValueError("`min_a` must be at least 2.")
-    if max_a < min_a:
-        raise ValueError("`max_a` must be greater than or equal to `min_a`.")
+    if min_k < 2:
+        raise ValueError("`min_k` must be at least 2.")
+    if max_k < min_k:
+        raise ValueError("`max_k` must be greater than or equal to `min_k`.")
 
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
 
-    k_arr = np.arange(min_a, max_a + 1)
+    k_arr = np.arange(min_k, max_k + 1)
+
+    rng = np.random.default_rng(seed)
+    seeds = rng.choice(a=int(1e9), size=n_restarts, replace=False)
 
     # Parallel computation of AA
-    def _compute_archeptyes(k):
-        A, B, Z, RSS, varexpl = AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X).return_all()
-        return k, {"Z": Z, "A": A, "B": B, "RSS": RSS, "varexpl": varexpl}
+    def _compute_archeptyes(k, seed):
+        aa_model = AA(n_archetypes=k, seed=seed, optim=optim, init=init, **kwargs).fit(X)
+        A = aa_model.A
+        Z = aa_model.Z
+        RSS = aa_model.RSS
+        varexpl = aa_model.varexpl
+        return {"k": k, "Z": Z, "A": A, "RSS": RSS, "varexpl": varexpl, "seed": seed}
 
     if n_jobs == 1:
-        results_list = [_compute_archeptyes(k) for k in k_arr]
+        results_list = [_compute_archeptyes(k=k, seed=seed) for k in k_arr for seed in seeds]
     else:
-        results_list = Parallel(n_jobs=n_jobs)(delayed(_compute_archeptyes)(k) for k in k_arr)
+        results_list = Parallel(n_jobs=n_jobs)(
+            delayed(_compute_archeptyes)(k=k, seed=seed) for k in k_arr for seed in seeds
+        )
 
-    # results = {k: result for k, result in results_list}
-    results = dict(results_list)  # faster, and see https://docs.astral.sh/ruff/rules/unnecessary-comprehension/
-
-    IC_values = []
-    for n_archetypes in k_arr:
-        X_tilde = results[n_archetypes]["A"] @ results[n_archetypes]["Z"]
-        IC_values.append(compute_IC(X=X, X_tilde=X_tilde, n_archetypes=n_archetypes))
-
-    varexpl_values = np.array([results[k]["varexpl"] for k in k_arr])
+    for result_dict in results_list:
+        X_tilde = result_dict["A"] @ result_dict["Z"]
+        result_dict["IC"] = compute_IC(X=X, X_tilde=X_tilde, n_archetypes=result_dict["k"])
 
     result_df = pd.DataFrame(
-        {
-            "k": k_arr,
-            "IC": IC_values,
-            "varexpl": varexpl_values,
-            "varexpl_ontop": np.insert(np.diff(varexpl_values), 0, varexpl_values[0]),
-        }
+        [{"k": d["k"], "seed": d["seed"], "varexpl": d["varexpl"], "IC": d["IC"]} for d in results_list]
     )
-
-    # Compute the distance of the explained variance to its projection
-    offset_vec = result_df[["k", "varexpl"]].iloc[0].values
-    proj_vec = (result_df[["k", "varexpl"]].values - offset_vec)[-1, :][:, None]
-    proj_mtx = proj_vec @ np.linalg.inv(proj_vec.T @ proj_vec) @ proj_vec.T
-    proj_val = (proj_mtx @ (result_df[["k", "varexpl"]].values - offset_vec).T).T + offset_vec
-    proj_df = pd.DataFrame(proj_val, columns=["k", "varexpl"])
-    result_df["dist_to_projected"] = np.linalg.norm(
-        result_df[["k", "varexpl"]].values - proj_df[["k", "varexpl"]].values, axis=1
-    )
-
-    adata.uns["AA_var"] = result_df
+    result_df["seed"] = pd.Categorical(result_df["seed"], categories=seeds)
+    adata.uns["AA_metrics"] = result_df
 
 
-def bootstrap_aa(
+def compute_bootstrap_variance(
     adata: sc.AnnData,
     n_bootstrap: int,
     n_archetypes_list: int | list[int] | None = None,
@@ -236,7 +223,8 @@ def bootstrap_aa(
     seed: int = 42,
     save_to_anndata: bool = True,
     n_jobs: int = -1,
-    **kwargs,
+    verbose: bool = False,
+    **optim_kwargs,
 ) -> None | dict[str, pd.DataFrame]:
     """
     Perform bootstrap sampling to compute archetypes and assess their stability.
@@ -264,8 +252,10 @@ def bootstrap_aa(
         Whether to save the results to `adata.uns["AA_bootstrap"]`. If `False`, the result is returned.
     n_jobs : int, optional (default=-1)
         The number of jobs to run in parallel. `-1` uses all available cores.
-    **kwargs:
-        Additional keyword arguments passed to `AA` class.
+    verbose : bool, optional (default=False)
+        Whether to print the progress
+    **optim_kwargs:
+        TODO: Additional keyword arguments passed to `AA` class.
 
     Returns
     -------
@@ -286,8 +276,8 @@ def bootstrap_aa(
     elif isinstance(n_archetypes_list, int):
         n_archetypes_list = [n_archetypes_list]
 
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
 
     n_samples, n_features = X.shape
@@ -296,20 +286,35 @@ def bootstrap_aa(
     df_dict = {}
     for k in n_archetypes_list:
         # Reference archetypes
-        ref_Z = AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X).Z
+        ref_Z = compute_archetypes(
+            adata=adata,
+            n_archetypes=k,
+            optim=optim,
+            init=init,
+            seed=seed,
+            save_to_anndata=False,
+            archetypes_only=True,
+            **optim_kwargs,
+        )
 
         # Generate bootstrap samples
         idx_bootstrap = rng.choice(n_samples, size=(n_bootstrap, n_samples), replace=True)
 
         # Define function for parallel computation
         def compute_bootstrap_z(idx, k=k):
-            return AA(n_archetypes=k, optim=optim, init=init, **kwargs).fit(X[idx, :].copy()).Z
+            return AA(n_archetypes=k, optim=optim, init=init, **optim_kwargs).fit(X[idx, :]).Z
 
         # Parallel computation of AA on bootstrap samples
-        Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)
+        if verbose:
+            Z_list = Parallel(n_jobs=n_jobs)(
+                delayed(compute_bootstrap_z)(idx)
+                for idx in tqdm(idx_bootstrap, total=n_bootstrap, desc=f"Testing {k} Archetypes")
+            )
+        else:
+            Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)
 
         # Align archetypes
-        Z_list = [_align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]
+        Z_list = [_align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]  # type: ignore[union-attr]
 
         # Compute variance per archetype
         Z_stack = np.stack(Z_list)
@@ -433,8 +438,8 @@ def compute_t_ratio(adata) -> None:  # pragma: no cover
     if "AA_results" not in adata.uns or "Z" not in adata.uns["AA_results"]:
         raise ValueError("Missing archetypes in `adata.uns['AA_results']['Z']`.")
 
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     t_ratio = _compute_t_ratio(X, Z)
@@ -451,7 +456,7 @@ def t_ratio_significance(
     Parameters
     ----------
     adata : sc.AnnData
-        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["aa_config"]["n_dimension"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimension"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
     n_iter : int, optional (default=1000)
         Number of randomized datasets to generate.
     seed : int, optional (default=42)
@@ -471,8 +476,8 @@ def t_ratio_significance(
         print("Computing t-ratio...")
         compute_t_ratio(adata)
 
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
 
     t_ratio = adata.uns["t_ratio"]
@@ -541,6 +546,7 @@ def _align_archetypes(ref_arch: np.ndarray, query_arch: np.ndarray) -> np.ndarra
 def compute_archetypes(
     adata: sc.AnnData,
     n_archetypes: int,
+    n_restarts: int = 5,
     init: str | None = None,
     optim: str | None = None,
     weight: None | str = None,
@@ -548,6 +554,7 @@ def compute_archetypes(
     rel_tol: float | None = None,
     verbose: bool | None = None,
     seed: int = 42,
+    n_jobs: int = -1,
     save_to_anndata: bool = True,
     archetypes_only: bool = True,
     **optim_kwargs,
@@ -567,6 +574,8 @@ def compute_archetypes(
         `adata.obsm[obsm_key]`.
     n_archetypes : int
         The number of archetypes to compute.
+    n_restarts: int
+        The optimization with be run with n_restarts. The run with the lowest RSS will be kept.
     init : str, optional
         The initialization method for the archetypes. If not provided, the default from the AA class is used.
         Options include:
@@ -593,6 +602,8 @@ def compute_archetypes(
         Whether to print verbose output during fitting. If not provided, the default from the AA class is used.
     seed : int, optional
         The random seed for reproducibility.
+    n_jobs : int, optional (default=-1)
+        Number of jobs for parallel computation. `-1` uses all available cores.
     save_to_anndata : bool, optional (default=True)
         Whether to save the results to the AnnData object. If False, the results are returned as a tuple. If
         `adata` is not an AnnData object, this is ignored.
@@ -633,6 +644,9 @@ def compute_archetypes(
         if param != "self" and param != "n_archetypes"
     }
 
+    rng = np.random.default_rng(seed)
+    seeds = rng.choice(a=int(1e9), size=n_restarts, replace=False)
+
     # Use the provided values or fall back to the defaults
     init = init if init is not None else defaults["init"]
     optim = optim if optim is not None else defaults["optim"]
@@ -641,46 +655,61 @@ def compute_archetypes(
     rel_tol = rel_tol if rel_tol is not None else defaults["rel_tol"]
     verbose = verbose if verbose is not None else defaults["verbose"]
 
-    # Create the AA model with the specified parameters
-    model = AA(
-        n_archetypes=n_archetypes,
-        init=init,
-        optim=optim,
-        weight=weight,
-        max_iter=max_iter,
-        rel_tol=rel_tol,
-        verbose=verbose,
-        seed=seed,
-        **optim_kwargs,
-    )
-
     # Extract the data matrix used to fit the archetypes
-    obsm_key = adata.uns["aa_config"]["obsm_key"]
-    n_dimensions = adata.uns["aa_config"]["n_dimension"]
+    obsm_key = adata.uns["AA_config"]["obsm_key"]
+    n_dimensions = adata.uns["AA_config"]["n_dimension"]
     X = adata.obsm[obsm_key][:, :n_dimensions]
     X = X.astype(np.float32)
 
-    # Fit the model to the data
-    model.fit(X)
+    # Parallel computation of AA
+    def _compute_archeptyes(seed):
+        model = AA(
+            n_archetypes=n_archetypes,
+            init=init,
+            optim=optim,
+            weight=weight,
+            max_iter=max_iter,
+            rel_tol=rel_tol,
+            verbose=verbose,
+            seed=seed,
+            **optim_kwargs,
+        )
+        model.fit(X)
+        return {
+            "A": model.A,
+            "B": model.B,
+            "Z": model.Z,
+            "RSS": model.RSS_trace,
+            "RSS_full": model.RSS,
+            "varexpl": model.varexpl,
+            "seed": seed,
+        }
+
+    if n_jobs == 1:
+        results_list = [_compute_archeptyes(seed=seed) for seed in seeds]
+    else:
+        results_list = Parallel(n_jobs=n_jobs)(delayed(_compute_archeptyes)(seed=seed) for seed in seeds)
+
+    argmax = np.argmax(np.array([r["varexpl"] for r in results_list]))
+
+    result_dict = results_list[argmax]
 
     # Save the results to the AnnData object if specified
     if save_to_anndata:
         if archetypes_only:
-            adata.uns["AA_results"] = {
-                "Z": model.Z,
-            }
+            adata.uns["AA_results"] = {"Z": result_dict["Z"]}
         else:
             adata.uns["AA_results"] = {
-                "A": model.A,
-                "B": model.B,
-                "Z": model.Z,
-                "RSS": model.RSS_trace,
-                "RSS_full": model.RSS,
-                "varexpl": model.varexpl,
+                "A": result_dict["A"],
+                "B": result_dict["B"],
+                "Z": result_dict["Z"],
+                "RSS": result_dict["RSS"],
+                "RSS_full": result_dict["RSS_full"],
+                "varexpl": result_dict["varexpl"],
             }
         return None
     else:
         if archetypes_only:
-            return model.Z
+            return result_dict["Z"]
         else:
-            return model.A, model.B, model.Z, model.RSS_trace, model.varexpl
+            return result_dict["A"], result_dict["B"], result_dict["Z"], result_dict["RSS"], result_dict["varexpl"]

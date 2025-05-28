@@ -396,24 +396,3 @@ class AA:
             return _compute_A_frank_wolfe(X, self.Z, A=A_random)
         else:
             raise NotImplementedError()
-
-    def return_all(self) -> tuple:
-        """
-        Returns the optimized matrices and fitting statistics.
-
-        Returns
-        -------
-        tuple
-            A tuple containing:
-            - A : np.ndarray
-                Coefficient matrix with shape (n_samples, n_archetypes).
-            - B : np.ndarray
-                Coefficient matrix with shape (n_archetypes, n_samples).
-            - Z : np.ndarray
-                Archetype matrix with shape (n_archetypes, n_features).
-            - RSS_trace : list[float]
-                Residual sum of squares per iteration.
-            - varexpl : float
-                Variance explained by the model.
-        """
-        return self.A, self.B, self.Z, self.RSS_trace, self.varexpl

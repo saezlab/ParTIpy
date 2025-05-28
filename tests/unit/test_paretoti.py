@@ -6,10 +6,10 @@ from partipy.paretoti import (
     _align_archetypes,
     _validate_aa_config,
     _validate_aa_results,
-    bootstrap_aa,
     compute_archetypes,
+    compute_bootstrap_variance,
+    compute_selection_metrics,
     set_obsm,
-    var_explained_aa,
 )
 from partipy.simulate import simulate_archetypes
 
@@ -20,7 +20,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, noise_std=0.0)
     )
     adata = sc.AnnData(X)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
-    adata.uns["aa_config"] = {
+    adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
         "n_dimension": n_pcs,
     }
@@ -80,23 +80,23 @@ def test_validate_aa_config_input_validation(_mock_adata):
     """
     adata = _mock_adata.copy()
     # Test invalid n_dimensions
-    adata.uns["aa_config"]["n_dimension"] = 100
+    adata.uns["AA_config"]["n_dimension"] = 100
     with pytest.raises(ValueError):
         _validate_aa_config(adata)
 
     # Test invalid obsm_key
-    adata.uns["aa_config"]["obsm_key"] = "invalid_key"
+    adata.uns["AA_config"]["obsm_key"] = "invalid_key"
     with pytest.raises(ValueError):
         _validate_aa_config(adata)
 
     # Test missing keys
-    del adata.uns["aa_config"]["obsm_key"]
-    del adata.uns["aa_config"]["n_dimension"]
+    del adata.uns["AA_config"]["obsm_key"]
+    del adata.uns["AA_config"]["n_dimension"]
     with pytest.raises(ValueError):
         _validate_aa_config(adata)
 
     # Test missing aa_config
-    del adata.uns["aa_config"]
+    del adata.uns["AA_config"]
     with pytest.raises(ValueError):
         _validate_aa_config(adata)
 
@@ -132,7 +132,7 @@ def test_bootstrap_aa_output_correct_shape(_mock_adata):
     - Correct number of rows.
     """
     adata = _mock_adata.copy()
-    bootstrap_aa(adata=adata, n_bootstrap=10, n_archetypes_list=[3, 4, 5])
+    compute_bootstrap_variance(adata=adata, n_bootstrap=10, n_archetypes_list=[3, 4, 5])
 
     # Check existence of AA_bootstrap
     assert "AA_bootstrap" in adata.uns, "AA_bootstrap does not exist in adata.uns"
@@ -176,8 +176,8 @@ def test_bootstrap_aa_with_noisy_and_non_noisy_data():
     adata0 = _simulate_adata(1000, 10, 5, 4, noise_std=0)
     adata03 = _simulate_adata(1000, 10, 5, 4, noise_std=0.3)
 
-    bootstrap_aa(adata0, n_bootstrap=10, n_archetypes_list=5)
-    bootstrap_aa(adata03, n_bootstrap=10, n_archetypes_list=5)
+    compute_bootstrap_variance(adata0, n_bootstrap=10, n_archetypes_list=5)
+    compute_bootstrap_variance(adata03, n_bootstrap=10, n_archetypes_list=5)
 
     # Compare mean variance
     mean_variance_adata0 = adata0.uns["AA_bootstrap"]["5"]["mean_variance"].mean()
@@ -205,7 +205,7 @@ def test_compute_archetypes_output_shape(_mock_adata):
     adata = _mock_adata.copy()
     compute_archetypes(adata, n_archetypes=3)
     Z = adata.uns["AA_results"]["Z"]
-    assert Z.shape == (3, adata.uns["aa_config"]["n_dimension"]), "Archetypes matrix `Z` has incorrect shape."
+    assert Z.shape == (3, adata.uns["AA_config"]["n_dimension"]), "Archetypes matrix `Z` has incorrect shape."
 
 
 @pytest.mark.github_actions
@@ -283,21 +283,21 @@ def test_set_obsm_input_validation(_mock_adata):
 
 @pytest.mark.github_actions
 def test_set_obsm_output_correct_shape(_mock_adata):
-    """Test if set_obsm correctly updates adata.uns["aa_config"].
+    """Test if set_obsm correctly updates adata.uns["AA_config"].
 
     Verifies:
     - Correct passing of obsm key.
     - Correct passing of number of dimensions.
     """
     adata = _mock_adata.copy()
-    del adata.uns["aa_config"]
+    del adata.uns["AA_config"]
     set_obsm(adata, "X_pca", 7)
 
     # Check obsm key
-    assert adata.uns["aa_config"]["obsm_key"] == "X_pca", "obsm key should be X_pca"
+    assert adata.uns["AA_config"]["obsm_key"] == "X_pca", "obsm key should be X_pca"
 
     # Check n_dimensions
-    assert adata.uns["aa_config"]["n_dimension"] == 7, "n_dimensions should be 7"
+    assert adata.uns["AA_config"]["n_dimension"] == 7, "n_dimensions should be 7"
 
 
 ### var_explained_aa ###
@@ -308,21 +308,21 @@ def test_var_explained_aa_input_validation(_mock_adata):
     """Test if input validation for var_explained_aa works as intended.
 
     Verifies:
-    - Raises ValueError when min_a < 2.
-    - Raises ValueError when max_a <= min_a.
+    - Raises ValueError when min_k < 2.
+    - Raises ValueError when max_k <= min_k.
     """
     adata = _mock_adata.copy()
-    # Test invalid min_a
+    # Test invalid min_k
     with pytest.raises(ValueError):
-        var_explained_aa(adata, min_a=1)
+        compute_selection_metrics(adata, min_k=1)
 
-    # Test invalid max_a
+    # Test invalid max_k
     with pytest.raises(ValueError):
-        var_explained_aa(adata, min_a=2, max_a=1)
+        compute_selection_metrics(adata, min_k=2, max_k=1)
 
 
 @pytest.mark.github_actions
-def test_var_explained_aa_on_simulated_data():
+def test_model_selection_metrics_aa_on_simulated_data():
     """Test if var_explained_aa works as intended on simulated data.
 
     Verifies:
@@ -330,37 +330,6 @@ def test_var_explained_aa_on_simulated_data():
     - IC is lowest at the number of archetypes used to generate the data.
     """
     sim_adata = _simulate_adata(n_samples=1000, n_dimensions=50, n_archetypes=10, n_pcs=11)
-    var_explained_aa(sim_adata, min_a=2, max_a=15)
+    compute_selection_metrics(sim_adata, min_k=2, max_k=15)
 
-    # Check explained variance
-    assert sim_adata.uns["AA_var"]["dist_to_projected"].idxmax() == 8, (
-        "Expected highest dist_to_projected at 10 archetypes"
-    )
-
-    # Check IC, archetype 10 is at index 8
-    assert sim_adata.uns["AA_var"]["IC"].idxmin() == 8, "Expected lowest IC at 10 archetypes"
-
-
-@pytest.mark.github_actions
-def test_var_explained_aa_output_correct_shape(_mock_adata):
-    """Test if var_explained_aa correctly updates adata.uns["AA_var"].
-
-    Verifies:
-    - Correct saving in AnnData object.
-    - Correct number and names of columns.
-    - Correct number of rows.
-    """
-    adata = _mock_adata.copy()
-    var_explained_aa(adata)
-
-    # Check existence of AA_var
-    assert "AA_var" in adata.uns, "AA_var does not exist in adata.uns"
-
-    # Check column names
-    expected_columns = ["k", "IC", "varexpl", "varexpl_ontop", "dist_to_projected"]
-    assert all(col in adata.uns["AA_var"].columns for col in expected_columns), (
-        "AA_var does not have the correct column names"
-    )
-
-    # Check shape
-    assert adata.uns["AA_var"].shape == (9, 5), "AA_var does not have the correct shape"
+    assert sim_adata.uns["AA_metrics"].sort_values("IC").iloc[0]["k"] == 10, "Expected lowest IC at 10 archetypes"
