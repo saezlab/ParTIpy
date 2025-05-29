@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError, distance_matrix
 
+from ._docs import docs
+
 
 def _generate_extreme_archetypes(n_archetypes, n_dimensions, rng, distribution="normal", max_attempts=100):
     """
@@ -114,6 +116,7 @@ def _select_distant_vertices(vertices, n_select, rng):
     return vertices[selected_indices]
 
 
+@docs.dedent
 def simulate_archetypes(
     n_samples: int,
     n_archetypes: int,

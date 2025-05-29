@@ -9,6 +9,7 @@ from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist
 from tqdm import tqdm
 
+from ._docs import docs
 from .arch import AA
 from .const import DEFAULT_INIT, DEFAULT_OPTIM
 from .selection import compute_IC
@@ -129,6 +130,7 @@ def _validate_aa_results(adata: anndata.AnnData) -> None:
         )
 
 
+@docs.dedent
 def compute_selection_metrics(
     adata: anndata.AnnData,
     min_k: int = 2,
@@ -213,6 +215,7 @@ def compute_selection_metrics(
     adata.uns["AA_metrics"] = result_df
 
 
+@docs.dedent
 def compute_bootstrap_variance(
     adata: anndata.AnnData,
     n_bootstrap: int,
@@ -444,6 +447,7 @@ def compute_t_ratio(adata) -> None:  # pragma: no cover
     return None
 
 
+@docs.dedent
 def t_ratio_significance(
     adata, n_iter=100, seed=42, n_jobs=-1, save_permutation_results: bool = False
 ):  # pragma: no cover
@@ -539,6 +543,7 @@ def _align_archetypes(ref_arch: np.ndarray, query_arch: np.ndarray) -> np.ndarra
     return query_arch[query_idx, :]
 
 
+@docs.dedent
 def compute_archetypes(
     adata: anndata.AnnData,
     n_archetypes: int,
