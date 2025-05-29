@@ -15,9 +15,9 @@ def _generate_extreme_archetypes(n_archetypes, n_dimensions, rng, distribution="
         Number of dimensions for each archetype.
     rng : numpy.random.Generator
         Random number generator.
-    distribution : str, optional
+    distribution : str, default "normal"
         Distribution to sample from, either "normal" or "uniform".
-    max_attempts : int, optional
+    max_attempts : int, default 100
         Maximum number of attempts to generate valid archetypes. If the maximum number of attempts is exceeded
         without generating enough archetypes, a ValueError is raised.
 
@@ -140,8 +140,7 @@ def simulate_archetypes(
         Number of dimensions (features) for each data point and archetype.
     noise_std : float
         Standard deviation of Gaussian noise added to the data. Set to 0 for no noise.
-    seed : int, optional (default=42)
-        Random seed for reproducibility.
+    %(seed)s
 
     Returns
     -------

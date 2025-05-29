@@ -56,6 +56,7 @@ autosummary_generate = True
 autodoc_member_order = "groupwise"
 default_role = "literal"
 napoleon_google_docstring = False
+autodoc_typehints = "description"  # Show type hints in the description
 napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = False
 napoleon_use_rtype = True  # having a separate entry generally helps readability
@@ -88,6 +89,7 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
+    "plotly": ("https://plotly.com/python-api-reference/", None),
 }
 
 # List of patterns, relative to source directory, that match files and
@@ -116,3 +118,12 @@ html_theme_options = {
 }
 
 pygments_style = "default"
+
+nitpick_ignore = [
+    ("py:class", "type"),
+    ("py:class", "plotnine.ggplot.ggplot"),
+    ("py:class", "plotly.graph_objs._figure.Figure"),
+    ("py:data", "partipy.const.INIT_ALGS"),
+    ("py:data", "partipy.const.OPTIM_ALGS"),
+    ("py:data", "partipy.const.WEIGHT_ALGS"),
+]

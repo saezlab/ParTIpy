@@ -1,3 +1,4 @@
+import anndata
 import numpy as np
 import partipy as pt
 import pytest
@@ -18,7 +19,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, noise_std=0.0)
     X, A, Z = simulate_archetypes(
         n_samples=n_samples, n_archetypes=n_archetypes, n_dimensions=n_dimensions, noise_std=noise_std
     )
-    adata = sc.AnnData(X)
+    adata = anndata.AnnData(X)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
@@ -30,7 +31,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, noise_std=0.0)
 
 @pytest.fixture
 def _mock_adata():
-    adata = sc.AnnData(X=np.random.rand(1000, 50))
+    adata = anndata.AnnData(X=np.random.rand(1000, 50))
     sc.pp.pca(adata)
     pt.set_obsm(adata, "X_pca", 4)
     return adata

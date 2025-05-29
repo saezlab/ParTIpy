@@ -1,8 +1,8 @@
 import inspect
 
+import anndata
 import numpy as np
 import pandas as pd
-import scanpy as sc
 from joblib import Parallel, delayed
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import ConvexHull
@@ -14,7 +14,7 @@ from .const import DEFAULT_INIT, DEFAULT_OPTIM
 from .selection import compute_IC
 
 
-def set_obsm(adata: sc.AnnData, obsm_key: str, n_dimension: int) -> None:
+def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimension: int) -> None:
     """
     Sets the `obsm` key and dimensionality to be used as input for archetypal analysis (AA).
 
@@ -24,7 +24,7 @@ def set_obsm(adata: sc.AnnData, obsm_key: str, n_dimension: int) -> None:
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         AnnData object containing single-cell data. The specified `obsm_key` should refer to
         a matrix in `adata.obsm` to be used as input for AA.
 
@@ -58,7 +58,7 @@ def set_obsm(adata: sc.AnnData, obsm_key: str, n_dimension: int) -> None:
     }
 
 
-def _validate_aa_config(adata: sc.AnnData) -> None:
+def _validate_aa_config(adata: anndata.AnnData) -> None:
     """
     Validates that the AnnData object is properly configured for archetypal analysis (AA).
 
@@ -70,7 +70,7 @@ def _validate_aa_config(adata: sc.AnnData) -> None:
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         AnnData object expected to contain AA configuration in `adata.uns["AA_config"]`.
 
     Returns
@@ -108,13 +108,13 @@ def _validate_aa_config(adata: sc.AnnData) -> None:
         )
 
 
-def _validate_aa_results(adata: sc.AnnData) -> None:
+def _validate_aa_results(adata: anndata.AnnData) -> None:
     """
     Validates that the result from Archetypal Analysis is present in the AnnData object.
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         Annotated data matrix.
 
     Raises
@@ -130,7 +130,7 @@ def _validate_aa_results(adata: sc.AnnData) -> None:
 
 
 def compute_selection_metrics(
-    adata: sc.AnnData,
+    adata: anndata.AnnData,
     min_k: int = 2,
     max_k: int = 10,
     n_restarts: int = 5,
@@ -149,17 +149,16 @@ def compute_selection_metrics(
 
     Parameters
     ----------
-    adata: sc.AnnData
+    adata: anndata.AnnData
         AnnData object containing adata.obsm["obsm_key"].
-    min_k : int, optional (default=2)
+    min_k : int, default `2`
         Minimum number of archetypes to test.
-    max_k : int, optional (default=10)
+    max_k : int, default `10`
         Maximum number of archetypes to test.
-    optim : str, optional (default=DEFAULT_OPTIM)
-        The optimization function to use for Archetypal Analysis.
-    init : str, optional (default=DEFAULT_INIT)
-        The initialization function to use for Archetypal Analysis.
-    n_jobs : int, optional (default=-1)
+    %(optim)s
+    %(init)s
+    %(seed)s
+    n_jobs : int, default `-1`
         Number of jobs for parallel computation. `-1` uses all available cores.
     **kwargs:
         Additional keyword arguments passed to `AA` class.
@@ -188,7 +187,7 @@ def compute_selection_metrics(
     seeds = rng.choice(a=int(1e9), size=n_restarts, replace=False)
 
     # Parallel computation of AA
-    def _compute_archeptyes(k, seed):
+    def _compute_archetypes(k, seed):
         aa_model = AA(n_archetypes=k, seed=seed, optim=optim, init=init, **kwargs).fit(X)
         A = aa_model.A
         Z = aa_model.Z
@@ -197,10 +196,10 @@ def compute_selection_metrics(
         return {"k": k, "Z": Z, "A": A, "RSS": RSS, "varexpl": varexpl, "seed": seed}
 
     if n_jobs == 1:
-        results_list = [_compute_archeptyes(k=k, seed=seed) for k in k_arr for seed in seeds]
+        results_list = [_compute_archetypes(k=k, seed=seed) for k in k_arr for seed in seeds]
     else:
         results_list = Parallel(n_jobs=n_jobs)(
-            delayed(_compute_archeptyes)(k=k, seed=seed) for k in k_arr for seed in seeds
+            delayed(_compute_archetypes)(k=k, seed=seed) for k in k_arr for seed in seeds
         )
 
     for result_dict in results_list:
@@ -215,7 +214,7 @@ def compute_selection_metrics(
 
 
 def compute_bootstrap_variance(
-    adata: sc.AnnData,
+    adata: anndata.AnnData,
     n_bootstrap: int,
     n_archetypes_list: int | list[int] | None = None,
     optim: str = DEFAULT_OPTIM,
@@ -235,24 +234,21 @@ def compute_bootstrap_variance(
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         The AnnData object containing the data to fit the archetypes. The data should be available in
         `adata.obsm[obsm_key]`.
     n_bootstrap : int
         The number of bootstrap samples to generate.
-    n_archetypes_list : Union[int, List[int]], optional (default=range(2, 8))
+    n_archetypes_list : Union[int, List[int]], default `list(range(2, 8))`
         A list specifying the numbers of archetypes to evaluate. Can also be a single int.
-    optim : str, optional (default=DEFAULT_OPTIM)
-        The optimization function to use for Archetypal Analysis.
-    init : str, optional (default=DEFAULT_INIT)
-        The initialization function to use for Archetypal Analysis.
-    seed : int, optional (default=42)
-        The random seed for reproducibility.
-    save_to_anndata : bool, optional (default=True)
+    %(optim)s
+    %(init)s
+    %(seed)s
+    save_to_anndata : bool, default `True`
         Whether to save the results to `adata.uns["AA_bootstrap"]`. If `False`, the result is returned.
-    n_jobs : int, optional (default=-1)
+    n_jobs : int, default `-1`
         The number of jobs to run in parallel. `-1` uses all available cores.
-    verbose : bool, optional (default=False)
+    verbose : bool, default `False`
         Whether to print the progress
     **optim_kwargs:
         TODO: Additional keyword arguments passed to `AA` class.
@@ -420,11 +416,12 @@ def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:  # pragma: no cover
 
 def compute_t_ratio(adata) -> None:  # pragma: no cover
     """
-    Compute the t-ratio from either an AnnData object or raw matrices.
+    Compute the t-ratio from an AnnData object that contains archetypes, i.e has `adata.uns["AA_results"]["Z"]`.
+
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         If AnnData: must contain `obsm[obsm_key]` and `uns["AA_results"]["Z"]`.
 
     Returns
@@ -455,14 +452,13 @@ def t_ratio_significance(
 
     Parameters
     ----------
-    adata : sc.AnnData
-        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimension"], optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
-    n_iter : int, optional (default=1000)
+    adata : anndata.AnnData
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimension"]`, optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
+    n_iter : int, default `100`
         Number of randomized datasets to generate.
-    seed : int, optional (default=42)
-        The random seed for reproducibility.
-    n_jobs : int, optional
-        Number of jobs for parallelization (default: 1). Use -1 to use all available cores.
+    %(seed)s
+    n_jobs : int, default `-1`
+        Number of jobs for parallelization. Use -1 to use all available cores.
 
     Returns
     -------
@@ -544,7 +540,7 @@ def _align_archetypes(ref_arch: np.ndarray, query_arch: np.ndarray) -> np.ndarra
 
 
 def compute_archetypes(
-    adata: sc.AnnData,
+    adata: anndata.AnnData,
     n_archetypes: int,
     n_restarts: int = 5,
     init: str | None = None,
@@ -560,7 +556,6 @@ def compute_archetypes(
     **optim_kwargs,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, list[float] | np.ndarray, float] | None:
     """
-
     Perform Archetypal Analysis (AA) on the input data.
 
     This function is a wrapper around the AA class, offering a simplified interface for fitting the model
@@ -569,67 +564,59 @@ def compute_archetypes(
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         The AnnData object containing the data to fit the archetypes. The data should be available in
         `adata.obsm[obsm_key]`.
     n_archetypes : int
         The number of archetypes to compute.
     n_restarts: int
         The optimization with be run with n_restarts. The run with the lowest RSS will be kept.
-    init : str, optional
-        The initialization method for the archetypes. If not provided, the default from the AA class is used.
-        Options include:
-        - "uniform": Uniform initialization.
-        - "furthest_sum": Furthest sum initialization (default).
-        - "plus_plus": Archetype++ initialization.
-    optim : str, optional
-        The optimization method for fitting the model. If not provided, the default from the AA class is used.
-        Options include:
-        - "projected_gradients": Projected gradients optimization.
-        - "frank_wolfe": Frank-Wolfe optimization.
-        - "regularized_nnls": Regularized non-negative least squares optimization.
-    weight : str, optional
-        The weighting method for the data. If not provided, the default from the AA class is used.
-        Options include:
-        - None : default
-        - "bisquare": Bisquare weighting.
-        - "huber": Hunber weighting.
-    max_iter : int, optional
-        The maximum number of iterations for the optimization. If not provided, the default from the AA class is used.
-    rel_tol : float, optional
-        The rel_tol tolerance for convergence. If not provided, the default from the AA class is used.
-    verbose : bool, optional
-        Whether to print verbose output during fitting. If not provided, the default from the AA class is used.
-    seed : int, optional
-        The random seed for reproducibility.
-    n_jobs : int, optional (default=-1)
+    %(init)s
+    %(optim)s
+    %(weight)s
+    %(max_iter)s
+    %(rel_tol)s
+    %(verbose)s
+    %(seed)s
+    n_jobs : int, default `-1`
         Number of jobs for parallel computation. `-1` uses all available cores.
-    save_to_anndata : bool, optional (default=True)
+    save_to_anndata : bool, default `True`
         Whether to save the results to the AnnData object. If False, the results are returned as a tuple. If
         `adata` is not an AnnData object, this is ignored.
-    archetypes_only : bool, optional (default=True)
+    archetypes_only : bool, default `True`
         Whether to save/return only the archetypes matrix `Z` (if det to True) or also the full outputs, including
         the matrices `A`, `B`, `RSS`, and variance explained `varexpl`.
-    optim_kwargs: TODO
+    optim_kwargs : dict | None, default `None`
+        Additional arguments that are passed to `partipy.arch.AA`
 
     Returns
     -------
-    Optional[Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray, float, float]]]
+    np.ndarray or tuple or None
         The output depends on the values of `save_to_anndata` and `archetypes_only`:
+
         - If `archetypes_only` is True:
-            - Only the archetype matrix (Z) is returned/ saved
+            Only the archetype matrix `Z` is returned or saved.
+
         - If `archetypes_only` is False:
-            - returns/ saves a tuple containing:
-                - A: The matrix of weights for the data points (n_samples, n_archetypes).
-                - B: The matrix of weights for the archetypes (n_archetypes, n_samples).
-                - Z: The archetypes matrix (n_archetypes, n_features).
-                - RSS: The trace of residual sum of squares from optimization.
-                - RSS_full: The residual sum of squares on the full dataset.
-                - varexpl: The variance explained by the model.
+            A tuple is returned or saved, containing:
+
+            - A : ndarray of shape (n_samples, n_archetypes)
+                The matrix of weights for the data points.
+            - B : ndarray of shape (n_archetypes, n_samples)
+                The matrix of weights for the archetypes.
+            - Z : ndarray of shape (n_archetypes, n_features)
+                The archetypes matrix.
+            - RSS : float
+                The residual sum of squares from optimization.
+            - varexpl : float
+                The variance explained by the model.
+
         - If `save_to_anndata` is True:
-            - Returns `None`. Results are saved to `adata.uns["AA_results"]`.
+            Returns `None`. Results are saved to `adata.uns["AA_results"]`.
+
         - If `save_to_anndata` is False:
-            - Returns the results.
+            The results described above are returned.
+
     """
     # input validation
     _validate_aa_config(adata=adata)

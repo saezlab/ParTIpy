@@ -1,15 +1,15 @@
 """Functions to calculate which features (e.g. genes or covariates) are enriched at each archetype."""
 
+import anndata
 import numpy as np
 import pandas as pd
-import scanpy as sc
 from scipy.spatial.distance import cdist
 
 from .paretoti import _validate_aa_config, _validate_aa_results
 
 
 def compute_archetype_weights(
-    adata: sc.AnnData,
+    adata: anndata.AnnData,
     mode: str = "automatic",
     length_scale: None | float = None,
     save_to_anndata: bool = True,
@@ -19,19 +19,17 @@ def compute_archetype_weights(
 
     Parameters
     ----------
-    X : Union[np.ndarray, sc.AnnData]
-        The input data, which can be either:
-        - A 2D array of shape (n_samples, n_features) representing the PCA coordinates of the cells.
-        - An AnnData object containing the PCA coordinates in `.obsm["X_pca"]` and archetypes in `.uns["AA_results"]["Z"]`.
-    Z : np.ndarray, optional
-        A 2D array of shape (n_archetypes, n_features) representing the PCA coordinates of the archetypes.
-        Required if `X` is not an AnnData object.
-    mode : str, optional (default="automatic")
+    adata : anndata.AnnData
+        An AnnData object containing the data and archetypes. The data should be stored in `adata.obsm[obsm_key]`
+        and the archetypes in `adata.uns["AA_results"]["Z"]`.
+    mode : str, default `automatic`
         The mode for determining the length scale of the kernel:
         - "automatic": The length scale is calculated as half the median distance from the data centroid to the archetypes.
         - "manual": The length scale is provided by the user via the `length_scale` parameter.
-    length_scale : float, optional
-        The length scale of the kernel. Required if `mode="manual"`.
+    length_scale : float, default `None`
+        If `mode="manual"`, this is the user-defined length scale for the kernel. If `mode="automatic"`, it is calculated automatically.
+    save_to_anndata : bool, default `True`
+        If `True`, the weights are saved to `adata.obsm["cell_weights"]`. If `False`, the function returns the weights as a numpy array.
 
     Returns
     -------
@@ -72,7 +70,7 @@ def compute_archetype_weights(
 
 
 # compute_characteristic_gene_expression_per_archetype
-def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) -> pd.DataFrame:
+def compute_archetype_expression(adata: anndata.AnnData, layer: str | None = None) -> pd.DataFrame:
     """
     Calculate a weighted average gene expression profile for each archetype.
 
@@ -81,10 +79,10 @@ def compute_archetype_expression(adata: sc.AnnData, layer: str | None = None) ->
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         An AnnData object containing the gene expression data and weights. The weights should be stored in
         `adata.obsm["cell_weights"]` as a 2D array of shape (n_samples, n_archetypes).
-    layer : str, optional (default=None)
+    layer : str, default `None`
         The layer of the AnnData object to use for gene expression. If `None`, `adata.X` is used. For Pareto analysis of AA data,
         z-scaled data is recommended.
 
@@ -130,25 +128,26 @@ def extract_enriched_processes(
 
     Parameters
     ----------
-    est : pd.DataFrame
+    est : `pd.DataFrame`
         A DataFrame of shape (n_archetypes, n_processes) containing the estimated enrichment scores
         for each process and archetype.
-    pval : pd.DataFrame
+    pval : `pd.DataFrame`
         A DataFrame of shape (n_archetypes, n_processes) containing the p-values corresponding to
         the enrichment scores in `est`.
-    order : str, optional (default="desc")
-        The sorting order for selecting the top processes:
+    order : str, default `"desc"`
+        The sorting order for selecting the top processes. Options are:
+
         - "desc": Selects the top `n` processes with the highest enrichment scores.
         - "asc": Selects the top `n` processes with the lowest enrichment scores.
-    n : int, optional (default=20)
+    n : int, default `20`
         The number of top processes to extract per archetype.
-    p_threshold : float, optional (default=0.05)
+    p_threshold : float, default `0.05`
         The p-value threshold for filtering processes. Only processes with p-values below this
         threshold are considered.
 
     Returns
     -------
-    Dict[int, pd.DataFrame]
+    dict[int, pd.DataFrame]
         A dictionary mapping each archetype index to a DataFrame of the top `n` enriched processes.
         Each DataFrame has the following columns:
         - "Process": Name of the biological process.
@@ -202,21 +201,21 @@ def extract_specific_processes(
 
     Parameters
     ----------
-    est : pd.DataFrame
+    est : `pd.DataFrame`
         A DataFrame of shape (n_archetypes, n_processes) containing the estimated enrichment scores
         for each process and archetype.
-    pval : pd.DataFrame
+    pval : `pd.DataFrame`
         A DataFrame of shape (n_archetypes, n_processes) containing the p-values corresponding to
         the enrichment scores in `est`.
-    n : int, optional (default=20)
+    n : int, default: `20`
         The number of top processes to extract per archetype.
-    p_threshold : float, optional (default=0.05)
+    p_threshold : float, default: `0.05`
         The p-value threshold for filtering processes. Only processes with p-values below this
         threshold are considered.
 
     Returns
     -------
-    dict[int, pd.DataFrame]
+    dict : [int, pd.DataFrame]
         A dictionary mapping each archetype index to a DataFrame containing the top `n` processes
         specific to that archetype. Each DataFrame includes:
         - "Process": Name of the biological process.
@@ -246,7 +245,7 @@ def extract_specific_processes(
     return results
 
 
-def compute_meta_enrichment(adata: sc.AnnData, meta_col: str, datatype: str = "automatic") -> pd.DataFrame:
+def compute_meta_enrichment(adata: anndata.AnnData, meta_col: str, datatype: str = "automatic") -> pd.DataFrame:
     """
     Compute the enrichment of metadata categories across archetypes.
 
@@ -265,12 +264,12 @@ def compute_meta_enrichment(adata: sc.AnnData, meta_col: str, datatype: str = "a
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         AnnData object with categorical metadata in `adata.obs[meta_col]` and archetype weights
         in `adata.obsm["cell_weights"]`
     meta_col : str
         The name of the categorical metadata column in `adata.obs` to use for enrichment analysis.
-    datatype : str, optional (default="automatic")
+    datatype : str, default `automatic`
         Specifies how to interpret the metadata column:
         - "automatic": infers type based on column dtype.
         - "categorical": treats the column as categorical and one-hot encodes it.

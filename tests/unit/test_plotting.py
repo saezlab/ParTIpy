@@ -1,5 +1,6 @@
 import warnings
 
+import anndata
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -29,7 +30,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="plotly")
 
 
 def _mock_adata():
-    adata = sc.AnnData(X=np.random.rand(1000, 50))
+    adata = anndata.AnnData(X=np.random.rand(1000, 50))
     sc.pp.pca(adata)
     pt.set_obsm(adata, "X_pca", 4)
     pt.compute_bootstrap_variance(adata=adata, n_bootstrap=10, n_archetypes_list=range(3, 4))

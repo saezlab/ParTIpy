@@ -1,3 +1,4 @@
+import anndata
 import numpy as np
 import pandas as pd
 import pytest
@@ -19,7 +20,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs):
     X, A, Z = simulate_archetypes(
         n_samples=n_samples, n_archetypes=n_archetypes, n_dimensions=n_dimensions, noise_std=0.0
     )
-    adata = sc.AnnData(X)
+    adata = anndata.AnnData(X)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
@@ -101,7 +102,7 @@ def test_compute_archetype_weights_ground_truth():
     expected_weights = np.exp(-(expected_distances**2) / 2)
 
     # Test with manual length scale
-    adata = sc.AnnData(X=X, obsm={"X_pca": X})
+    adata = anndata.AnnData(X=X, obsm={"X_pca": X})
     adata.uns["AA_results"] = {"Z": Z}
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
@@ -144,7 +145,7 @@ def test_compute_archetype_expression_ground_truth():
 
     weights = np.array([[0.8, 0.2], [0.3, 0.7]])
 
-    adata = sc.AnnData(X=expr)
+    adata = anndata.AnnData(X=expr)
     adata.obsm["cell_weights"] = weights
     adata.var_names = ["gene1", "gene2"]
 
@@ -566,7 +567,7 @@ def test_compute_meta_enrichment_correct_assigned():
     - Enrichment matrix is row-normalized (each row sums to 1)
     """
     # Setup with 6 cells, 2 cell types and 5 genes
-    adata = sc.AnnData(X=np.random.rand(6, 5))
+    adata = anndata.AnnData(X=np.random.rand(6, 5))
     adata.obs["cell_type"] = ["A", "A", "A", "B", "B", "B"]
     adata.obsm["cell_weights"] = np.array(
         [
@@ -622,7 +623,7 @@ def test_compute_meta_enrichment_normalization():
     - Meta-enrichment values reflect the weighted contributions of cell types
     """
     # Setup with 3 cells, 5 genes, 3 meta groups and 2 archetypes
-    adata = sc.AnnData(X=np.random.rand(3, 5))
+    adata = anndata.AnnData(X=np.random.rand(3, 5))
     adata.obs["group"] = ["X", "Y", "Z"]
 
     adata.obsm["cell_weights"] = np.array(

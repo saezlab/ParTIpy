@@ -2,6 +2,7 @@ import hashlib
 import os
 from pathlib import Path
 
+import anndata
 import numpy as np
 import pandas as pd
 import requests
@@ -92,7 +93,7 @@ def load_hepatocyte_data(use_cache: bool = True, data_dir=Path(".") / DATA_PATH,
     count_df = pd.read_csv(data_dir / file_dicts["counts"]["filename"], sep="\t").set_index("gene").T.loc[obs.index, :]
 
     # Construct AnnData
-    adata = sc.AnnData(
+    adata = anndata.AnnData(
         X=count_df.values.astype(np.float32),
         obs=obs,
         var=pd.DataFrame(index=[c.split(";")[0] for c in count_df.columns]),
@@ -150,7 +151,7 @@ def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbo
     count_tmp = pd.read_csv(data_dir / file_dicts["counts"]["filename"]).set_index("Gene_Name")
     meta_tmp = pd.read_csv(data_dir / file_dicts["metadata"]["filename"])
     meta_tmp = meta_tmp.loc[meta_tmp["Cell_barcode"].isin(count_tmp.columns.to_list())].set_index("Cell_barcode")
-    adata = sc.AnnData(
+    adata = anndata.AnnData(
         X=count_tmp.values.copy().T.astype(np.float32),
         var=pd.DataFrame(index=count_tmp.index.copy()),
         obs=meta_tmp.loc[count_tmp.columns.to_numpy(), :].copy(),
@@ -210,7 +211,7 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
     count_df = count_df.reset_index(drop=True)
     count_df = count_df.groupby("gene_symbol", as_index=True).sum()
 
-    adata = sc.AnnData(
+    adata = anndata.AnnData(
         X=count_df.values.T.astype(np.float32),
         obs=pd.DataFrame(index=count_df.columns),
         var=pd.DataFrame(index=count_df.index),
@@ -230,7 +231,7 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
         .iat[0]
     )
     adata = adata[adata.obs["cluster"] == fibro_cluster, :].copy()
-    adata = sc.AnnData(
+    adata = anndata.AnnData(
         X=adata.layers["counts"].copy(),
         obs=pd.DataFrame(index=adata.obs.index.copy()),
         var=pd.DataFrame(index=adata.var.index.copy()),

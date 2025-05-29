@@ -1,3 +1,4 @@
+import anndata
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,7 +13,7 @@ from scipy.spatial import ConvexHull
 from .paretoti import _validate_aa_config, _validate_aa_results, compute_selection_metrics
 
 
-def plot_var_explained(adata: sc.AnnData, ymin: None | float = None, ymax: None | float = None) -> pn.ggplot:
+def plot_var_explained(adata: anndata.AnnData, ymin: None | float = None, ymax: None | float = None) -> pn.ggplot:
     """
     Generate an elbow plot of the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
@@ -21,7 +22,7 @@ def plot_var_explained(adata: sc.AnnData, ymin: None | float = None, ymax: None 
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         AnnData object containing the variance explained data in `adata.uns["AA_metrics"]`.
     ymin : None | float
 
@@ -74,7 +75,7 @@ def plot_var_explained(adata: sc.AnnData, ymin: None | float = None, ymax: None 
     return p
 
 
-def plot_IC(adata: sc.AnnData) -> pn.ggplot:
+def plot_IC(adata: anndata.AnnData) -> pn.ggplot:
     """
     Generate a plot showing an information criteria for a range of archetypes.
 
@@ -83,7 +84,7 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         AnnData object containing the variance explained data in `adata.uns["AA_metrics"]`.
 
     Returns
@@ -112,7 +113,11 @@ def plot_IC(adata: sc.AnnData) -> pn.ggplot:
 
 
 def plot_bootstrap_2D(
-    adata: sc.AnnData, n_archetypes: int, show_two_panels: bool = False, alpha: float = 1.0, size: float | None = None
+    adata: anndata.AnnData,
+    n_archetypes: int,
+    show_two_panels: bool = False,
+    alpha: float = 1.0,
+    size: float | None = None,
 ) -> pn.ggplot:
     """
     Visualize the distribution and stability of archetypes across bootstrap samples in 2D PCA space.
@@ -122,15 +127,15 @@ def plot_bootstrap_2D(
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
     n_archetypes : int
         The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
-    show_two_panels : bool, optional
+    show_two_panels : bool, default `False`
         If True, the plot will be split into two panels showing the archetypes from different orientations if there are more than 2 dimensions in the data.
-    alpha : float, default=1.0
+    alpha : float, default `1.0`
         Opacity of the points in the scatter plot (0.0 to 1.0).
-    size : float or None, optional
+    size : float | None, default `None`
         Size of the points in the scatter plot. If None, uses the default size of the plotting library.
 
     Returns
@@ -175,7 +180,7 @@ def plot_bootstrap_2D(
 
 
 def plot_bootstrap_3D(
-    adata: sc.AnnData,
+    adata: anndata.AnnData,
     n_archetypes: int,
     size: float = 6,
     alpha: float = 0.5,
@@ -188,13 +193,13 @@ def plot_bootstrap_3D(
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
     n_archetypes : int
         The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
-    size : float, default=6
+    size : float, default `6`
         Size of the points in the scatter plot.
-    alpha : float, default=0.5
+    alpha : float, default `0.5`
         Opacity of the points in the scatter plot (0.0 to 1.0).
 
     Returns
@@ -231,7 +236,7 @@ def plot_bootstrap_3D(
     return fig
 
 
-def plot_bootstrap_variance(adata: sc.AnnData) -> pn.ggplot:
+def plot_bootstrap_variance(adata: anndata.AnnData) -> pn.ggplot:
     """
     Visualize archetype stability as a function of the number of archetypes.
 
@@ -242,7 +247,7 @@ def plot_bootstrap_variance(adata: sc.AnnData) -> pn.ggplot:
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         Annotated data object containing the results from `bootstrap_aa` in
         `adata.uns["AA_boostrap"]`.
 
@@ -298,7 +303,7 @@ def plot_bootstrap_variance(adata: sc.AnnData) -> pn.ggplot:
 
 
 def plot_archetypes_2D(
-    adata: sc.AnnData,
+    adata: anndata.AnnData,
     color: str | None = None,
     alpha: float = 1.0,
     size: float | None = None,
@@ -313,16 +318,16 @@ def plot_archetypes_2D(
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         Annotated data object containing the archetypes in `adata.uns["AA_results"]["Z"]`
         and PCA-reduced data in `adata.obsm["X_pca"]`.
-    color : str or None, optional
+    color : str | None, default `None`
         Column name in `adata.obs` to use for coloring the data points. If None, no coloring is applied.
-    alpha : float, optional (default=1.0)
+    alpha : float, default `1.0`
         Opacity of the points in the scatter plot (0.0 to 1.0).
-    size : float or None, optional
+    size : float | None, default `None`
         Size of the points in the scatter plot. If None, uses the default size of the plotting library.
-    show_two_panels : bool, optional (default=True)
+    show_two_panels : bool, default `False`
         If True, the plot will be split into two panels showing the archetypes from different orientations
 
     Returns
@@ -360,13 +365,13 @@ def plot_2D(
         A 2D array of shape (n_samples, n_features) representing the data points.
     Z : np.ndarray
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
-    color_vec : np.ndarray, optional
+    color_vec : np.ndarray, default `None`
         A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
-    alpha : float, optional (default=1.0)
+    alpha : float, default `1.0`
         Opacity of the points in the scatter plot (0.0 to 1.0).
-    size : float or None, optional
+    size : float | None, default `None`
         Size of the points in the scatter plot. If None, uses the default size of the plotting library.
-    show_two_panels : bool, optional (default=True)
+    show_two_panels : bool, default `False`
         If True, the plot will be split into two panels showing the archetypes from different orientations
 
     Returns
@@ -442,7 +447,7 @@ def plot_2D(
 
 
 def plot_archetypes_3D(
-    adata: sc.AnnData, color: str | None = None, size: int = 4, alpha: float = 0.5, alpha_hull: float = 0.2
+    adata: anndata.AnnData, color: str | None = None, size: int = 4, alpha: float = 0.5, alpha_hull: float = 0.2
 ) -> pn.ggplot:
     """
     Create an interactive 3D scatter plot showing data points, archetypes and the polytope they span.
@@ -453,16 +458,16 @@ def plot_archetypes_3D(
 
     Parameters
     ----------
-    adata : sc.AnnData
+    adata : anndata.AnnData
         Annotated data object containing the PCA-reduced data in `obsm["X_pca"]` and
         archetypes in `uns["AA_results"]["Z"]`.
-    color : str, optional
+    color : str, default `None`
         Name of a column in `adata.obs` to color the data points by.
-    size : int, optional (default=4)
+    size : int, default `4`
         The size of the markers for the data points in `X`.
-    alpha : float, optional (default=0.5)
+    alpha : float, default `0.5`
         Opacity of the points in the scatter plot (0.0 to 1.0).
-    alpha : float, optional (default=0.2)
+    alpha : float, default `0.2`
         Opacity of the polytope spanned by the archetypes (0.0 to 1.0).
 
     Returns
@@ -499,13 +504,13 @@ def plot_3D(
         A 2D array of shape (n_samples, n_features) representing the data points.
     Z : np.ndarray
         A 2D array of shape (n_archetypes, n_features) representing the archetype coordinates.
-    color_vec : np.ndarray, optional
+    color_vec : np.ndarray, default `None`
         A 1D array of shape (n_samples,) containing values for coloring the data points in `X`.
-    size : int, optional (default=4)
+    size : int, default `4`
         The size of the markers for the data points in `X`.
-    alpha : float, optional (default=0.5)
+    alpha : float, default `0.5`
         Opacity of the points in the scatter plot (0.0 to 1.0).
-    color_polyhedron : str, optional (default="green")
+    color_polyhedron : str, default `green`
         The color of the polytope defined by the archetypes.
 
     Returns
@@ -605,10 +610,10 @@ def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
 
     Parameters
     ----------
-    meta_enrich: pd.DataFrame
+    meta_enrich: `pd.DataFrame`
         Output of `meta_enrichment()`, a DataFrame where rows are archetypes and columns are metadata categories,
         with values representing normalized enrichment scores.
-    meta : str, optional
+    meta : str, default `"Meta"`
         Label to use for the metadata category legend in the plot. Default is "Meta".
 
     Returns
@@ -650,10 +655,10 @@ def heatmap_meta_enrichment(meta_enrich: pd.DataFrame, meta: str | None = "Meta"
 
     Parameters
     ----------
-    meta_enrich: pd.DataFrame
+    meta_enrich: `pd.DataFrame`
         Output of `meta_enrichment()`, a DataFrame where rows are archetypes and columns are metadata categories,
         with values representing normalized enrichment scores.
-    meta : str, optional
+    meta : str, default `"Meta"`
         Label to use for the metadata category legend in the plot. Default is "Meta".
 
     Returns
@@ -688,8 +693,8 @@ def barplot_functional_enrichment(top_features: dict, show: bool = True):
         A dictionary where keys are archetype indices (0, 1,...) and values are pd.DataFrames
         containing the data to plot. Each DataFrame should have a column for the feature ('Process') and a column
         for the archetype (0, 1, ...)
-    show: bool, optional
-        If the plots should be printed.
+    show: bool, default `True`
+        Whether to show the plots immediately. If False, the plots are created but not displayed.
 
     Returns
     -------
@@ -738,7 +743,7 @@ def barplot_enrichment_comparison(specific_processes_arch: pd.DataFrame):
 
     Parameters
     ----------
-    specific_processes_arch : pd.DataFrame
+    specific_processes_arch : `pd.DataFrame`
             Output from `extract_specific_processes`. Must contain a 'Process' column, a 'specificity' score,
             and one column per archetype with enrichment values.
 
@@ -776,10 +781,10 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame, color_map: None | dict 
     """
     Parameters
     ----------
-    meta_enrich: pd.DataFrame
+    meta_enrich: `pd.DataFrame`
         Output of meta_enrichment(), a pd.DataFrame containing the enrichment of meta categories (columns) for all archetypes (rows).
-    color_map: None | dict
-        Dictionary where each condition is mapped to a color
+    color_map: None | dict, default `None`
+        A dictionary mapping meta categories to colors. If None, a default color palette is used.
 
     Returns
     -------

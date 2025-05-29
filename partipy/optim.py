@@ -234,7 +234,7 @@ def _compute_B_projected_gradients(
     B : numpy 2d-array
         B matrix with shape (n_archetypes, n_samples).
 
-    WX : numpy 2d-array, optional
+    WX : numpy 2d-array, default None
         Weighted data matrix with shape (n_samples, n_features).
 
     derivative_max_iter: int
