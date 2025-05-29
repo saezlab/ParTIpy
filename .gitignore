@@ -9,9 +9,8 @@ __pycache__/
 .pytest_cache
 .venv/
 
-# data directory
-data/*
-*.h5ad
+# Distribution / packaging
+/dist/
 
 # temp files
 .DS_Store
@@ -21,17 +20,19 @@ partipy.egg-info/
 build/*
 .coverage
 
-# documentation
-docs/source/notebooks/data
-docs/source/notebooks/*.txt
-docs/source/notebooks/*.txt.gz
-docs/source/notebooks/*.sqlite
-docs/source/generated/*
-docs/build/*
-docs/generated/*
-docs/_build/*
+# docs
+/docs/_build/
+/docs/generated/
+docs/api/generated
+/docs/notebooks/data
+/docs/notebooks/*.h5ad
+/docs/notebooks/*.sqlite
+/docs/notebooks/*.txt.gz
 
 # log files
 *.log
 .coverage*
 coverage.xml
+
+# jupyter
+.ipynb_checkpoints/

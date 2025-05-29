@@ -83,12 +83,12 @@ def _validate_aa_config(adata: sc.AnnData) -> None:
         If the configuration is missing, incomplete, or inconsistent with the contents of `adata.obsm`.
     """
     if "AA_config" not in adata.uns:
-        raise ValueError("AA configuration not found in `adata.uns['aa_config']`.")
+        raise ValueError("AA configuration not found in `adata.uns['AA_config']`.")
 
     config = adata.uns["AA_config"]
 
     if not isinstance(config, dict):
-        raise ValueError("`adata.uns['aa_config']` must be a dictionary.")
+        raise ValueError("`adata.uns['AA_config']` must be a dictionary.")
 
     required_keys = {"obsm_key", "n_dimension"}
     missing = required_keys - config.keys()
