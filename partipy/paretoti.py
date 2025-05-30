@@ -15,7 +15,7 @@ from .const import DEFAULT_INIT, DEFAULT_OPTIM
 from .selection import compute_IC
 
 
-def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimension: int) -> None:
+def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimensions: int | list[int]) -> None:
     """
     Sets the `obsm` key and dimensionality to be used as input for archetypal analysis (AA).
 
@@ -32,7 +32,7 @@ def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimension: int) -> None:
     obsm_key : str
         Key in `adata.obsm` pointing to the matrix to be used for AA.
 
-    n_dimension : int
+    n_dimensions : int | list[int]
         Number of dimensions to retain from `adata.obsm[obsm_key]`. Must be less than or equal
         to the number of columns in that matrix.
 
@@ -45,9 +45,13 @@ def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimension: int) -> None:
         raise ValueError(f"'{obsm_key}' not found in adata.obsm. Available keys are: {list(adata.obsm.keys())}")
 
     available_dim = adata.obsm[obsm_key].shape[1]
-    if n_dimension > available_dim:
+
+    if isinstance(n_dimensions, int):
+        n_dimensions = list(range(n_dimensions))
+
+    if max(n_dimensions) > available_dim:
         raise ValueError(
-            f"Requested {n_dimension} dimensions from '{obsm_key}', but only {available_dim} are available."
+            f"Requested {max(n_dimensions)} dimensions from '{obsm_key}', but only {available_dim} are available."
         )
 
     if "AA_config" in adata.uns:
@@ -55,7 +59,7 @@ def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimension: int) -> None:
 
     adata.uns["AA_config"] = {
         "obsm_key": obsm_key,
-        "n_dimension": n_dimension,
+        "n_dimensions": n_dimensions,
     }
 
 
@@ -65,7 +69,7 @@ def _validate_aa_config(adata: anndata.AnnData) -> None:
 
     This function checks that:
     - `adata.uns["AA_config"]` exists,
-    - it contains the keys "obsm_key" and "n_dimension",
+    - it contains the keys "obsm_key" and "n_dimensions",
     - the specified `obsm_key` exists in `adata.obsm`,
     - and that the requested number of dimensions does not exceed the available dimensions.
 
@@ -91,21 +95,21 @@ def _validate_aa_config(adata: anndata.AnnData) -> None:
     if not isinstance(config, dict):
         raise ValueError("`adata.uns['AA_config']` must be a dictionary.")
 
-    required_keys = {"obsm_key", "n_dimension"}
+    required_keys = {"obsm_key", "n_dimensions"}
     missing = required_keys - config.keys()
     if missing:
         raise ValueError(f"Missing keys in `aa_config`: {missing}")
 
     obsm_key = config["obsm_key"]
-    n_dimension = config["n_dimension"]
+    n_dimensions = config["n_dimensions"]
 
     if obsm_key not in adata.obsm:
         raise ValueError(f"'{obsm_key}' not found in `adata.obsm`. Available keys: {list(adata.obsm.keys())}")
 
     available_dim = adata.obsm[obsm_key].shape[1]
-    if n_dimension > available_dim:
+    if max(n_dimensions) > available_dim:
         raise ValueError(
-            f"Configured number of dimensions ({n_dimension}) exceeds available dimensions ({available_dim}) in `adata.obsm['{obsm_key}']`."
+            f"Configured number of dimensions ({max(n_dimensions)}) exceeds available dimensions ({available_dim}) in `adata.obsm['{obsm_key}']`."
         )
 
 
@@ -180,8 +184,8 @@ def compute_selection_metrics(
         raise ValueError("`max_k` must be greater than or equal to `min_k`.")
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
+    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    X = adata.obsm[obsm_key][:, n_dimensions]
 
     k_arr = np.arange(min_k, max_k + 1)
 
@@ -276,8 +280,8 @@ def compute_bootstrap_variance(
         n_archetypes_list = [n_archetypes_list]
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
+    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    X = adata.obsm[obsm_key][:, n_dimensions]
 
     n_samples, n_features = X.shape
     rng = np.random.default_rng(seed)
@@ -439,8 +443,8 @@ def compute_t_ratio(adata) -> None:  # pragma: no cover
         raise ValueError("Missing archetypes in `adata.uns['AA_results']['Z']`.")
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
+    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    X = adata.obsm[obsm_key][:, n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     t_ratio = _compute_t_ratio(X, Z)
     adata.uns["t_ratio"] = t_ratio
@@ -457,7 +461,7 @@ def t_ratio_significance(
     Parameters
     ----------
     adata : anndata.AnnData
-        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimension"]`, optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimensions"]`, optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
     n_iter : int, default `100`
         Number of randomized datasets to generate.
     %(seed)s
@@ -477,8 +481,8 @@ def t_ratio_significance(
         compute_t_ratio(adata)
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
+    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    X = adata.obsm[obsm_key][:, n_dimensions]
 
     t_ratio = adata.uns["t_ratio"]
     rss = adata.uns["AA_results"]["RSS"][-1]
@@ -649,8 +653,8 @@ def compute_archetypes(
 
     # Extract the data matrix used to fit the archetypes
     obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
+    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    X = adata.obsm[obsm_key][:, n_dimensions]
     X = X.astype(np.float32)
 
     # Parallel computation of AA

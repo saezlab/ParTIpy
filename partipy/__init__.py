@@ -1,6 +1,10 @@
 __version__ = "0.0.1"
 
 from .arch import AA
+from .decomposition import (
+    compute_shuffled_pca,
+    plot_shuffled_pca,
+)
 from .enrichment import (
     compute_archetype_expression,
     compute_archetype_weights,

@@ -59,6 +59,16 @@ def load_hepatocyte_data(use_cache: bool = True, data_dir=Path(".") / DATA_PATH,
     """
     data_dir.mkdir(exist_ok=True)
 
+    # Define processed cache file
+    processed_file = data_dir / "hepatocyte_halpern_processed.h5ad"
+
+    # Check if processed data already exists
+    if use_cache and processed_file.exists():
+        if verbose:
+            print(f"Loading processed data from {processed_file}")
+        return anndata.read_h5ad(processed_file)
+
+    # If no cache or cache disabled, download and process from scratch
     file_dicts = {
         "metadata": {
             "filename": "GSE84498%5Fexperimental%5Fdesign.txt.gz",
@@ -70,6 +80,7 @@ def load_hepatocyte_data(use_cache: bool = True, data_dir=Path(".") / DATA_PATH,
         },
     }
 
+    # Download files if needed
     for file_dict in file_dicts.values():
         filepath = data_dir / file_dict["filename"]
         url = file_dict["url"]
@@ -87,6 +98,10 @@ def load_hepatocyte_data(use_cache: bool = True, data_dir=Path(".") / DATA_PATH,
         else:
             if verbose:
                 print(f"File already exists, skipping: {filepath}")
+
+    # Process data
+    if verbose:
+        print("Processing data...")
 
     # Read metadata and count matrix
     obs = pd.read_csv(data_dir / file_dicts["metadata"]["filename"], sep="\t").set_index("well")
@@ -105,20 +120,35 @@ def load_hepatocyte_data(use_cache: bool = True, data_dir=Path(".") / DATA_PATH,
     # Remove batches of likely non-hepatocytes
     adata = adata[~adata.obs["batch"].isin(["AB630", "AB631"])].copy()
 
+    # Save processed data for faster future loading
+    if use_cache:
+        if verbose:
+            print(f"Saving processed data to {processed_file}")
+        adata.write_h5ad(processed_file)
+
     return adata
 
 
 def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):
     """
     Download hepatocyte data from:
-
-    Ben-Moshe, S., ..., Elinav, E., Itzkovitz, S., 2022
-    The spatiotemporal program of zonal liver regeneration following acute injury
-    Cell Stem Cell 29, 973-989.e10
-    https://doi.org/10.1016/j.stem.2022.04.008
+     Ben-Moshe, S., ..., Elinav, E., Itzkovitz, S., 2022
+     The spatiotemporal program of zonal liver regeneration following acute injury
+     Cell Stem Cell 29, 973-989.e10
+     https://doi.org/10.1016/j.stem.2022.04.008
     """
     data_dir.mkdir(exist_ok=True)
 
+    # Define processed cache file
+    processed_file = data_dir / "hepatocyte_processed.h5ad"
+
+    # Check if processed data already exists
+    if use_cache and processed_file.exists():
+        if verbose:
+            print(f"Loading processed data from {processed_file}")
+        return anndata.read_h5ad(processed_file)
+
+    # If no cache or cache disabled, download and process from scratch
     file_dicts = {
         "metadata": {
             "filename": "hepatocyte_meta.txt",
@@ -130,6 +160,7 @@ def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbo
         },
     }
 
+    # Download files if needed
     for file_dict in file_dicts.values():
         filepath = data_dir / file_dict["filename"]
         url = file_dict["url"]
@@ -148,17 +179,31 @@ def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbo
             if verbose:
                 print(f"File already exists, skipping: {filepath}")
 
+    # Process data
+    if verbose:
+        print("Processing data...")
+
     count_tmp = pd.read_csv(data_dir / file_dicts["counts"]["filename"]).set_index("Gene_Name")
     meta_tmp = pd.read_csv(data_dir / file_dicts["metadata"]["filename"])
     meta_tmp = meta_tmp.loc[meta_tmp["Cell_barcode"].isin(count_tmp.columns.to_list())].set_index("Cell_barcode")
+
     adata = anndata.AnnData(
         X=count_tmp.values.copy().T.astype(np.float32),
         var=pd.DataFrame(index=count_tmp.index.copy()),
         obs=meta_tmp.loc[count_tmp.columns.to_numpy(), :].copy(),
     )
     del count_tmp, meta_tmp
+
+    # Filter data
     adata = adata[(adata.obs["time_point"] == 0) & (adata.obs["cell_type"] == "Hep"), :].copy()
-    adata = adata[:, adata.X.sum(axis=0) > 0].copy()
+    adata = adata[:, adata.X.sum(axis=0) >= 20].copy()
+
+    # Save processed data for faster future loading
+    if use_cache:
+        if verbose:
+            print(f"Saving processed data to {processed_file}")
+        adata.write_h5ad(processed_file)
+
     return adata
 
 
@@ -173,6 +218,16 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
     """
     data_dir.mkdir(exist_ok=True)
 
+    # Define processed cache file
+    processed_file = data_dir / "fibroblast_muhl_processed.h5ad"
+
+    # Check if processed data already exists
+    if use_cache and processed_file.exists():
+        if verbose:
+            print(f"Loading processed data from {processed_file}")
+        return anndata.read_h5ad(processed_file)
+
+    # If no cache or cache disabled, download and process from scratch
     file_dicts = {
         "counts": {
             "filename": "GSE149859%5Fcolon%5Fprocessed%5Fcounts.txt.gz",
@@ -180,6 +235,7 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
         },
     }
 
+    # Download files if needed
     for file_dict in file_dicts.values():
         filepath = data_dir / file_dict["filename"]
         url = file_dict["url"]
@@ -198,13 +254,17 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
             if verbose:
                 print(f"File already exists, skipping: {filepath}")
 
+    # Process data
+    if verbose:
+        print("Processing data...")
+
     # translate to gene symbols
     dataset = Dataset(name="mmusculus_gene_ensembl", host="http://www.ensembl.org")
     df = dataset.query(attributes=["ensembl_gene_id", "external_gene_name"])
     id_to_symbol = dict(zip(df["Gene stable ID"], df["Gene name"], strict=False))
 
     # prepare the counts
-    count_df = pd.read_csv(data_dir / os.path.basename(url), sep="\t")
+    count_df = pd.read_csv(data_dir / file_dicts["counts"]["filename"], sep="\t")
     count_df = count_df.loc[~count_df.index.str.startswith("ERCC"), :].copy()
     count_df = count_df.loc[count_df.values.sum(axis=1) >= 50, :].copy()
     count_df["gene_symbol"] = count_df.index.map(id_to_symbol)
@@ -239,4 +299,128 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
     # some filtering
     adata = adata[:, adata.X.sum(axis=0) >= 100].copy()
     adata = adata[adata.X.sum(axis=1) >= 1000, :].copy()
+
+    # Save processed data for faster future loading
+    if use_cache:
+        if verbose:
+            print(f"Saving processed data to {processed_file}")
+        adata.write_h5ad(processed_file)
+
+    return adata
+
+
+def load_ncM_lupus_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):
+    """
+    Download non-classical monocyte data from:
+
+    Perez, R.K., ..., Ye, C.J., 2022
+    Single-cell RNA-seq reveals cell type-specific molecular and genetic associations to lupus
+    Science 376, eabf1970
+    https://doi.org/10.1126/science.abf1970
+    https://cellxgene.cziscience.com/collections/436154da-bcf1-4130-9c8b-120ff9a888f2
+    """
+    import gc
+
+    data_dir.mkdir(exist_ok=True)
+
+    # Define processed cache file
+    processed_file = data_dir / "ncM_lupus_processed.h5ad"
+
+    # Check if processed data already exists
+    if use_cache and processed_file.exists():
+        if verbose:
+            print(f"Loading processed data from {processed_file}")
+        return anndata.read_h5ad(processed_file)
+
+    # If no cache or cache disabled, download and process from scratch
+    if verbose:
+        print("Processing data from scratch...")
+
+    # File URL to download
+    url = "https://datasets.cellxgene.cziscience.com/4532eea4-24b7-461a-93f5-fe437ee96f0a.h5ad"
+    filename = data_dir / os.path.basename(url)
+
+    # Download file if it does not already exist
+    if not filename.exists() or not use_cache:
+        if verbose:
+            print(f"Downloading {url} to {filename}...")
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+
+        with open(filename, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        if verbose:
+            print(f"Downloaded: {filename}")
+    else:
+        if verbose:
+            print(f"File already exists, skipping: {filename}")
+
+    # Process data
+    if verbose:
+        print("Processing data...")
+
+    adata = anndata.read_h5ad(filename)
+    adata.obs["Status"] = adata.obs["disease_state"].map(
+        {"managed": "Managed", "na": "Healthy", "flare": "Flare", "treated": "Treated"}
+    )
+    adata = adata[adata.obs["author_cell_type"] == "ncM", :].copy()  # only consider non-classical monocytes
+    adata = adata[adata.obs["Status"] != "Treated", :].copy()  # remove samples with "treated" status
+
+    # remove columns we don't need
+    columns_to_drop = [
+        "mapped_reference_annotation",
+        "cell_type_ontology_term_id",
+        "is_primary_data",
+        "cell_state",
+        "tissue_ontology_term_id",
+        "development_stage_ontology_term_id",
+        "tissue",
+        "organism",
+        "tissue_type",
+        "suspension_type",
+        "organism_ontology_term_id",
+        "assay_ontology_term_id",
+        "suspension_enriched_cell_types",
+        "suspension_uuid",
+        "self_reported_ethnicity_ontology_term_id",
+        "disease_ontology_term_id",
+        "sex_ontology_term_id",
+    ]
+    # Only drop columns that actually exist
+    existing_columns = [col for col in columns_to_drop if col in adata.obs.columns]
+    adata.obs.drop(columns=existing_columns, inplace=True)
+
+    # create new index
+    adata.obs.index = [
+        s.split("-")[0] + "-" + str(len(s.split("-"))) + "-" + str(donor_id)
+        for s, donor_id in zip(adata.obs.index, adata.obs["donor_id"].to_list(), strict=False)
+    ]
+
+    # remove obsm we don't need (with error handling)
+    obsm_to_remove = ["X_pca", "X_umap"]
+    for key in obsm_to_remove:
+        if key in adata.obsm:
+            del adata.obsm[key]
+
+    if hasattr(adata, "uns"):
+        del adata.uns
+    gc.collect()
+
+    # use the raw counts
+    if adata.raw is not None:
+        adata.X = adata.raw.X
+
+    # use gene symbols instead of ensembl IDs
+    if "feature_name" in adata.var.columns:
+        assert len(adata.var["feature_name"]) == len(adata.var["feature_name"].unique())
+        adata.var = adata.var.set_index("feature_name")
+
+    # Save processed data for faster future loading
+    if use_cache:
+        if verbose:
+            print(f"Saving processed data to {processed_file}")
+        adata.write_h5ad(processed_file)
+
     return adata

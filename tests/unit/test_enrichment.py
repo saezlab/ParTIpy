@@ -24,7 +24,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs):
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
-        "n_dimension": n_pcs,
+        "n_dimensions": list(range(n_pcs)),
     }
     adata.uns["AA_results"] = {"Z": Z[:, :n_pcs]}
     compute_archetype_weights(adata)
@@ -106,7 +106,7 @@ def test_compute_archetype_weights_ground_truth():
     adata.uns["AA_results"] = {"Z": Z}
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
-        "n_dimension": 2,
+        "n_dimensions": list(range(2)),
     }
     weights = compute_archetype_weights(adata=adata, mode="manual", length_scale=1.0, save_to_anndata=False)
     assert np.allclose(weights, expected_weights), "Manual mode weights do not match expected values"

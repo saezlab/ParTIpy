@@ -338,8 +338,8 @@ def plot_archetypes_2D(
     _validate_aa_config(adata)
     _validate_aa_results(adata)
     obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
+    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    X = adata.obsm[obsm_key][:, n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
     plot = plot_2D(X=X, Z=Z, color_vec=color_vec, alpha=alpha, size=size, show_two_panels=show_two_panels)
@@ -478,8 +478,8 @@ def plot_archetypes_3D(
     _validate_aa_config(adata)
     _validate_aa_results(adata)
     obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimension"]
-    X = adata.obsm[obsm_key][:, :n_dimensions]
+    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    X = adata.obsm[obsm_key][:, n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
     color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
     plot = plot_3D(X=X, Z=Z, color_vec=color_vec, size=size, alpha=alpha, alpha_hull=alpha_hull)

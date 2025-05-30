@@ -23,7 +23,7 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, noise_std=0.0)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
-        "n_dimension": n_pcs,
+        "n_dimensions": list(range(n_pcs)),
     }
     adata.uns["AA_results"] = {"Z": Z[:, :n_pcs]}
     return adata
@@ -81,7 +81,7 @@ def test_validate_aa_config_input_validation(_mock_adata):
     """
     adata = _mock_adata.copy()
     # Test invalid n_dimensions
-    adata.uns["AA_config"]["n_dimension"] = 100
+    adata.uns["AA_config"]["n_dimensions"] = list(range(100))
     with pytest.raises(ValueError):
         _validate_aa_config(adata)
 
@@ -92,7 +92,7 @@ def test_validate_aa_config_input_validation(_mock_adata):
 
     # Test missing keys
     del adata.uns["AA_config"]["obsm_key"]
-    del adata.uns["AA_config"]["n_dimension"]
+    del adata.uns["AA_config"]["n_dimensions"]
     with pytest.raises(ValueError):
         _validate_aa_config(adata)
 
@@ -206,7 +206,7 @@ def test_compute_archetypes_output_shape(_mock_adata):
     adata = _mock_adata.copy()
     compute_archetypes(adata, n_archetypes=3)
     Z = adata.uns["AA_results"]["Z"]
-    assert Z.shape == (3, adata.uns["AA_config"]["n_dimension"]), "Archetypes matrix `Z` has incorrect shape."
+    assert Z.shape == (3, max(adata.uns["AA_config"]["n_dimensions"]) + 1), "Archetypes matrix `Z` has incorrect shape."
 
 
 @pytest.mark.github_actions
@@ -298,7 +298,7 @@ def test_set_obsm_output_correct_shape(_mock_adata):
     assert adata.uns["AA_config"]["obsm_key"] == "X_pca", "obsm key should be X_pca"
 
     # Check n_dimensions
-    assert adata.uns["AA_config"]["n_dimension"] == 7, "n_dimensions should be 7"
+    assert adata.uns["AA_config"]["n_dimensions"] == list(range(7)), "n_dimensions should be list(range(7))"
 
 
 ### var_explained_aa ###
