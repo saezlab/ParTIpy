@@ -2,6 +2,7 @@ import anndata
 import numpy as np
 import pandas as pd
 import plotnine as pn
+from scipy.sparse import issparse
 from sklearn.decomposition import PCA
 from tqdm import tqdm
 
@@ -9,6 +10,7 @@ from tqdm import tqdm
 def compute_shuffled_pca(
     adata: anndata.AnnData,
     layer_key: None | str = None,
+    mask_var: None | str = None,
     n_components: int = 50,
     n_shuffle: int = 50,
     seed: int = 42,
@@ -24,6 +26,8 @@ def compute_shuffled_pca(
         Annotated data object containing the data to analyze.
     layer_key : str, default `None`
         Key for the layer in adata to use for PCA. If None, uses adata.X.
+    mask_var : str, default `None`
+        String referring to an array in var, for example `"highly_variable"`.
     n_components : int, default `50`
         Number of PCA components to compute.
     n_shuffle : int, default `50`
@@ -40,11 +44,29 @@ def compute_shuffled_pca(
     None or pd.DataFrame
         If save_to_anndata is True, saves the results to adata.uns["AA_pca"]. Otherwise, returns a DataFrame with the results.
     """
+    if mask_var:
+        if mask_var not in adata.var.columns.to_list():
+            raise ValueError(f"mask_var '{mask_var}' not found in adata.var columns.")
+        if not adata.var[mask_var].dtype == bool:
+            raise ValueError(f"mask_var '{mask_var}' must be a boolean array.")
+    if n_components < 1:
+        raise ValueError("n_components must be at least 1.")
+    if n_shuffle < 2:
+        raise ValueError("n_shuffle must be at least 2.")
+    if n_components > adata.shape[1]:
+        raise ValueError(
+            f"n_components ({n_components}) cannot be larger than the number of features ({adata.shape[1]})."
+        )
+    mask_vec = adata.var[mask_var].copy()
     if layer_key is None:
-        X = adata.X.copy()
+        X = adata[:, mask_vec].X.copy()
     else:
-        X = adata.layers[layer_key].copy()
-    X -= X.mean(axis=0, keepdims=True)
+        X = adata[:, mask_vec].layers[layer_key].copy()
+    # if we center the data, we can anyway densify it!
+    if issparse(X):
+        X = X.toarray()
+    feature_means = X.mean(axis=0)
+    X -= feature_means
     n_samples, n_features = X.shape
     # total_variance = np.sum(X**2) / n_samples # same for X_perm, since permutation corresponds to mulitplication with orthogonal matrix
     pca_unshuffled = PCA(n_components=n_components, **pca_kwargs).fit(X.copy())
