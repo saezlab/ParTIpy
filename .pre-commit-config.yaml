@@ -54,3 +54,12 @@ repos:
         types: [python]
         pass_filenames: false # ignore file changes?
         always_run: true
+
+      # Jupyter notebook execution hook
+      #- id: execute-notebooks
+      #  name: Execute Jupyter notebooks
+      #  entry: jupyter nbconvert --to notebook --execute --inplace
+      #  language: system
+      #  files: ^docs/notebooks/.*\.ipynb$
+      #  pass_filenames: true
+      #  require_serial: true

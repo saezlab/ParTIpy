@@ -604,7 +604,7 @@ def plot_3D(
     return fig
 
 
-def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
+def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta", color_map: None | dict = None):
     """
     Generate a stacked bar plot showing metadata enrichment across archetypes.
 
@@ -626,8 +626,11 @@ def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
     meta_enrich_long = meta_enrich.melt(id_vars=["archetype"], var_name="Meta", value_name="Normalized_Enrichment")
 
     # get unique categories and assign colors
-    categories = meta_enrich_long["Meta"].unique()
-    color_palette = hue_pal()(len(categories))
+    if not color_map:
+        categories = meta_enrich_long["Meta"].unique()
+        sorted_categories = sorted(categories)
+        colors = hue_pal()(len(sorted_categories))
+        color_map = dict(zip(sorted_categories, colors, strict=False))
 
     # Create plot
     plot = (
@@ -637,8 +640,7 @@ def barplot_meta_enrichment(meta_enrich: pd.DataFrame, meta: str = "Meta"):
         )
         + pn.geom_bar(stat="identity", position="stack")
         + pn.theme_matplotlib()
-        # + pn.scale_fill_brewer(type="qual", palette="Dark2")
-        + pn.scale_fill_manual(values=color_palette)
+        + pn.scale_fill_manual(values=color_map)
         + pn.labs(
             title="Meta Enrichment Across Archetypes",
             x="Archetype",
@@ -793,11 +795,12 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame, color_map: None | dict 
     """
     # prepare data
     meta_enrich = meta_enrich.T.reset_index().rename(columns={"index": "Meta_feature"})
-    if color_map:
-        color_list = [color_map[feat] for feat in meta_enrich["Meta_feature"]]
-    else:
-        default_palette = plt.colormaps.get_cmap("Dark2")
-        color_list = [default_palette(idx) for idx in range(len(meta_enrich))]
+    if not color_map:
+        categories = meta_enrich["Meta_feature"].unique()
+        sorted_categories = sorted(categories)
+        colors = hue_pal()(len(sorted_categories))
+        color_map = dict(zip(sorted_categories, colors, strict=False))
+    color_list = [color_map[feat] for feat in meta_enrich["Meta_feature"]]
     numeric_meta_enrich = meta_enrich.drop(columns=["Meta_feature"]).astype(float)
 
     # function to create a radar plot for a given row
