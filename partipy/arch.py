@@ -20,6 +20,7 @@ from .optim import (
     _compute_A_frank_wolfe,
     _compute_A_projected_gradients,
     _compute_A_regularized_nnls,
+    _compute_alpha,
     _compute_B_frank_wolfe,
     _compute_B_projected_gradients,
     _compute_B_regularized_nnls,
@@ -72,6 +73,9 @@ class AA:
         Fraction of the data to use for the coreset. Only used if `use_coreset` is True.
     coreset_size : int, default: `None`
         Size of the coreset to use. If None, it is set to `n_samples * coreset_fraction`.
+    delta: float, default: `0.0`
+        Parameter that relaxes the constraint that B must be convex combination of the data points
+        Must be in the interval [0, 1)
     centering : bool, default `True`
         Whether to center the data by subtracting the feature means before optimization.
     scaling : bool, default `True`
@@ -95,6 +99,7 @@ class AA:
         coreset_flavor: str = "default",
         coreset_fraction: float = 0.1,
         coreset_size: None | int = None,
+        delta: float = 0.0,
         centering: bool = True,
         scaling: bool = True,
         verbose: bool = False,
@@ -112,6 +117,8 @@ class AA:
         self.coreset_flavor = coreset_flavor
         self.coreset_fraction = coreset_fraction
         self.coreset_size = coreset_size
+        self.delta = delta
+        self.use_delta = ~np.isclose(self.delta, 0)
         self.centering = centering
         self.scaling = scaling
         self.verbose = verbose
@@ -122,9 +129,10 @@ class AA:
         self.A: np.ndarray = None  # type: ignore[assignment]
         self.B: np.ndarray = None  # type: ignore[assignment]
         self.Z: np.ndarray = None  # type: ignore[assignment]
+        self.alpha: np.ndarray = None  # type: ignore[assignment]
         self.n_samples: int = None  # type: ignore[assignment]
         self.n_features: int = None  # type: ignore[assignment]
-        self.RSS: float | None = None
+        self.RSS: float = None  # type: ignore[assignment]
         self.RSS_trace: np.ndarray = np.zeros(max_iter, dtype=np.float32)
         self.varexpl: float = None  # type: ignore[assignment]
         self.fitting_info: dict
@@ -152,6 +160,10 @@ class AA:
             raise ValueError(
                 "It is not yet implemented to use robust archetypal analysis and coresets at the same time"
             )
+
+        if self.use_delta:
+            if not ((self.delta < 1.0) and (self.delta > 0.0)):
+                raise ValueError("delta must be in the interval [0, 1)")
 
     def fit(self, X: np.ndarray):
         """
@@ -248,6 +260,10 @@ class AA:
         B, inital_indices = initialize_B(X=X, n_archetypes=self.n_archetypes, seed=self.seed, return_indices=True)
         Z = B @ X
 
+        # initialize alpha if delta is non-zero
+        if self.use_delta:
+            alpha = np.ones(self.n_archetypes, dtype=np.float32)
+
         # initialize weights
         if self.weight:
             W = np.ones(X.shape[0], dtype=np.float32)
@@ -261,29 +277,43 @@ class AA:
         for n_iter in range(self.max_iter):
             if self.weight:
                 WX = W[:, None] * X
-                A = compute_A(WX, Z, A, **self.optim_kwargs)
-                B = compute_B(WX, A, B, **self.optim_kwargs)
-                Z = B @ WX
+                A = compute_A(X=WX, Z=Z, A=A, **self.optim_kwargs)
+                B = compute_B(X=WX, WX=X, A=A, B=B, **self.optim_kwargs)
+                Z = np.dot(B, WX)
 
                 # recompute weights based on the original, which are computed using the original data
                 A_0 = compute_A(X, Z, A, **self.optim_kwargs)
-                R = X - A_0 @ Z
+                R = X - np.dot(A_0, Z)
                 W = compute_weights(R)
+                # TODO: Check if we should compute RSS like this
+                RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
 
             elif self.use_coreset:
                 # compute A using the unweighted data X
                 A = compute_A(X=X, Z=Z, A=A, **self.optim_kwargs)
                 WA = W[:, None] * A
-                B = compute_B(X=X, A=WA, B=B, WX=WX, **self.optim_kwargs)
-                Z = B @ X
+                if self.use_delta:
+                    B = compute_B(X=X, WX=WX, A=WA, B=B, alpha=alpha, **self.optim_kwargs)
+                    alpha = _compute_alpha(X=X, WX=WX, B=B, A=WA, alpha=alpha, delta=self.delta, **self.optim_kwargs)
+                    Z = np.dot(alpha[:, None] * B, X)
+                else:
+                    B = compute_B(X=X, WX=WX, A=WA, B=B, **self.optim_kwargs)
+                    Z = np.dot(B, X)
+                RSS = _compute_RSS_AZ(X=WX, A=WA, Z=Z)
 
             else:
-                A = compute_A(X, Z, A, **self.optim_kwargs)
-                B = compute_B(X, A, B, **self.optim_kwargs)
-                Z = B @ X
+                # NOTE: For the optimization of alpha nothing changes if we use delta, except that Z = diag(a) B X
+                A = compute_A(X=X, Z=Z, A=A, **self.optim_kwargs)
+                if self.use_delta:
+                    B = compute_B(X=X, WX=X, A=A, B=B, alpha=alpha, **self.optim_kwargs)
+                    alpha = _compute_alpha(X=X, WX=X, B=B, A=A, alpha=alpha, delta=self.delta, **self.optim_kwargs)
+                    Z = np.dot(alpha[:, None] * B, X)
+                else:
+                    B = compute_B(X=X, WX=X, A=A, B=B, **self.optim_kwargs)
+                    Z = np.dot(B, X)
+                RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
 
-            # compute RSS and check for convergence
-            RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
+            # Check for convergence
             self.RSS_trace[n_iter] = float(RSS)
             max_window = min(n_iter, 20)
             rel_delta_RSS_mean_last_n = (
@@ -324,14 +354,17 @@ class AA:
             for B_col_idx, coreset_idx in enumerate(coreset_indices):
                 B_full[:, coreset_idx] += B[:, B_col_idx]
             B = B_full
-            Z = B @ X_raw
+            if self.use_delta:
+                Z = np.dot(alpha[:, None] * B, X_raw)
+            else:
+                Z = np.dot(B, X_raw)
             # TODO: change to projected gradients or frank-wolfe here!
             A = _compute_A_regularized_nnls(X=X_raw, Z=Z, A=None)
 
         # If using weights, we need to recalculate A and B using the unweighted data
         if self.weight:
-            A = compute_A(X, Z, A, **self.optim_kwargs)
-            B = compute_B(X, A, B, **self.optim_kwargs)
+            A = compute_A(X=X, Z=Z, A=A, **self.optim_kwargs)
+            B = compute_B(X=X, WX=X, A=A, B=B, **self.optim_kwargs)
             Z = B @ X
 
         if self.scaling:
@@ -352,6 +385,8 @@ class AA:
         self.Z = Z
         self.A = A
         self.B = B
+        if self.use_delta:
+            self.alpha = alpha
         self.RSS_trace = self.RSS_trace[self.RSS_trace > 0.0]
         self.fitting_info = {
             "conv": convergence_flag if self.max_iter > 0 else None,
@@ -379,12 +414,10 @@ class AA:
         if self.optim == "regularized_nnls":
             return _compute_A_regularized_nnls(X, self.Z)
         elif self.optim == "projected_gradients":
-            A_random = -np.log(np.random.random((self.n_samples, self.n_archetypes)))
-            A_random /= np.sum(A_random, axis=1, keepdims=True)
-            return _compute_A_projected_gradients(X=X, Z=self.Z, A=A_random)
+            A = _init_A(n_samples=self.n_samples, n_archetypes=self.n_archetypes, seed=self.seed)
+            return _compute_A_projected_gradients(X=X, Z=self.Z, A=A)
         elif self.optim == "frank_wolfe":
-            A_random = -np.log(np.random.random((self.n_samples, self.n_archetypes)))
-            A_random /= np.sum(A_random, axis=1, keepdims=True)
-            return _compute_A_frank_wolfe(X, self.Z, A=A_random)
+            A = _init_A(n_samples=self.n_samples, n_archetypes=self.n_archetypes, seed=self.seed)
+            return _compute_A_frank_wolfe(X=X, Z=self.Z, A=A)
         else:
             raise NotImplementedError()

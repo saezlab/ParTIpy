@@ -40,6 +40,35 @@ def test_that_archetypes_can_be_identified_gh(
     assert np.any(rel_dist_between_archetypes < MAX_REL_DIST)
 
 
+@pytest.mark.github_actions
+@pytest.mark.parametrize("optim_str", OPTIM_ALGS)
+def test_that_relaxation_leads_to_lower_RSS_gh(
+    optim_str: str,
+) -> None:
+    seed = 111
+    delta = 0.2
+    n_archetypes = 3
+    n_dimensions = 2
+    n_samples = 500
+    X, A, Z = simulate_archetypes(
+        n_samples=n_samples,
+        n_archetypes=n_archetypes,
+        n_dimensions=n_dimensions,
+        noise_std=0.15,
+        seed=seed,
+    )
+
+    AA_object = AA(n_archetypes=n_archetypes, delta=0.0, seed=seed, optim=optim_str)
+    AA_object.fit(X)
+    RSS_no_delta = AA_object.RSS
+
+    AA_object = AA(n_archetypes=n_archetypes, delta=delta, seed=seed, optim=optim_str)
+    AA_object.fit(X)
+    RSS_delta = AA_object.RSS
+
+    assert RSS_delta < RSS_no_delta
+
+
 @pytest.mark.parametrize(
     "n_archetypes, n_dimensions",
     [(n_a, n_d) for n_a in range(2, 9) for n_d in range(2, 19, 4) if n_a <= n_d],
@@ -251,3 +280,84 @@ def test_that_scaling_X_does_not_affect_A(
 
     rel_distance_to_scaled_Z = compute_relative_rowwise_l2_distance(Z_scaled, AA_object.Z)
     assert np.all(rel_distance_to_scaled_Z < MAX_REL_DIST_Z)
+
+
+@pytest.mark.parametrize("optim_str", OPTIM_ALGS)
+@pytest.mark.parametrize("use_coreset", [True, False])
+def test_that_relaxation_leads_to_lower_RSS(
+    optim_str: str,
+    use_coreset: bool,
+) -> None:
+    seed = 42
+    delta = 0.2
+    n_archetypes = 3
+    n_dimensions = 2
+    N_SAMPLES = 10_000 if use_coreset else 1_000
+    X, A, Z = simulate_archetypes(
+        n_samples=N_SAMPLES,
+        n_archetypes=n_archetypes,
+        n_dimensions=n_dimensions,
+        noise_std=0.15,
+        seed=seed,
+    )
+
+    AA_object = AA(
+        n_archetypes=n_archetypes, use_coreset=use_coreset, coreset_fraction=0.1, delta=0.0, seed=seed, optim=optim_str
+    )
+    AA_object.fit(X)
+    RSS_no_delta = AA_object.RSS
+
+    AA_object = AA(
+        n_archetypes=n_archetypes,
+        use_coreset=use_coreset,
+        coreset_fraction=0.1,
+        delta=delta,
+        seed=seed,
+        optim=optim_str,
+    )
+    AA_object.fit(X)
+    RSS_delta = AA_object.RSS
+
+    assert RSS_delta < RSS_no_delta
+
+
+@pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
+@pytest.mark.parametrize("seed", list(range(3)))
+@pytest.mark.parametrize("use_coreset", [True, False])
+@pytest.mark.parametrize("delta", [0.1, 0.2, 0.4, 0.8])
+@pytest.mark.parametrize("n_archetypes, n_dimensions", [(3, 2), (4, 3)])
+def test_that_relaxation_leads_to_lower_RSS_fast_algos(
+    optim_str: str,
+    seed: int,
+    use_coreset: bool,
+    delta: float,
+    n_archetypes: int,
+    n_dimensions: int,
+) -> None:
+    N_SAMPLES = 10_000 if use_coreset else 1_000
+    X, A, Z = simulate_archetypes(
+        n_samples=N_SAMPLES,
+        n_archetypes=n_archetypes,
+        n_dimensions=n_dimensions,
+        noise_std=0.15,
+        seed=seed,
+    )
+
+    AA_object = AA(
+        n_archetypes=n_archetypes, use_coreset=use_coreset, coreset_fraction=0.1, delta=0.0, seed=seed, optim=optim_str
+    )
+    AA_object.fit(X)
+    RSS_no_delta = AA_object.RSS
+
+    AA_object = AA(
+        n_archetypes=n_archetypes,
+        use_coreset=use_coreset,
+        coreset_fraction=0.1,
+        delta=delta,
+        seed=seed,
+        optim=optim_str,
+    )
+    AA_object.fit(X)
+    RSS_delta = AA_object.RSS
+
+    assert RSS_delta < RSS_no_delta
