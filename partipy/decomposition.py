@@ -57,7 +57,10 @@ def compute_shuffled_pca(
         raise ValueError(
             f"n_components ({n_components}) cannot be larger than the number of features ({adata.shape[1]})."
         )
-    mask_vec = adata.var[mask_var].copy()
+    if mask_var:
+        mask_vec = adata.var[mask_var].copy()
+    else:
+        mask_vec = adata.var.index.copy()
     if layer_key is None:
         X = adata[:, mask_vec].X.copy()
     else:
@@ -132,6 +135,6 @@ def plot_shuffled_pca(adata: anndata.AnnData) -> pn.ggplot:
         + pn.geom_line(pn.aes(x="component", y="variance_unshuffled", color='"Unshuffled"'), size=0.5)
         + pn.scale_color_manual(values={"Unshuffled": "black", "Shuffled": "grey"}, name="Data Type")
         + pn.labs(x="PC Component", y="Variance Explained", title=f"0-{max_component} PC Components above Noise")
-        + pn.theme(legend_position="right")
+        + pn.theme(legend_position="right", figure_size=(6, 3))
     )
     return p

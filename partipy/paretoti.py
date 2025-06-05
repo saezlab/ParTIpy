@@ -453,7 +453,12 @@ def compute_t_ratio(adata) -> None:  # pragma: no cover
 
 @docs.dedent
 def t_ratio_significance(
-    adata, n_iter=100, seed=42, n_jobs=-1, save_permutation_results: bool = False
+    adata,
+    n_iter=100,
+    seed=42,
+    n_jobs=-1,
+    save_permutation_results: bool = False,
+    **optim_kwargs,
 ):  # pragma: no cover
     """
     Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
@@ -494,7 +499,7 @@ def t_ratio_significance(
 
     def compute_randomized_metrics(rng_inner):
         X_perm = np.column_stack([rng_inner.permutation(X[:, col_idx]) for col_idx in range(n_features)])
-        AA_perm = AA(n_archetypes=n_archetypes)
+        AA_perm = AA(n_archetypes=n_archetypes, **optim_kwargs)
         AA_perm.fit(X_perm)
         Z_perm = AA_perm.Z
         rss_perm = AA_perm.RSS
