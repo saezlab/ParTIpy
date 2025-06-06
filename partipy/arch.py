@@ -387,6 +387,8 @@ class AA:
         self.B = B
         if self.use_delta:
             self.alpha = alpha
+        if self.weight or self.use_coreset:
+            self.W = W
         self.RSS_trace = self.RSS_trace[self.RSS_trace > 0.0]
         self.fitting_info = {
             "conv": convergence_flag if self.max_iter > 0 else None,
