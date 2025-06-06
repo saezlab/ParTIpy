@@ -28,7 +28,7 @@ optim : {{{", ".join(f'`"{alg}"`' for alg in OPTIM_ALGS)}}}, default `"{DEFAULT_
 
     - "projected_gradients": Projected gradient descent (PCHA) :cite:`morupArchetypalAnalysisMachine2012`.
     - "frank_wolfe": Frank-Wolfe algorithm :cite:`bauckhageArchetypalAnalysisAutoencoder2015`.
-    - "regularized_nnls": Regularized non-negative least squares :cite:`cutlerArchetypalAnalysis1994`.
+    - "regularized_nnls": Regularized non-negative least squares :cite:`Cutler1994`.
 
     See :data:`partipy.const.OPTIM_ALGS` for all available options.
 """

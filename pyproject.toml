@@ -22,13 +22,8 @@ classifiers = [
 ]
 dependencies = [
   "scanpy",
-  "liana",
-  "decoupler >= 2.0.2", # below 2.0.0 the vignettes won't run
+  "decoupler >= 2.0.0", # below 2.0.0 the vignettes won't run
   "dcor", # decoupler dependency
-  "pybiomart", # required to process the fibroblast data
-  # for debug logging (referenced from the issue template)
-  "session-info2",
-  "requests",
   "nbformat",
   "tqdm",
   "joblib",
@@ -39,7 +34,6 @@ dependencies = [
   "plotnine",
   "matplotlib",
   "plotly",
-  "networkx", # required for crosstalk networks
 ]
 optional-dependencies.dev = [
   "ruff",
@@ -78,6 +72,13 @@ optional-dependencies.doc = [
   "sphinx-tabs",
   "sphinxcontrib-bibtex>=1",
   "sphinxext-opengraph",
+]
+optional-dependencies.extra = [
+  "liana",
+  "pybiomart", # required to process the fibroblast data
+  "session-info2",
+  "requests",
+  "networkx", # required for crosstalk networks
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Homepage = "https://github.com/saezlab/partipy"
