@@ -35,6 +35,14 @@ dependencies = [
   "matplotlib",
   "plotly",
 ]
+optional-dependencies.extra = [
+  "session-info2", # print system and package versions
+  "requests", # required for data download
+  "pybiomart", # required to process the fibroblast data
+  "squidpy", # required to spatial analyses
+  "liana", # required for crosstalk networks
+  "networkx", # required for crosstalk networks
+]
 optional-dependencies.dev = [
   "ruff",
   "mypy",
@@ -54,6 +62,7 @@ optional-dependencies.test = [
   "hypothesis",
   "PyQt5", # needed for hatch test!?
   "tomli>=2.0.1; python_version < '3.11'",  # Only install on older Python
+  "partipy[extra]", # Include extra dependencies
 ]
 optional-dependencies.doc = [
   "docutils>=0.8,!=0.18.*,!=0.19.*",
@@ -72,13 +81,7 @@ optional-dependencies.doc = [
   "sphinx-tabs",
   "sphinxcontrib-bibtex>=1",
   "sphinxext-opengraph",
-]
-optional-dependencies.extra = [
-  "liana",
-  "pybiomart", # required to process the fibroblast data
-  "session-info2",
-  "requests",
-  "networkx", # required for crosstalk networks
+  "partipy[extra]", # Include extra dependencies
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Homepage = "https://github.com/saezlab/partipy"
