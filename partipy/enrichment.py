@@ -55,7 +55,7 @@ def compute_archetype_weights(
             raise ValueError("For 'manual' mode, 'length_scale' must be provided.")
     else:
         raise ValueError("Mode must be either 'automatic' or 'manual'.")
-    print(f"Applied length scale is {length_scale}.")
+    print(f"Applied length scale is {length_scale:.2f}.")
 
     # Weight calculation
     euclidean_dist = cdist(X, Z)
