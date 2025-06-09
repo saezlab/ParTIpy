@@ -14,7 +14,7 @@ def _invert_SPD_mtx(mtx):
 
 def compute_IC_approx(X, X_tilde, n_archetypes):
     """
-    Compute information-theorectic criterion to access goodness-of-fit
+    Compute information-theorectic criterion to assess goodness-of-fit
 
     Reference: Suleman, A., 2017. Validation of archetypal analysis, 2017 IEEE International Conference on Fuzzy Systems (FUZZ-IEEE)pp. 1-6. https://doi.org/10.1109/FUZZ-IEEE.2017.8015385
     (see Equation 13)
@@ -47,7 +47,7 @@ def compute_IC_approx(X, X_tilde, n_archetypes):
 
 def compute_IC(X, X_tilde, n_archetypes):
     """
-    Compute information-theorectic criterion to access goodness-of-fit
+    Compute information-theorectic criterion to assess goodness-of-fit
 
     Reference: Suleman, A., 2017. Validation of archetypal analysis, 2017 IEEE International Conference on Fuzzy Systems (FUZZ-IEEE)pp. 1-6. https://doi.org/10.1109/FUZZ-IEEE.2017.8015385
     (see Equation 12)
@@ -72,8 +72,8 @@ def compute_IC(X, X_tilde, n_archetypes):
     assert np.all(X_cov.shape == np.array(n_features))
     assert np.all(X_tilde_cov.shape == np.array(n_features))
     X_cov_inv = _invert_SPD_mtx(X_cov)
-    K_mu = n_features * (n_archetypes - 1)
-    K_beta = n_archetypes * (n_features - 1)
+    K_mu = n_samples * (n_archetypes - 1)
+    K_beta = n_archetypes * (n_samples - 1)
     IC = np.log(np.square(np.linalg.norm(X - X_tilde)) / (n_samples * n_features)) + 2 * (
         (K_mu + K_beta + 1) / (n_features * np.trace(X_tilde_cov @ X_cov_inv))
     )

@@ -11,7 +11,7 @@ DEFAULT_OPTIM: str = "projected_gradients"
 
 # constants
 LAMBDA: float = 1_000.0
-MIN_ITERATIONS: int = 10
+MIN_ITERATIONS: int = 20
 
 # other defaults
 DEFAULT_MAX_ITER: int = 500

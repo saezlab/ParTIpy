@@ -321,8 +321,11 @@ def compute_bootstrap_variance(
 
         # Compute variance per archetype
         Z_stack = np.stack(Z_list)
-        var_per_archetype = Z_stack.var(axis=0).mean(axis=1)
-        mean_variance = var_per_archetype.mean()
+        assert Z_stack.shape == (n_bootstrap, k, n_features)
+
+        var_per_archetype_per_coordinate = Z_stack.var(axis=0)
+        var_per_archetype = var_per_archetype_per_coordinate.mean(axis=1)
+        var_mean = var_per_archetype.mean()
 
         # Create result dataframe
         bootstrap_data = [
@@ -339,7 +342,7 @@ def compute_bootstrap_variance(
         bootstrap_df["reference"] = bootstrap_df["iter"] == 0
         bootstrap_df["archetype"] = pd.Categorical(bootstrap_df["archetype"])
 
-        bootstrap_df["mean_variance"] = mean_variance
+        bootstrap_df["mean_variance"] = var_mean
 
         archetype_variance_map = dict(zip(np.arange(k), var_per_archetype, strict=False))
         bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].astype(int).map(archetype_variance_map)
@@ -446,6 +449,8 @@ def compute_t_ratio(adata) -> None:  # pragma: no cover
     n_dimensions = adata.uns["AA_config"]["n_dimensions"]
     X = adata.obsm[obsm_key][:, n_dimensions]
     Z = adata.uns["AA_results"]["Z"]
+    if Z.shape[0] <= 2:
+        raise ValueError("Number of archetypes must be greater than 2")
     t_ratio = _compute_t_ratio(X, Z)
     adata.uns["t_ratio"] = t_ratio
     return None
