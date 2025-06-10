@@ -55,7 +55,7 @@ def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimensions: int | list[int
         )
 
     if "AA_config" in adata.uns:
-        print("Warning: 'aa_config' already exists in adata.uns and will be overwritten.")
+        print('Warning: "AA_config" already exists in adata.uns and will be overwritten.')
 
     adata.uns["AA_config"] = {
         "obsm_key": obsm_key,

@@ -1,5 +1,7 @@
 import hashlib
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import anndata
@@ -160,7 +162,6 @@ def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbo
         },
     }
 
-    # Download files if needed
     for file_dict in file_dicts.values():
         filepath = data_dir / file_dict["filename"]
         url = file_dict["url"]
@@ -168,13 +169,26 @@ def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbo
         if _file_needs_download(filepath, EXPECTED_CHECKSUMS[file_dict["filename"]]) or not use_cache:
             if verbose:
                 print(f"Downloading {url} to {filepath}...")
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            with open(filepath, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            if verbose:
-                print(f"Downloaded: {filepath}")
+
+            try:
+                # NOTE: we use urllib.request instead of request library to bypass the requests-cache
+                # because we the data we donwload exceed the default limit of the cache size
+                # urllib instead has no automatic caching
+                with urllib.request.urlopen(url) as response:
+                    with open(filepath, "wb") as f:
+                        # Download in chunks to handle large files
+                        while True:
+                            chunk = response.read(8192)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+
+                if verbose:
+                    print(f"Downloaded: {filepath}")
+
+            except urllib.error.URLError as e:
+                print(f"Error downloading {url}: {e}")
+                raise
         else:
             if verbose:
                 print(f"File already exists, skipping: {filepath}")
