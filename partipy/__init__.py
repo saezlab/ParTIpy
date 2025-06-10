@@ -33,6 +33,7 @@ from .plotting import (
     plot_bootstrap_3D,
     plot_bootstrap_variance,
     plot_IC,
+    plot_top_genes,
     plot_var_explained,
     radarplot_meta_enrichment,
 )

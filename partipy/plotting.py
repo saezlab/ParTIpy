@@ -875,3 +875,33 @@ def radarplot_meta_enrichment(meta_enrich: pd.DataFrame, color_map: None | dict 
 
     plt.close(fig)
     return fig
+
+
+def plot_top_genes(archetype_expression, arch_idx, top_n=20):
+    """TODO"""
+    archetype_expression_long = archetype_expression.reset_index(names="archetype").melt(
+        id_vars="archetype", var_name="feature", value_name="expression"
+    )
+    top_features = (
+        archetype_expression_long.loc[archetype_expression_long["archetype"] == arch_idx, :]
+        .sort_values("expression")
+        .tail(top_n)
+        .loc[:, "feature"]
+        .tolist()
+    )
+    plot_df = archetype_expression_long.loc[archetype_expression_long["feature"].isin(top_features), :].copy()
+
+    feature_order = plot_df.loc[plot_df["archetype"] == arch_idx].sort_values("expression")["feature"].tolist()
+    archetype_order = list(range(len(plot_df["archetype"].unique())))
+
+    plot_df["archetype"] = pd.Categorical(plot_df["archetype"], categories=archetype_order)
+    plot_df["feature"] = pd.Categorical(plot_df["feature"], categories=feature_order)
+
+    p = (
+        pn.ggplot(plot_df)
+        + pn.geom_col(pn.aes(x="feature", y="expression", fill="archetype"), position=pn.position_dodge())
+        + pn.coord_flip()
+        + pn.labs(y="Expression", x="Feature", fill="Archetype")
+    )
+
+    return p
