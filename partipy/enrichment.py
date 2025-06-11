@@ -34,8 +34,7 @@ def compute_archetype_weights(
     Returns
     -------
     np.ndarray
-        - If `X` is an AnnData object, the weights are added to `X.obsm["cell_weights"]` and nothing is returned.
-        - If `X` is a numpy array, a 2D array of shape (n_samples, n_archetypes) representing the weights for each cell-archetype pair.
+        - If `save_to_anndata` is True, the weights are added to `X.obsm["cell_weights"]` and otherwise the weights are returned.
     """
     # input validation
     _validate_aa_config(adata=adata)
@@ -60,6 +59,7 @@ def compute_archetype_weights(
     # Weight calculation
     euclidean_dist = cdist(X, Z)
     weights = np.exp(-(euclidean_dist**2) / (2 * length_scale**2))  # type: ignore[operator]
+    weights /= weights.sum(axis=1, keepdims=True)
     weights = weights.astype(np.float32)
 
     if save_to_anndata:
@@ -102,8 +102,7 @@ def compute_archetype_expression(adata: anndata.AnnData, layer: str | None = Non
     else:
         expr = adata.layers[layer]
 
-    pseudobulk = np.einsum("ij,jk->ik", weights, expr)
-    pseudobulk /= weights.sum(axis=1, keepdims=True)
+    pseudobulk = weights @ expr
 
     pseudobulk_df = pd.DataFrame(pseudobulk, columns=adata.var_names)
     pseudobulk_df.columns.name = None
@@ -311,7 +310,6 @@ def compute_meta_enrichment(adata: anndata.AnnData, meta_col: str, datatype: str
 
         # Compute weighted enrichment
         weighted_meta = np.einsum("ij,jk->ik", weights, df_encoded)
-        weighted_meta /= weights.sum(axis=1, keepdims=True)
 
         # Normalization
         weighted_meta = weighted_meta / np.sum(weighted_meta, axis=1, keepdims=True)
@@ -322,7 +320,6 @@ def compute_meta_enrichment(adata: anndata.AnnData, meta_col: str, datatype: str
 
         # Compute weighted enrichment
         weighted_meta = np.einsum("ij,jk->ik", weights, metadata)
-        weighted_meta /= weights.sum(axis=1, keepdims=True)
 
         weighted_meta_df = pd.DataFrame(weighted_meta, columns=[meta_col])
 
