@@ -33,7 +33,7 @@ def test_that_archetypes_can_be_identified_using_coresets_and_uniform_initializa
     AA_object = AA(
         n_archetypes=n_archetypes,
         optim=optim_str,
-        use_coreset=True,
+        coreset_algorithm="standard",
         coreset_fraction=0.10,
         init="uniform",
         seed=seed,
@@ -95,7 +95,7 @@ def test_that_archetypes_can_be_identified_using_coresets_and_uniform_initializa
     AA_object = AA(
         n_archetypes=n_archetypes,
         optim=optim_str,
-        use_coreset=True,
+        coreset_algorithm="standard",
         coreset_fraction=0.10,
         init="uniform",
         seed=seed,

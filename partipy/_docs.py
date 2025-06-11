@@ -26,47 +26,53 @@ _optim = f"""\
 optim : {{{", ".join(f'`"{alg}"`' for alg in OPTIM_ALGS)}}}, default `"{DEFAULT_OPTIM}"`
     Optimization algorithm to use. Options are:
 
-    - "projected_gradients": Projected gradient descent (PCHA) :cite:`morupArchetypalAnalysisMachine2012`.
-    - "frank_wolfe": Frank-Wolfe algorithm :cite:`bauckhageArchetypalAnalysisAutoencoder2015`.
-    - "regularized_nnls": Regularized non-negative least squares :cite:`Cutler1994`.
+    - `"projected_gradients"`: Projected gradient descent (PCHA) :cite:`morupArchetypalAnalysisMachine2012`.
+    - `"frank_wolfe"`: Frank-Wolfe algorithm :cite:`bauckhageArchetypalAnalysisAutoencoder2015`.
+    - `"regularized_nnls"`: Regularized non-negative least squares :cite:`Cutler1994`.
 
-    See :data:`partipy.const.OPTIM_ALGS` for all available options.
+    See `partipy.const.OPTIM_ALGS` for all available options.
 """
 
 _init = f"""\
 init : {{{", ".join(f'`"{alg}"`' for alg in INIT_ALGS)}}}, default `"{DEFAULT_INIT}"`
     Initialization method for the archetypes. Options are:
 
-    - "plus_plus": Archetypal++ initialization :cite:`morupArchetypalAnalysisMachine2012`.
-    - "furthest_sum": Utilizes the furthest sum algorithm :cite:`morupArchetypalAnalysisMachine2012`.
-    - "uniform": Random initialization.
+    - `"plus_plus"`: Archetypal++ initialization :cite:`mairArchetypalAnalysisRethinking2024`.
+    - `"furthest_sum"`: Utilizes the furthest sum algorithm :cite:`morupArchetypalAnalysisMachine2012`.
+    - `"uniform"`: Random initialization.
 
-    See :data:`partipy.const.INIT_ALGS` for all available options.
+    See `partipy.const.INIT_ALGS` for all available options.
 """
 
 _weight = f"""\
 weight : {{{", ".join(f'`"{alg}"`' if alg is not None else "`None`" for alg in WEIGHT_ALGS)}}}, default `{DEFAULT_WEIGHT}`
-    Weighting scheme for robust archetypal analysis. Options are:
+    Weighting scheme for robust archetypal analysis, based on :cite:`eugsterWeightedRobustArchetypal2011`. Options are:
 
-    - None: No weighting (standard archetypal analysis).
-    - "bisquare": Bisquare weighting for robust estimation.
-    - "huber": Huber weighting for robust estimation.
+    - `None`: No weighting (standard archetypal analysis).
+    - `"bisquare"`: Bisquare weighting for robust estimation.
+    - `"huber"`: Huber weighting for robust estimation.
 
-    See :data:`partipy.const.WEIGHT_ALGS` for all available options.
+    See `partipy.const.WEIGHT_ALGS` for all available options.
 """
 
-_coreset = f"""\
-coreset : {{{", ".join(f'`"{alg}"`' for alg in CORESET_ALGS)}}}, default `"default"`
-    Coreset algorithm to use for data reduction. Options are:
+_coreset_algorithm = f"""\
+coreset_algorithm : {{{", ".join(f'`"{alg}"`' for alg in CORESET_ALGS)}}}, default `None`
+    Coreset algorithm to use for data reduction, based on :cite:`mairCoresetsArchetypalAnalysis2019`. Options are:
 
-    - "default": Standard coreset construction.
-    - "lightweight_kmeans": Lightweight k-means based coreset.
-    - "uniform": Uniform sampling based coreset.
+    - `None`: No coreset is used.
+    - `"standard"`: Coreset construction for archetypal analysis :cite:`mairCoresetsArchetypalAnalysis2019`. Recommended option if data reduction is needed.
+    - `"lightweight_kmeans"`: Lightweight coreset for k-means clustering :cite:`lucicStrongCoresetsHard2016`.
+    - `"uniform"`: Coreset based on uniform sampling.
 
-    See :data:`partipy.const.CORESET_ALGS` for all available options.
+    See `partipy.const.CORESET_ALGS` for all available options.
 """
 
-# Core parameters
+_delta = """\
+delta: float, default: `0.0`
+    Parameter that relaxes the constraint that B must be convex combination of the data points.
+    Must be in the interval [0, 1).
+"""
+
 _n_archetypes = """\
 n_archetypes : int
     Number of archetypes to compute."""
@@ -91,7 +97,8 @@ docs = DocstringProcessor(
     init=_init,
     optim=_optim,
     weight=_weight,
-    coreset=_coreset,
+    coreset_algorithm=_coreset_algorithm,
+    delta=_delta,
     obsm_key=_obsm_key,
     max_iter=_max_iter,
     rel_tol=_rel_tol,

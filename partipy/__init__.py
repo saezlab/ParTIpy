@@ -26,7 +26,6 @@ from .plotting import (
     barplot_meta_enrichment,
     heatmap_meta_enrichment,
     plot_2D,
-    plot_3D,
     plot_archetypes_2D,
     plot_archetypes_3D,
     plot_bootstrap_2D,

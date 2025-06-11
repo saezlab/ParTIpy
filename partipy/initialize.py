@@ -23,7 +23,10 @@ def _init_A(n_samples: int, n_archetypes: int, seed: int, epsilon: float = 1e-9)
 
 
 def _init_uniform(
-    X: np.ndarray, n_archetypes: int, seed: int = 42, return_indices: bool = False
+    X: np.ndarray,
+    n_archetypes: int,
+    seed: int = 42,
+    return_indices: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, list[int]]:
     """Random selection of data points from X to form initial archetypes.
 
@@ -47,7 +50,8 @@ def _init_uniform(
     X = np.ascontiguousarray(X, dtype=np.float32)
     n_samples, _ = X.shape
     rng = np.random.default_rng(seed=seed)
-    selected_indices = list(rng.choice(a=n_samples, size=n_archetypes, replace=False))
+    # explicitly coarsing to python ints
+    selected_indices = [int(i) for i in rng.choice(a=n_samples, size=n_archetypes, replace=False)]
     B = _construct_B_from_indices(X=X, indices=selected_indices)
     if return_indices:
         return B, selected_indices

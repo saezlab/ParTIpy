@@ -329,12 +329,14 @@ def compute_bootstrap_variance(
 
         # Create result dataframe
         bootstrap_data = [
-            pd.DataFrame(Z, columns=[f"x{i}" for i in range(n_features)]).assign(archetype=np.arange(k), iter=i + 1)
+            pd.DataFrame(Z, columns=[f"{obsm_key}_{dim}" for dim in n_dimensions]).assign(
+                archetype=np.arange(k), iter=i + 1
+            )
             for i, Z in enumerate(Z_list)
         ]
         bootstrap_df = pd.concat(bootstrap_data)
 
-        df = pd.DataFrame(ref_Z, columns=[f"x{i}" for i in range(n_features)])
+        df = pd.DataFrame(ref_Z, columns=[f"{obsm_key}_{dim}" for dim in n_dimensions])
         df["archetype"] = np.arange(k)
         df["iter"] = 0
 

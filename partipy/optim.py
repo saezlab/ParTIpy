@@ -211,7 +211,7 @@ def _compute_B_projected_gradients(
     WX: np.ndarray,
     A: np.ndarray,
     B: np.ndarray,
-    alpha: np.ndarray = None,
+    alpha: np.ndarray = None,  # type: ignore[assignment]
     derivative_max_iter: int | np.int32 = 40,
     line_search_max_iter: int | np.int32 = 40,
     rel_tol_ls: float | np.float32 = 1e-3,
@@ -475,7 +475,7 @@ def _compute_B_frank_wolfe(
     WX: np.ndarray,
     A: np.ndarray,
     B: np.ndarray,
-    alpha: np.ndarray = None,
+    alpha: np.ndarray = None,  # type: ignore[assignment]
     derivative_max_iter: int | np.int32 = 80,
     line_search_max_iter: int | np.int32 = 40,
     rel_tol_ls: float | np.float32 = 1e-3,
@@ -642,7 +642,7 @@ def _compute_alpha(
     B: np.ndarray,
     A: np.ndarray,
     alpha: np.ndarray,
-    delta: np.float32,
+    delta: float | np.float32,
     derivative_max_iter: int | np.int32 = 1,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
@@ -683,6 +683,7 @@ def _compute_alpha(
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
 
     # ensure correct data type for parameters
+    delta = np.float32(delta)
     derivative_max_iter = np.int32(derivative_max_iter)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)
