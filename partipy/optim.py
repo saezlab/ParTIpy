@@ -179,13 +179,14 @@ def _compute_A_projected_gradients_jit(
         # make sure to multiply things in the right order to keep matrix sizes minimal
         G = np.float32(2.0) * (np.dot(A, ZZT) - XZT)  # G has shape N x K
         G = G - np.sum(A * G, axis=1)[:, None]  # chain rule of projection
+        # G *= np.sign(np.maximum(A, 0))  # chain rule of ReLU, not necessary since the corresponding elements in A are set to 0
 
         # line search for optimal step size
         prev_RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
         prev_A = A
         for _ in range(20):
-            A = (prev_A - mu * G).clip(0)
-            A = A / (np.sum(A, axis=1)[:, None] + np.finfo(np.float32).eps)  # Avoid division by zero
+            A = (prev_A - mu * G).clip(0) + np.float32(1e-9)  # avoid division by zero
+            A = A / np.sum(A, axis=1)[:, None]
             RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
@@ -306,15 +307,15 @@ def _compute_B_projected_gradients_jit(
     for _ in range(derivative_max_iter):
         # make sure to multiply things in the right order to keep matrix sizes minimal
         G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
-        G /= ND
+        G /= ND  # normalize the gradient
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection
 
         # line search for optimal step size
         prev_RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
         prev_B = B
         for _ in range(20):
-            B = (prev_B - mu * G).clip(0)
-            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # avoid division by zero
+            B = (prev_B - mu * G).clip(0) + np.float32(1e-9)  # avoid division by zero
+            B = B / np.sum(B, axis=1)[:, None]
             RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
@@ -368,8 +369,8 @@ def _compute_alpha_B_projected_gradients_jit(
         prev_RSS = _compute_RSS_ABXalpha(X=X, A=A, B=B, WX=WX, alpha=alpha)
         prev_B = B
         for _ in range(line_search_max_iter):
-            B = (prev_B - mu * G).clip(0)
-            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # avoid division by zero
+            B = (prev_B - mu * G).clip(0) + np.float32(1e-9)  # avoid division by zero
+            B = B / np.sum(B, axis=1)[:, None]
             RSS = _compute_RSS_ABXalpha(X=X, A=A, B=B, WX=WX, alpha=alpha)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
@@ -459,7 +460,7 @@ def _compute_A_frank_wolfe_jit(
             A = _add_argmins_per_row(mtx=A, argmins=argmins, mu=mu)
             RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
-                mu *= np.float32(1.2)
+                mu *= np.float32(1.2) if (mu > (1.0 / 1.2)) else np.float32(1)  # ensure that mu stays in [0, 1]
                 break
             else:
                 mu *= np.float32(0.5)
@@ -579,7 +580,7 @@ def _compute_B_frank_wolfe_jit(
             B = _add_argmins_per_row(mtx=B, argmins=argmins, mu=mu)
             RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
-                mu *= np.float32(1.2)
+                mu *= np.float32(1.2) if (mu > (1.0 / 1.2)) else np.float32(1)  # ensure that mu stays in [0, 1]
                 break
             else:
                 mu *= np.float32(0.5)
