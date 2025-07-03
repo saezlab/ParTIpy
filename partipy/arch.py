@@ -349,7 +349,10 @@ class AA:
                 Z = np.dot(B, X_raw)
             A = _init_A(n_samples=self.n_samples, n_archetypes=self.n_archetypes, seed=self.seed)
             A = _compute_A_projected_gradients(
-                X=X_raw.astype(np.float32), Z=Z.astype(np.float32), A=A.astype(np.float32)
+                X=X_raw.astype(np.float32),
+                Z=Z.astype(np.float32),
+                A=A.astype(np.float32),
+                derivative_max_iter=200,  # put this sufficiently high
             )
 
         # If using weights, we need to recalculate A and B using the unweighted data
