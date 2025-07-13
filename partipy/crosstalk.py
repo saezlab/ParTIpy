@@ -5,8 +5,41 @@ import numpy as np
 import pandas as pd
 
 
-def get_specific_genes_per_archetype(archetype_expression, min_score=-np.inf, max_score=np.inf):
-    """TODO"""
+def get_specific_genes_per_archetype(archetype_expression, min_score=0.05, max_score=np.inf):
+    """
+    Calculate gene specificity scores for each archetype and filter genes based on specificity.
+
+    This function identifies genes that are specifically expressed in each archetype by comparing
+    their expression levels across all archetypes. It calculates a specificity score for each gene
+    in each archetype, representing how much more highly expressed the gene is in that archetype
+    compared to others.
+
+    Parameters
+    ----------
+    archetype_expression : pd.DataFrame
+        DataFrame with genes as rows and archetypes as columns, containing expression values
+        (typically z-scored logp1 normalized gene expression)
+    min_score : float, default=0.05
+        Minimum specificity score threshold for gene filtering
+    max_score : float, default=np.inf
+        Maximum specificity score threshold for gene filtering
+
+    Returns
+    -------
+    dict
+        Dictionary where keys are archetype column names and values are DataFrames containing:
+        - 'z_score': Original expression value for the gene in this archetype
+        - 'max_z_score_others': Maximum expression value of this gene across all other archetypes
+        - 'specificity_score': Minimum difference between this archetype's expression and all others
+        - 'gene': Gene identifier
+        Each DataFrame is sorted by specificity_score in descending order and filtered by score thresholds
+
+    Notes
+    -----
+    The specificity score is calculated as the minimum difference between the gene's expression
+    in the current archetype and its expression in all other archetypes. Higher positive values
+    indicate genes that are more specifically expressed in that archetype.
+    """
     expr_df = archetype_expression.T
     archetype_dict = {}
     for col in expr_df.columns:
@@ -35,7 +68,49 @@ def get_specific_genes_per_archetype(archetype_expression, min_score=-np.inf, ma
 
 
 def get_archetype_crosstalk(archetype_genes: dict, lr_resource):
-    """TODO"""
+    """
+    Identify potential ligand-receptor interactions between different archetypes.
+
+    This function analyzes crosstalk between archetypes by finding ligand-receptor pairs
+    where the ligand is specifically expressed in one archetype (sender) and the receptor
+    is specifically expressed in another archetype (receiver). It enriches the interaction
+    data with specificity scores from both sender and receiver archetypes.
+
+    Parameters
+    ----------
+    archetype_genes : dict
+        Dictionary from get_specific_genes_per_archetype() where keys are archetype identifiers
+        and values are DataFrames containing gene specificity information with columns:
+        - 'gene': Gene identifier
+        - 'z_score': Expression z-score in the archetype
+        - 'specificity_score': Specificity score for the gene in this archetype
+    lr_resource : pd.DataFrame
+        Ligand-receptor resource DataFrame containing at minimum:
+        - 'ligand': Ligand gene identifier
+        - 'receptor': Receptor gene identifier
+        Additional columns (e.g., pathway, database source) will be preserved
+
+    Returns
+    -------
+    dict
+        Nested dictionary structure where:
+        - First level keys: sender archetype identifiers
+        - Second level keys: receiver archetype identifiers
+        - Values: DataFrames containing ligand-receptor interactions with columns:
+            - Original lr_resource columns (ligand, receptor, etc.)
+            - 'ligand_z_score': Expression z-score of ligand in sender archetype
+            - 'ligand_specificity_score': Specificity score of ligand in sender archetype
+            - 'receptor_z_score': Expression z-score of receptor in receiver archetype
+            - 'receptor_specificity_score': Specificity score of receptor in receiver archetype
+
+    Notes
+    -----
+    - Self-interactions (same archetype as sender and receiver) are included
+    - Only interactions where both ligand and receptor are found in the respective
+      archetype-specific gene lists are retained
+    - The function preserves all original columns from lr_resource while adding
+      expression and specificity information
+    """
     interactions_dict: dict[int, dict] = {}
     for sender_arch in archetype_genes.keys():
         interactions_dict[sender_arch] = {}
@@ -81,8 +156,37 @@ def plot_weighted_network(
     seed=42,
     figsize=(8, 8),
     plot_edge_labels=False,
+    return_fig=False,
+    show=True,
 ):
-    """Create a visualization with angle-based edge label placement."""
+    """Create a visualization with angle-based edge label placement.
+
+    Parameters
+    ----------
+    specific_genes_per_archetype : dict
+        Dictionary mapping archetype indices to specific genes
+    archetype_crosstalk_dict : dict
+        Dictionary containing crosstalk information between archetypes
+    threshold : float, default=0.0
+        Minimum weight threshold for edges to be displayed
+    layout : str, default="circular"
+        Layout algorithm ("circular", "spring", "shell")
+    seed : int, default=42
+        Random seed for reproducible layouts
+    figsize : tuple, default=(8, 8)
+        Figure size in inches
+    plot_edge_labels : bool, default=False
+        Whether to plot edge labels
+    return_fig : bool, default=False
+        If True, return the figure object instead of showing it
+    show : bool, default=True
+        Whether to display the figure using plt.show()
+
+    Returns
+    -------
+    matplotlib.figure.Figure or None
+        Returns figure object if return_fig=True, otherwise None
+    """
     # create interaction matrix
     interactions_mtx = np.zeros((len(specific_genes_per_archetype), len(specific_genes_per_archetype)))
     for sender_arch in specific_genes_per_archetype.keys():
@@ -200,4 +304,13 @@ def plot_weighted_network(
 
     ax.axis("off")
     plt.tight_layout()
-    plt.show()
+
+    # Return figure or show it
+    if return_fig:
+        plt.close()
+        return fig
+    else:
+        if show:
+            plt.show()
+        plt.close()
+        return None

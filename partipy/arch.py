@@ -278,7 +278,7 @@ class AA:
                 RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
 
             elif self.coreset_algorithm:
-                # compute A using the unweighted data X
+                # compute A using the unweighted data X, because optimal A is the same if we consider the weights or not
                 A = compute_A(X=X, Z=Z, A=A, **self.optim_kwargs)
                 WA = W[:, None] * A
                 if self.use_delta:

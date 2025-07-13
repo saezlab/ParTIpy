@@ -355,13 +355,13 @@ def _compute_alpha_B_projected_gradients_jit(
     # terms that can be pre-computed
     alpha_A = alpha[None, :] * A
     AT_WX_XT = np.dot(np.dot(alpha_A.T, WX), X.T)
-    AT_A = np.dot(alpha_A.T, alpha_A)
+    alpha_AT_A_alpha = np.dot(alpha_A.T, alpha_A)
 
     ND = np.float32(X.shape[0] * X.shape[1])
 
     for _ in range(derivative_max_iter):
         # make sure to multiply things in the right order to keep matrix sizes minimal
-        G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
+        G = np.float32(2.0) * (np.dot(np.dot(alpha_AT_A_alpha, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
         G /= ND
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection
 
