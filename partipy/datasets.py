@@ -22,7 +22,7 @@ EXPECTED_CHECKSUMS = {
 DATA_PATH = Path("data")
 
 
-def _compute_partial_sha256(file_path: Path, chunk_size=20 * 1024 * 1024) -> str:
+def _compute_partial_sha256(file_path: Path, chunk_size=20 * 1024 * 1024) -> str:  # pragma: no cover
     """Compute a partial SHA256 hash from the start and end of the file."""
     sha256 = hashlib.sha256()
     file_size = file_path.stat().st_size
@@ -39,7 +39,7 @@ def _compute_partial_sha256(file_path: Path, chunk_size=20 * 1024 * 1024) -> str
     return sha256.hexdigest()
 
 
-def _file_needs_download(file_path: Path, expected_hash: str) -> bool:
+def _file_needs_download(file_path: Path, expected_hash: str) -> bool:  # pragma: no cover
     if not file_path.exists():
         return True
     actual_hash = _compute_partial_sha256(file_path)
@@ -49,7 +49,9 @@ def _file_needs_download(file_path: Path, expected_hash: str) -> bool:
     return False
 
 
-def load_hepatocyte_data(use_cache: bool = True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):
+def load_hepatocyte_data(
+    use_cache: bool = True, data_dir=Path(".") / DATA_PATH, verbose: bool = False
+):  # pragma: no cover
     """
     Download hepatocyte data from:
 
@@ -131,7 +133,7 @@ def load_hepatocyte_data(use_cache: bool = True, data_dir=Path(".") / DATA_PATH,
     return adata
 
 
-def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):
+def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):  # pragma: no cover
     """
     Download hepatocyte data from:
      Ben-Moshe, S., ..., Elinav, E., Itzkovitz, S., 2022
@@ -221,7 +223,7 @@ def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbo
     return adata
 
 
-def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):
+def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):  # pragma: no cover
     """
     Download fibroblast data from:
 
@@ -323,7 +325,7 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
     return adata
 
 
-def load_ncM_lupus_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):
+def load_ncM_lupus_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose: bool = False):  # pragma: no cover
     """
     Download non-classical monocyte data from:
 

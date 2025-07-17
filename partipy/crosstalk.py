@@ -17,7 +17,7 @@ def get_specific_genes_per_archetype(archetype_expression, min_score=0.05, max_s
     Parameters
     ----------
     archetype_expression : pd.DataFrame
-        DataFrame with genes as rows and archetypes as columns, containing expression values
+        DataFrame with archetypes as rows and genes as columns, containing expression values
         (typically z-scored logp1 normalized gene expression)
     min_score : float, default=0.05
         Minimum specificity score threshold for gene filtering
@@ -158,7 +158,7 @@ def plot_weighted_network(
     plot_edge_labels=False,
     return_fig=False,
     show=True,
-):
+):  # pragma: no cover
     """Create a visualization with angle-based edge label placement.
 
     Parameters
