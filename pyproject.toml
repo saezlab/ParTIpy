@@ -116,10 +116,10 @@ scripts.run_all_tests = "pytest -v --cov=partipy --color=yes --durations=0"
 deps = [ "stable" ]
 python = [ "3.10", "3.13" ]
 
-# test the newest supported Python version also with pre-release deps
-[[tool.hatch.envs.hatch-test.matrix]]
-deps = [ "pre" ]
-python = [ "3.13" ]
+# test the newest supported Python version also with pre-release deps (currently deactivated)
+# [[tool.hatch.envs.hatch-test.matrix]]
+# deps = [ "pre" ]
+# python = [ "3.13" ]
 
 [tool.hatch.envs.hatch-test.overrides]
 # If the matrix variable `deps` is set to "pre",
