@@ -283,16 +283,16 @@ def test_that_scaling_X_does_not_affect_A(
 
 
 @pytest.mark.parametrize("optim_str", OPTIM_ALGS)
-@pytest.mark.parametrize("use_coreset", [True, False])
+@pytest.mark.parametrize("coreset_algorithm", [None, "standard"])
 def test_that_relaxation_leads_to_lower_RSS(
     optim_str: str,
-    use_coreset: bool,
+    coreset_algorithm,
 ) -> None:
     seed = 42
     delta = 0.2
     n_archetypes = 3
     n_dimensions = 2
-    N_SAMPLES = 10_000 if use_coreset else 1_000
+    N_SAMPLES = 10_000 if coreset_algorithm else 1_000
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
@@ -302,14 +302,19 @@ def test_that_relaxation_leads_to_lower_RSS(
     )
 
     AA_object = AA(
-        n_archetypes=n_archetypes, use_coreset=use_coreset, coreset_fraction=0.1, delta=0.0, seed=seed, optim=optim_str
+        n_archetypes=n_archetypes,
+        coreset_algorithm=coreset_algorithm,
+        coreset_fraction=0.1,
+        delta=0.0,
+        seed=seed,
+        optim=optim_str,
     )
     AA_object.fit(X)
     RSS_no_delta = AA_object.RSS
 
     AA_object = AA(
         n_archetypes=n_archetypes,
-        use_coreset=use_coreset,
+        coreset_algorithm=coreset_algorithm,
         coreset_fraction=0.1,
         delta=delta,
         seed=seed,
@@ -323,18 +328,18 @@ def test_that_relaxation_leads_to_lower_RSS(
 
 @pytest.mark.parametrize("optim_str", FAST_OPTIM_ALGS)
 @pytest.mark.parametrize("seed", list(range(3)))
-@pytest.mark.parametrize("use_coreset", [True, False])
+@pytest.mark.parametrize("coreset_algorithm", [None, "standard"])
 @pytest.mark.parametrize("delta", [0.1, 0.2, 0.4, 0.8])
 @pytest.mark.parametrize("n_archetypes, n_dimensions", [(3, 2), (4, 3)])
 def test_that_relaxation_leads_to_lower_RSS_fast_algos(
     optim_str: str,
     seed: int,
-    use_coreset: bool,
+    coreset_algorithm,
     delta: float,
     n_archetypes: int,
     n_dimensions: int,
 ) -> None:
-    N_SAMPLES = 10_000 if use_coreset else 1_000
+    N_SAMPLES = 10_000 if coreset_algorithm else 1_000
     X, A, Z = simulate_archetypes(
         n_samples=N_SAMPLES,
         n_archetypes=n_archetypes,
@@ -344,14 +349,19 @@ def test_that_relaxation_leads_to_lower_RSS_fast_algos(
     )
 
     AA_object = AA(
-        n_archetypes=n_archetypes, use_coreset=use_coreset, coreset_fraction=0.1, delta=0.0, seed=seed, optim=optim_str
+        n_archetypes=n_archetypes,
+        coreset_algorithm=coreset_algorithm,
+        coreset_fraction=0.1,
+        delta=0.0,
+        seed=seed,
+        optim=optim_str,
     )
     AA_object.fit(X)
     RSS_no_delta = AA_object.RSS
 
     AA_object = AA(
         n_archetypes=n_archetypes,
-        use_coreset=use_coreset,
+        coreset_algorithm=coreset_algorithm,
         coreset_fraction=0.1,
         delta=delta,
         seed=seed,

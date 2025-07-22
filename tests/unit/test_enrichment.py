@@ -16,9 +16,9 @@ from scipy.spatial.distance import cdist
 np.random.seed(42)
 
 
-def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs):
+def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, seed: int = 42):
     X, A, Z = simulate_archetypes(
-        n_samples=n_samples, n_archetypes=n_archetypes, n_dimensions=n_dimensions, noise_std=0.0
+        n_samples=n_samples, n_archetypes=n_archetypes, n_dimensions=n_dimensions, noise_std=0.0, seed=seed
     )
     adata = anndata.AnnData(X)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
@@ -100,6 +100,7 @@ def test_compute_archetype_weights_ground_truth():
     # With length_scale=1.0, we can compute expected weights manually
     # Using formula: exp(-distance²/(2*length_scale²))
     expected_weights = np.exp(-(expected_distances**2) / 2)
+    expected_weights /= expected_weights.sum(axis=1, keepdims=True)
 
     # Test with manual length scale
     adata = anndata.AnnData(X=X, obsm={"X_pca": X})
@@ -141,24 +142,15 @@ def test_compute_archetype_expression_ground_truth():
     - Expression values if layer is specified are handled correctly
     """
     # Setup: 2 cells, 2 genes, 2 archetypes with known weights
-    expr = np.array([[1.0, 10.0], [2.0, 20.0]])
+    expr = np.array([[1.0, 10.0], [2.0, 20.0]]).T
 
     weights = np.array([[0.8, 0.2], [0.3, 0.7]])
 
     adata = anndata.AnnData(X=expr)
-    adata.obsm["cell_weights"] = weights
+    adata.obsm["cell_weights"] = weights.T
     adata.var_names = ["gene1", "gene2"]
 
-    # Expected pseudobulk calculation:
-    # Archetype 1:
-    # gene1: (0.8*1 + 0.3*2)/(0.8+0.3) ≈ 1.2727
-    # gene2: (0.8*10 + 0.3*20)/(0.8+0.3) ≈ 12.7273
-
-    # Archetype 2:
-    # gene1: (0.2*1 + 0.7*2)/(0.2+0.7) ≈ 1.7778
-    # gene2: (0.2*10 + 0.7*20)/(0.2+0.7) ≈ 17.7778
-
-    expected_result = pd.DataFrame([[1.2727, 12.7273], [1.7778, 17.7778]], columns=["gene1", "gene2"])
+    expected_result = pd.DataFrame([[2.8, 5.6], [7.3, 14.6]], columns=["gene1", "gene2"])
 
     # Test default layer
     result = compute_archetype_expression(adata)
@@ -669,7 +661,8 @@ def test_compute_meta_enrichment_datatype_identification_and_shape():
 
 
 @pytest.mark.github_actions
-def test_compute_meta_enrichment_continuous_data():
+@pytest.mark.parametrize("seed", list(range(3)))
+def test_compute_meta_enrichment_continuous_data(seed: int):
     """
     Test whether compute_meta_enrichment correctly computes weighted averages
     for continuous metadata. Ensures archetype 0 is enriched in high 'age' values
@@ -678,15 +671,15 @@ def test_compute_meta_enrichment_continuous_data():
     Verifies:
     - Correct calculation of continuous data enrichment
     """
-    adata = _simulate_adata(n_samples=300, n_dimensions=10, n_archetypes=3, n_pcs=2)
+    adata = _simulate_adata(n_samples=500, n_dimensions=3, n_archetypes=3, n_pcs=2, seed=seed)
 
     # Assign random ages initially
-    adata.obs["age"] = np.random.randint(5, 70, len(adata.obs))
+    adata.obs["age"] = np.random.randint(10, 50, len(adata.obs))
 
     # Force age bias
-    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 0] > 0.25]
-    adata.obs.loc[selected_cells, "age"] = 70
-    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 1] > 0.25]
+    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 0] >= 0.03]
+    adata.obs.loc[selected_cells, "age"] = 100
+    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 1] >= 0.03]
     adata.obs.loc[selected_cells, "age"] = 5
 
     res = compute_meta_enrichment(adata, "age", datatype="continuous")

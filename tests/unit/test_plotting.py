@@ -15,7 +15,6 @@ from partipy.plotting import (
     barplot_meta_enrichment,
     heatmap_meta_enrichment,
     plot_2D,
-    plot_3D,
     plot_archetypes_2D,
     plot_archetypes_3D,
     plot_bootstrap_2D,
@@ -72,17 +71,6 @@ mock_meta_enrich_table = _mock_meta_enrich_table()
 def test_plot_2D(mock_adata=mock_adata):
     p = plot_2D(mock_adata.X, mock_adata.uns["AA_results"]["Z"])
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
-
-
-### plot_3D ###
-
-
-@pytest.mark.github_actions
-def test_plot_3D(mock_adata=mock_adata):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        p = plot_3D(mock_adata.X, mock_adata.uns["AA_results"]["Z"])
-        assert isinstance(p, go.Figure), "Expected a plotly graph_objects Figure"
 
 
 ### plot_archetypes_2D ###

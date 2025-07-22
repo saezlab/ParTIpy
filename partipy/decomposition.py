@@ -88,7 +88,7 @@ def compute_shuffled_pca(
         variance_shuffled[shuffle_iter, :] = pca_shuffled.explained_variance_
 
     variance_shuffled_mean = variance_shuffled.mean(axis=0)
-    variance_shuffled_std = variance_shuffled.mean(axis=0)
+    variance_shuffled_std = variance_shuffled.std(axis=0)
 
     df = pd.DataFrame(
         {
@@ -97,6 +97,7 @@ def compute_shuffled_pca(
             "variance_shuffled_mean": variance_shuffled_mean,
             "variance_shuffled_std": variance_shuffled_std,
             "variance_shuffled_mean+std": variance_shuffled_mean + variance_shuffled_std,
+            "variance_shuffled_mean-std": variance_shuffled_mean - variance_shuffled_std,
         }
     )
     df["included"] = df["variance_unshuffled"] > df["variance_shuffled_mean+std"]
@@ -129,8 +130,13 @@ def plot_shuffled_pca(adata: anndata.AnnData) -> pn.ggplot:
     p = (
         pn.ggplot(df)
         + pn.geom_vline(xintercept=max_component, linetype="dashed", color="grey", alpha=0.75, size=1.0)
-        + pn.geom_line(pn.aes(x="component", y="variance_shuffled_mean+std", color='"Shuffled"'), linetype="solid")
-        + pn.geom_point(pn.aes(x="component", y="variance_shuffled_mean+std", color='"Shuffled"'), size=1.5)
+        + pn.geom_line(pn.aes(x="component", y="variance_shuffled_mean", color='"Shuffled"'), linetype="solid")
+        + pn.geom_errorbar(
+            pn.aes(
+                x="component", ymin="variance_shuffled_mean-std", ymax="variance_shuffled_mean+std", color='"Shuffled"'
+            ),
+            size=1.5,
+        )
         + pn.geom_point(pn.aes(x="component", y="variance_unshuffled", color='"Unshuffled"'), size=1.5)
         + pn.geom_line(pn.aes(x="component", y="variance_unshuffled", color='"Unshuffled"'), size=0.5)
         + pn.scale_color_manual(values={"Unshuffled": "black", "Shuffled": "grey"}, name="Data Type")

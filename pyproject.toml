@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "partipy"
-version = "0.0.1"
+version = "0.0.4"
 description = "Pareto Task Inference in Python"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -18,7 +18,6 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
   "scanpy",
@@ -114,12 +113,12 @@ scripts.run_all_tests = "pytest -v --cov=partipy --color=yes --durations=0"
 # test the lowest and highest supported Python versions with normal deps
 [[tool.hatch.envs.hatch-test.matrix]]
 deps = [ "stable" ]
-python = [ "3.10", "3.13" ]
+python = [ "3.10" ] # for now only testing in 3.10, from 3.12 onwards we get syntax errors from docstrings of leidenalg package
 
-# test the newest supported Python version also with pre-release deps
-[[tool.hatch.envs.hatch-test.matrix]]
-deps = [ "pre" ]
-python = [ "3.13" ]
+# test the newest supported Python version also with pre-release deps (currently deactivated)
+# [[tool.hatch.envs.hatch-test.matrix]]
+# deps = [ "pre" ]
+# python = [ "3.13" ]
 
 [tool.hatch.envs.hatch-test.overrides]
 # If the matrix variable `deps` is set to "pre",

@@ -179,13 +179,14 @@ def _compute_A_projected_gradients_jit(
         # make sure to multiply things in the right order to keep matrix sizes minimal
         G = np.float32(2.0) * (np.dot(A, ZZT) - XZT)  # G has shape N x K
         G = G - np.sum(A * G, axis=1)[:, None]  # chain rule of projection
+        # G *= np.sign(np.maximum(A, 0))  # chain rule of ReLU, not necessary since the corresponding elements in A are set to 0
 
         # line search for optimal step size
         prev_RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
         prev_A = A
         for _ in range(20):
-            A = (prev_A - mu * G).clip(0)
-            A = A / (np.sum(A, axis=1)[:, None] + np.finfo(np.float32).eps)  # Avoid division by zero
+            A = (prev_A - mu * G).clip(0) + np.float32(1e-9)  # avoid division by zero
+            A = A / np.sum(A, axis=1)[:, None]
             RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
@@ -211,7 +212,7 @@ def _compute_B_projected_gradients(
     WX: np.ndarray,
     A: np.ndarray,
     B: np.ndarray,
-    alpha: np.ndarray = None,
+    alpha: np.ndarray = None,  # type: ignore[assignment]
     derivative_max_iter: int | np.int32 = 40,
     line_search_max_iter: int | np.int32 = 40,
     rel_tol_ls: float | np.float32 = 1e-3,
@@ -306,15 +307,15 @@ def _compute_B_projected_gradients_jit(
     for _ in range(derivative_max_iter):
         # make sure to multiply things in the right order to keep matrix sizes minimal
         G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
-        G /= ND
+        G /= ND  # normalize the gradient
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection
 
         # line search for optimal step size
         prev_RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
         prev_B = B
         for _ in range(20):
-            B = (prev_B - mu * G).clip(0)
-            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # avoid division by zero
+            B = (prev_B - mu * G).clip(0) + np.float32(1e-9)  # avoid division by zero
+            B = B / np.sum(B, axis=1)[:, None]
             RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
@@ -354,13 +355,13 @@ def _compute_alpha_B_projected_gradients_jit(
     # terms that can be pre-computed
     alpha_A = alpha[None, :] * A
     AT_WX_XT = np.dot(np.dot(alpha_A.T, WX), X.T)
-    AT_A = np.dot(alpha_A.T, alpha_A)
+    alpha_AT_A_alpha = np.dot(alpha_A.T, alpha_A)
 
     ND = np.float32(X.shape[0] * X.shape[1])
 
     for _ in range(derivative_max_iter):
         # make sure to multiply things in the right order to keep matrix sizes minimal
-        G = np.float32(2.0) * (np.dot(np.dot(AT_A, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
+        G = np.float32(2.0) * (np.dot(np.dot(alpha_AT_A_alpha, np.dot(B, X)), X.T) - AT_WX_XT)  # G has shape K x N
         G /= ND
         G = G - np.sum(B * G, axis=1)[:, None]  # chain rule of projection
 
@@ -368,8 +369,8 @@ def _compute_alpha_B_projected_gradients_jit(
         prev_RSS = _compute_RSS_ABXalpha(X=X, A=A, B=B, WX=WX, alpha=alpha)
         prev_B = B
         for _ in range(line_search_max_iter):
-            B = (prev_B - mu * G).clip(0)
-            B = B / (np.sum(B, axis=1)[:, None] + np.finfo(np.float32).eps)  # avoid division by zero
+            B = (prev_B - mu * G).clip(0) + np.float32(1e-9)  # avoid division by zero
+            B = B / np.sum(B, axis=1)[:, None]
             RSS = _compute_RSS_ABXalpha(X=X, A=A, B=B, WX=WX, alpha=alpha)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
                 mu *= np.float32(1.2)
@@ -459,7 +460,7 @@ def _compute_A_frank_wolfe_jit(
             A = _add_argmins_per_row(mtx=A, argmins=argmins, mu=mu)
             RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
-                mu *= np.float32(1.2)
+                mu *= np.float32(1.2) if (mu > (1.0 / 1.2)) else np.float32(1)  # ensure that mu stays in [0, 1]
                 break
             else:
                 mu *= np.float32(0.5)
@@ -475,7 +476,7 @@ def _compute_B_frank_wolfe(
     WX: np.ndarray,
     A: np.ndarray,
     B: np.ndarray,
-    alpha: np.ndarray = None,
+    alpha: np.ndarray = None,  # type: ignore[assignment]
     derivative_max_iter: int | np.int32 = 80,
     line_search_max_iter: int | np.int32 = 40,
     rel_tol_ls: float | np.float32 = 1e-3,
@@ -579,7 +580,7 @@ def _compute_B_frank_wolfe_jit(
             B = _add_argmins_per_row(mtx=B, argmins=argmins, mu=mu)
             RSS = _compute_RSS_ABX(X=X, A=A, B=B, WX=WX)
             if RSS <= (prev_RSS * (1 + rel_tol_ls)):
-                mu *= np.float32(1.2)
+                mu *= np.float32(1.2) if (mu > (1.0 / 1.2)) else np.float32(1)  # ensure that mu stays in [0, 1]
                 break
             else:
                 mu *= np.float32(0.5)
@@ -642,7 +643,7 @@ def _compute_alpha(
     B: np.ndarray,
     A: np.ndarray,
     alpha: np.ndarray,
-    delta: np.float32,
+    delta: float | np.float32,
     derivative_max_iter: int | np.int32 = 1,
     rel_tol_ls: float | np.float32 = 1e-3,
     rel_tol_conv: float | np.float32 = 1e-4,
@@ -683,6 +684,7 @@ def _compute_alpha(
     assert (rel_tol_ls >= 0) and (rel_tol_conv >= 0)
 
     # ensure correct data type for parameters
+    delta = np.float32(delta)
     derivative_max_iter = np.int32(derivative_max_iter)
     rel_tol_ls = np.float32(rel_tol_ls)
     rel_tol_conv = np.float32(rel_tol_conv)

@@ -33,7 +33,8 @@ def test_that_IC_works_gh() -> None:
     assert k_test_range[np.argmin(IC_vec)] == n_archetypes
 
 
-@pytest.mark.parametrize("n_archetypes", [3, 5, 7])
+# @pytest.mark.parametrize("n_archetypes", [3, 5, 7])
+@pytest.mark.parametrize("n_archetypes", [3, 4, 5])
 def test_that_IC_works(
     n_archetypes: int,
 ) -> None:

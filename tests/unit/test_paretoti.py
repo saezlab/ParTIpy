@@ -146,10 +146,10 @@ def test_bootstrap_aa_output_correct_shape(_mock_adata):
 
     # Check column names
     expected_columns = [
-        "x0",
-        "x1",
-        "x2",
-        "x3",
+        "X_pca_0",
+        "X_pca_1",
+        "X_pca_2",
+        "X_pca_3",
         "archetype",
         "iter",
         "reference",

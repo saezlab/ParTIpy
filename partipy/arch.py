@@ -14,7 +14,7 @@ from .const import (
     OPTIM_ALGS,
     WEIGHT_ALGS,
 )
-from .coreset import construct_coreset, construct_lightweight_coreset, construct_uniform_coreset
+from .coreset import construct_lightweight_coreset, construct_standard_coreset, construct_uniform_coreset
 from .initialize import _init_A, _init_furthest_sum, _init_plus_plus, _init_uniform
 from .optim import (
     _compute_A_frank_wolfe,
@@ -39,16 +39,16 @@ class AA:
 
     .. math::
 
-        X \approx A B X = A Z
+        \hat{X} = A B X = A Z
 
     where:
-        - X is the data point matrix.
-        - A is the coefficient matrix mapping each data point to a convex combination of archetypes.
-        - B is the coefficient matrix mapping each archetype to a convex combination of data points.
-        - Z = B X is the matrix containing the archetypes coordinates.
+        - :math:`X \in \mathbb{R}^{N \times D}` is the data matrix, where :math:`N` is the number of samples and :math:`D` is the number of featurs.
+        - :math:`A \in \mathbb{R}^{N \times K}` is the coefficient matrix mapping each data point to a convex combination of archetypes.
+        - :math:`B \in \mathbb{R}^{K \times N}` is the coefficient matrix mapping each archetype to a convex combination of data points.
+        - :math:`Z = B X` is the matrix containing the archetypes coordinates.
 
-    The optimization problem minimalizes the residual sum of squares (RSS) RSS = ||X - A Z||^2
-    subject to the constraints that A and B are non-negative and their rows sum to 1, ensuring convex combinations.
+    The optimization problem minimalizes the residual sum of squares (RSS) :math:`\text{RSS} = \| X - A Z \|_F^2`
+    subject to the constraints that :math:`A` and :math:`B` are non-negative and their rows sum to 1, ensuring convex combinations.
 
     Parameters
     ----------
@@ -61,21 +61,12 @@ class AA:
     %(rel_tol)s
     early_stopping : bool, default `True`
         Whether to stop the optimization early if the relative change in RSS is below a certain threshold.
-    use_coreset : bool, default `False`
-        Whether to use a coreset for the optimization. If True, a coreset is constructed from the data.
-    coreset_flavor : {"default", "lightweight_kmeans", "uniform"}, default `default`
-        The method used to construct the coreset. Options:
-
-        - "default": Uses the default coreset construction method.
-        - "lightweight_kmeans": Uses a lightweight k-means approach to construct the coreset.
-        - "uniform": Constructs a uniform coreset.
+    %(coreset_algorithm)s
     coreset_fraction : float, default `0.1`
-        Fraction of the data to use for the coreset. Only used if `use_coreset` is True.
+        Fraction of the data to use for the coreset. Only used if `coreset_algorithm` is none `None` and coreset_size is `None`.
     coreset_size : int, default: `None`
-        Size of the coreset to use. If None, it is set to `n_samples * coreset_fraction`.
-    delta: float, default: `0.0`
-        Parameter that relaxes the constraint that B must be convex combination of the data points
-        Must be in the interval [0, 1)
+        If None, it is set to `n_samples * coreset_fraction`.
+    %(delta)s
     centering : bool, default `True`
         Whether to center the data by subtracting the feature means before optimization.
     scaling : bool, default `True`
@@ -95,8 +86,7 @@ class AA:
         max_iter: int = DEFAULT_MAX_ITER,
         rel_tol: float = DEFAULT_REL_TOL,
         early_stopping: bool = True,
-        use_coreset: bool = False,
-        coreset_flavor: str = "default",
+        coreset_algorithm: None | str = None,
         coreset_fraction: float = 0.1,
         coreset_size: None | int = None,
         delta: float = 0.0,
@@ -113,8 +103,7 @@ class AA:
         self.max_iter = max_iter
         self.rel_tol = rel_tol
         self.early_stopping = early_stopping
-        self.use_coreset = use_coreset
-        self.coreset_flavor = coreset_flavor
+        self.coreset_algorithm = coreset_algorithm
         self.coreset_fraction = coreset_fraction
         self.coreset_size = coreset_size
         self.delta = delta
@@ -156,7 +145,7 @@ class AA:
                 "archetypal analysis. This is because optimization with weights does not lead to RSS reduction"
             )
 
-        if self.use_coreset and self.weight:
+        if self.coreset_algorithm and self.weight:
             raise ValueError(
                 "It is not yet implemented to use robust archetypal analysis and coresets at the same time"
             )
@@ -234,21 +223,21 @@ class AA:
         X_raw = X.copy()
 
         # construct the coreset and initialize A
-        if self.use_coreset:
+        if self.coreset_algorithm:
             if self.coreset_size is None:
                 self.coreset_size = int(self.n_samples * self.coreset_fraction)
 
-            if self.coreset_flavor == "default":
-                coreset_indices, W = construct_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
-            elif self.coreset_flavor == "lightweight_kmeans":
+            if self.coreset_algorithm == "standard":
+                coreset_indices, W = construct_standard_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
+            elif self.coreset_algorithm == "lightweight_kmeans":
                 coreset_indices, W = construct_lightweight_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
-            elif self.coreset_flavor == "uniform":
+            elif self.coreset_algorithm == "uniform":
                 coreset_indices, W = construct_uniform_coreset(X=X, coreset_size=self.coreset_size, seed=self.seed)
             else:
                 raise NotImplementedError()
 
             if self.verbose:
-                print(f"coreset size = {self.coreset_size} | coreset flavor = {self.coreset_flavor}")
+                print(f"coreset size = {self.coreset_size} | coreset flavor = {self.coreset_algorithm}")
 
             X = X[coreset_indices, :].copy()  # TODO: probably no copy needed here!
             A = _init_A(n_samples=self.coreset_size, n_archetypes=self.n_archetypes, seed=self.seed)
@@ -267,7 +256,7 @@ class AA:
         # initialize weights
         if self.weight:
             W = np.ones(X.shape[0], dtype=np.float32)
-        elif self.use_coreset:
+        elif self.coreset_algorithm:
             # if we use coreset we only have to weight X a single time
             WX = W[:, None] * X  # same as np.diag(W) @ X
 
@@ -288,8 +277,8 @@ class AA:
                 # TODO: Check if we should compute RSS like this
                 RSS = _compute_RSS_AZ(X=X, A=A, Z=Z)
 
-            elif self.use_coreset:
-                # compute A using the unweighted data X
+            elif self.coreset_algorithm:
+                # compute A using the unweighted data X, because optimal A is the same if we consider the weights or not
                 A = compute_A(X=X, Z=Z, A=A, **self.optim_kwargs)
                 WA = W[:, None] * A
                 if self.use_delta:
@@ -349,7 +338,7 @@ class AA:
             )
             print(message)
 
-        if self.use_coreset:
+        if self.coreset_algorithm:
             B_full = np.zeros((self.n_archetypes, self.n_samples))
             for B_col_idx, coreset_idx in enumerate(coreset_indices):
                 B_full[:, coreset_idx] += B[:, B_col_idx]
@@ -358,8 +347,13 @@ class AA:
                 Z = np.dot(alpha[:, None] * B, X_raw)
             else:
                 Z = np.dot(B, X_raw)
-            # TODO: change to projected gradients or frank-wolfe here!
-            A = _compute_A_regularized_nnls(X=X_raw, Z=Z, A=None)
+            A = _init_A(n_samples=self.n_samples, n_archetypes=self.n_archetypes, seed=self.seed)
+            A = _compute_A_projected_gradients(
+                X=X_raw.astype(np.float32),
+                Z=Z.astype(np.float32),
+                A=A.astype(np.float32),
+                derivative_max_iter=200,  # put this sufficiently high
+            )
 
         # If using weights, we need to recalculate A and B using the unweighted data
         if self.weight:
@@ -387,14 +381,14 @@ class AA:
         self.B = B
         if self.use_delta:
             self.alpha = alpha
-        if self.weight or self.use_coreset:
+        if self.weight or self.coreset_algorithm:
             self.W = W
         self.RSS_trace = self.RSS_trace[self.RSS_trace > 0.0]
         self.fitting_info = {
             "conv": convergence_flag if self.max_iter > 0 else None,
             "n_iter": n_iter if self.max_iter > 0 else None,
-            "coreset_indices": coreset_indices if self.use_coreset else None,
-            "weights": W if (self.use_coreset or self.weight) else None,
+            "coreset_indices": coreset_indices if self.coreset_algorithm else None,
+            "weights": W if (self.coreset_algorithm or self.weight) else None,
             "inital_indices": inital_indices,
         }
         return self

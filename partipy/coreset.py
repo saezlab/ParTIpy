@@ -4,7 +4,7 @@ from scipy.spatial.distance import cdist
 REPLACE = True
 
 
-def construct_coreset(X: np.ndarray, coreset_size: int, seed: int):
+def construct_standard_coreset(X: np.ndarray, coreset_size: int, seed: int):
     """Construct coreset"""
     n_samples = X.shape[0]
 
