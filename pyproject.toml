@@ -21,7 +21,6 @@ classifiers = [
 ]
 dependencies = [
   "scanpy",
-  "zarr >=3.1.0; python_version >= '3.11'",# below 3.0.0, we get deprecation warning
   "decoupler >= 2.0.0", # below 2.0.0 the vignettes won't run
   "dcor", # decoupler dependency
   "nbformat",
