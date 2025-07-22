@@ -1,0 +1,1841 @@
+\documentclass[oneside]{article}
+
+% This package offers a versatile interface to add pictures to the document
+\usepackage{graphicx}
+
+% This specifies that the page and heading is part of the header of each page
+\pagestyle{headings}
+
+% math stuff
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{dsfont} % defines \mathbb{1}
+
+% algorithm pseudocode
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% Specify the T1 font encoding, which is a 8-bit encoding (256 glyphs) ensuring automatic hyphenation amongst other things
+% The latex default is OT1 which is a 7-bit encoding (128 glyphs)
+\usepackage[T1]{fontenc}
+
+% Geometry package offers an easy interface to adapt the layout of the document, here is use total to specify the dimensions of the body
+\usepackage[a4paper, total={16cm, 23cm}]{geometry}
+
+% This package is useful to enter units
+\usepackage{siunitx}
+
+
+\usepackage[english]{babel}
+
+% Avoid warning: "babel/polyglossia" detected but "csquotes" missing, loading csquotes recommended
+\usepackage{csquotes}
+
+%\usepackage[
+%  backend=bibtex,
+%  style=numeric,       % Numeric citations
+%  %autocite=superscript, % Superscript in-text numbers
+%  url=true,            % Ensure URLs are processed
+%  sortcites=true,
+%]{biblatex}
+%\usepackage{url}       % Better URL formatting
+%\addbibresource{zotero.bib}
+\usepackage[
+  backend=bibtex,
+  style=authoryear,    % Author-year citations
+  url=true,
+  sortcites=true,
+]{biblatex}
+\usepackage{url}
+\addbibresource{zotero.bib}
+
+% Include URLs in the bibliography entries
+\DeclareFieldFormat{url}{\url{#1}}
+\renewbibmacro{finentry}{
+  \iffieldundef{url}
+    {\finentry}
+    {\setunit{\addperiod\space}%
+     \printfield{url}
+     \finentry}}
+
+% It is recommended to use this package to improve figure placement
+% https://tex.stackexchange.com/questions/8625/force-figure-placement-in-text
+\usepackage{float}
+
+% new command for inline code highlighting
+% from https://tex.stackexchange.com/questions/286094/insert-code-keywords-inline
+\NewDocumentCommand{\codeword}{v}{%
+\texttt{\textcolor{black}{#1}}%
+}
+
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+
+% Package that makes it easier to reference and insert references as hyperlinks
+% It should also be the last package to be imported
+% To be able to reference an object (section, figure) I have to give it a label via \label{xyz}
+% Then I can reference: 1. Name - \nameref{}, 2. Page - \pageref{},
+% Some packages to create nice table, according to:
+% https://www.tablesgenerator.com
+\usepackage{booktabs}
+
+% General Remarks regarding figures
+% figures created with inkscape (e.g. gel, microscopy): Serif Font, exported as pdf
+% figures created with R/ggplot (e.g. barplot before trimming): Serif Font, exported as pdf
+
+% Creating hyperlinks when referencing, should be last package to be loaded
+\usepackage{hyperref}
+
+% Set the intend and spacing of paragraphs
+\setlength{\parindent}{0ex}
+\setlength{\parskip}{1em}
+
+\title{ParTIpy - Methods}
+\author{Philipp Sven Lars Schäfer}
+\date{July 2025}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\clearpage
+
+\section{Notation}\label{sec:notation}
+
+\begin{itemize}
+    \item $N \in \mathbb{N}$ — number of samples (here: cells)
+    \item $D \in \mathbb{N}$ — number of dimensions
+    \item $G \in \mathbb{N}$ — number of genes
+    \item $K \in \mathbb{N}$ with $K \leq N$ — number of archetypes
+
+    \item $\mathcal{X} = \{\mathbf{x}_1, \ldots, \mathbf{x}_N\}$ with $\mathbf{x}_n \in \mathbb{R}^D$ — embedded coordinates of all cells
+    \item $\mathbf{X} \in \mathbb{R}^{N \times D}$ — data matrix whose $n$'th row is $\mathbf{x}_n^T$
+
+    \item $\mathcal{Z} = \{\mathbf{z}_1, \ldots, \mathbf{z}_K\}$ with $\mathbf{z}_k \in \mathbb{R}^D$ — coordinates of the $K$ archetypes
+    \item $\mathbf{Z} \in \mathbb{R}^{K \times D}$ — archetype matrix whose $k$'th row is $\mathbf{z}_k^T$
+
+    \item $\mathbf{A} \in \mathbb{R}^{N \times K}$ — coefficients that define each sample as convex combinaton of archetypes
+    \item $\mathbf{B} \in \mathbb{R}^{K \times N}$ — coefficients that define each archetype as convex combination of samples
+
+    \item $\mathbf{Y}^{(\mathbf{X})} \in \mathbb{R}^{N \times G}$ — observed gene expression matrix; row $n$ corresponds to cell $n$
+    \item $\mathbf{Y}^{(\mathbf{Z})} \in \mathbb{R}^{K \times G}$ — inferred archetype gene expression matrix; row $k$ corresponds to archetype $k$
+
+    \item $\mathbf{1}_K \in \mathbb{R}^K$ — column vector of ones
+    \item $\mathbf{I}_K \in \mathbb{R}^{K \times K}$ — $K \times K$ identity matrix
+    \item $\mathds{1}[]$ — indicator function
+\end{itemize}
+
+\clearpage
+
+\section{Archetypal Analysis}
+
+\subsection{Objective}
+
+Let $\mathcal{X}=\{\mathbf{x}_1, \ldots, \mathbf{x}_N\}_{n=1}^N$ be a data set comprising $N$ $D$-dimensional data points, and let $\mathbf{X} \in \mathbb{R}^{N \times D}$ be the matrix where each row is a data point.
+
+In Archetypal Analysis we make two assumptions:
+
+\begin{enumerate}
+    \item Each data point is a convex combination of $K$ archetypes;
+    \item Each archetype is a convex combination of $N$ data points.
+\end{enumerate}
+
+Expressing the first assumption in matrix notation yields
+\begin{equation}
+\label{eq:first-assumption}
+\hat{\mathbf{X}} = \mathbf{A} \mathbf{Z} \quad \text{or} \quad \hat{\mathbf{x}}_n = \mathbf{Z}^T \mathbf{a_n} \text{ for } n = 1, ..., N
+\end{equation}
+
+where $\hat{\mathbf{X}} \in \mathbb{R}^{N \times D}$ is the reconstructed data matrix, $\mathbf{Z} \in \mathbb{R}^{K \times D}$ is the matrix of archetypes (i.e. each row is one archetype), and $\mathbf{A} \in \mathbb{R}^{N \times K}$ is a row-stochastic matrix that defines by which archetypes each data point is formed.
+
+Expressing the second assumption in matrix notation yields\begin{equation}
+\label{eq:second-assumption}
+\mathbf{Z} = \mathbf{B} \mathbf{X} \quad \text{or} \quad \mathbf{z}_k = \mathbf{X}^T \mathbf{b_k} \text{ for } k = 1, ..., K
+\end{equation}
+where $\mathbf{B} \in \mathbb{R}^{K \times N}$ is a row-stochastic matrix specifying the contribution of each data point to the construction of each archetype.
+
+Here, we will quantify the reconstruction error  using the RSS, given by the squared Frobenius norm,
+\begin{equation}
+\label{eq:rss}
+\| \mathbf{X} - \hat{\mathbf{X}} \|_F^2 = \| \mathbf{X} - \mathbf{A} \mathbf{Z} \|_F^2 =  \| \mathbf{X} -  \mathbf{A} \mathbf{B} \mathbf{X} \|_F^2
+\end{equation}
+
+which yields the following optimization objective
+\begin{equation}
+\label{eq:objective}
+    \begin{aligned}
+        \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{\begin{subarray}{c} \mathbf{A} \in \mathbb{R}^{N \times K} \\
+        \mathbf{B} \in \mathbb{R}^{K \times N} \end{subarray}}{\argmin} \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}\|_F^2 \quad \text{ subject to} \\
+        & \mathbf{A} \geq 0, \quad \mathbf{A} \mathbf{1}_K = \mathbf{1}_N \\
+        & \mathbf{B} \geq 0, \quad \mathbf{B} \mathbf{1}_N = \mathbf{1}_K
+    \end{aligned}
+\end{equation}
+
+Introducing the set of row-stochastic matrices,
+\begin{equation}
+    F(N, K) := \left\{ \mathbf{A} \in \mathbb{R}^{N \times K} \mid  \mathbf{A} \geq 0 \land \mathbf{A} \mathbf{1}_K = \mathbf{1}_N \right\}
+\end{equation}
+
+we can write the objective compactly as:
+\begin{equation}
+    \begin{aligned}
+    \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{\begin{subarray}{c} \mathbf{A} \in F(N, K) \\
+        \mathbf{B} \in F(K, N) \end{subarray}}{\argmin} \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}\|_F^2
+    \end{aligned}
+\end{equation}
+
+\subsection{Properties of the Objective}
+
+\subsubsection{Translation Invariance}
+\label{subsubsec:translation_invariance}
+
+The minimizers $\mathbf{A}, \mathbf{B}$ of the objective are invariant under row-wise translations of $\mathbf{X}$.
+
+Let $\tilde{\mathbf{X}} = \mathbf{X} + \mathbf{1}_N \mathbf{v}^T$ for any $\mathbf{v} \in \mathbb{R}^D$, then
+\begin{equation}
+    \underset{\begin{subarray}{c} \mathbf{A} \in F(N, K) \\ \mathbf{B} \in F(K, N) \end{subarray}}{\argmin} \| \tilde{\mathbf{X}} - \mathbf{A} \mathbf{B} \tilde{\mathbf{X}} \|_F^2
+    =
+    \underset{\begin{subarray}{c} \mathbf{A} \in F(N, K) \\ \mathbf{B} \in F(K, N) \end{subarray}}{\argmin} \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}\|_F^2
+\end{equation}
+
+For completeness, we provide our own derivation of this result in Section~\ref{subsec:translation_invariance}, following the approach of \textcite{morupArchetypalAnalysisMachine2012}.
+
+\subsubsection{Scale Invariance}
+\label{subsubsec:scale_invariance}
+
+The minimizers $\mathbf{A}, \mathbf{B}$ of the objective are invariant under global scaling of $\mathbf{X}$. Let $\tilde{\mathbf{X}} = \lambda \mathbf{X}$ for any $\lambda \neq 0$, then
+\begin{equation}
+    \underset{\begin{subarray}{c} \mathbf{A} \in F(N, K) \\ \mathbf{B} \in F(K, N) \end{subarray}}{\argmin} \| \tilde{\mathbf{X}} - \mathbf{A} \mathbf{B} \tilde{\mathbf{X}} \|_F^2
+    =
+    \underset{\begin{subarray}{c} \mathbf{A} \in F(N, K) \\ \mathbf{B} \in F(K, N) \end{subarray}}{\argmin} \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}\|_F^2
+\end{equation}
+
+For completeness, we provide our own derivation of this result in Section~\ref{subsec:scaling_invariance}, following the approach of \textcite{morupArchetypalAnalysisMachine2012}.
+
+\subsubsection{Uniqueness up to Permutation of Archetypes}
+
+Assuming that for each archetype $k$, there exists one data point $n$ that is best reconstructed using only this archetype, i.e.
+\begin{equation}
+    \label{eq:cond1}
+    \forall k \in \{1, ..., K\} \exists n \in \{1, ..., N\} \; a_{n k} = 1
+\end{equation}
+
+and that for each archetype there exists one data point that is only used to define this archetype and not any other archetype, i.e.
+\begin{equation}
+    \label{eq:cond2}
+    \forall k \in \{1, ..., K\} \exists n \in \{1, ..., N\} \; b_{k n} > 0 \; \land \; b_{k^\prime n} = 0 \forall k^\prime \neq k
+\end{equation}
+
+then the objective does not suffer from rotational ambiguity. I.e. any orthogonal matrix $\mathbf{Q} \in \mathbb{R}^{K \times K}$ that satisfies
+\begin{equation}
+    \begin{aligned}
+    \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}\|_F^2
+    &= \| \mathbf{X} - \mathbf{A} \mathbf{Q} \mathbf{Q}^{-1} \mathbf{B} \mathbf{X}\|_F^2 \\
+    &= \| \mathbf{X} - \tilde{\mathbf{A}} \tilde{\mathbf{B}} \mathbf{X}\|_F^2 \\
+    \end{aligned}
+\end{equation}
+
+must be a permutation matrix.
+
+For completeness, we provide our own derivation of this result in Section~\ref{subsec:uniqueness}, following the approach of \textcite{morupArchetypalAnalysisMachine2012}.
+
+\subsubsection{Convexity of Subproblems}
+\label{subsubsec:convex}
+
+If we measure the reconstruction error with the RSS, the objective in Eq.~\eqref{eq:objective} is biconvex: it is convex in $\mathbf{A}$ when $\mathbf{B}$ is fixed and vice-versa. We prove convexity in~$\mathbf{A}$; the argument for~$\mathbf{B}$ is analogous. This biconvexity property is crucial for alternating optimization approaches, as it guarantees that each subproblem has a unique global optimum.
+
+For completeness, we provide our own derivation of this result in Section~\ref{subsec:proof_convexity}, following the approach of \textcite{morupArchetypalAnalysisMachine2012}.
+
+\subsubsection{Only Samples Outside of the Archetypal Convex Hull Contribute to the Loss}
+\label{subsubsec:alternative_aa_formulation}
+
+The objective in Equation~\ref{eq:objective} can be expressed as a sum over individual data points
+\begin{equation}
+    \begin{aligned}
+    \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \|_F^2
+    &= \sum_{n=1}^N \| \mathbf{x}_n - \mathbf{Z}^T \mathbf{a}_n \|_2^2.
+    \end{aligned}
+\end{equation}
+
+For fixed archetypes $\mathbf{Z}$, the optimal coefficient matrix $\mathbf{A}$ assign each data point to its Euclidean projection onto the convex hull of the archetypes $\mathbf{z}_1, ..., \mathbf{z}_K$, that is
+\begin{equation}
+    \begin{aligned}
+    \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \|_F^2
+    &= \sum_{n=1}^N \min_{\mathbf{q} \in \operatorname{conv}(\mathcal{Z})} \left\| \mathbf{x}_n - \mathbf{q} \right\|_2^2
+    \end{aligned}
+\end{equation}
+
+Hence, any point $\mathbf{x}_n \in \operatorname{conv}(\mathcal{Z})$ does not contribute to the loss.
+
+\subsection{Optimization}
+
+While the objective in Equation~\ref{eq:objective} is non-convex, it is biconvex, meaning that it becomes convex in $\mathbf{A}$ when $\mathbf{B}$ is fixed, and vice versa (see Section~\ref{subsubsec:convex}). A common strategy for optimizing such biconvex objectives is to initialize $\mathbf{B}$ (and thereby $\mathbf{Z}$) and then alternate between solving the convex subproblem in one variable while keeping the other fixed. This alternating minimization procedure results in Algorithm~\ref{alg:proto}.
+
+\begin{algorithm}[H]
+    \caption{Prototypical Algorithm}
+    \label{alg:proto}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$, number of archetypes $K$, max iterations $T$
+    \State \textbf{Initialize:} Archetypes $\mathbf{Z} \in \mathbb{R}^{K \times D}$
+    \For{$t = 1$ to $T$}
+        \State Compute optimal weights $\mathbf{A} \in \mathbb{R}^{N \times K}$: \label{proto:computeA}
+        \begin{equation}
+        \mathbf{A} \gets \operatorname*{arg\,min}_{\mathbf{A} \in F(N, K)} \left\| \mathbf{X} - \mathbf{A} \mathbf{Z} \right\|_F^2
+        \end{equation}
+        \State Compute optimal weights $\mathbf{B} \in \mathbb{R}^{K \times N}$: \label{proto:computeB}
+        \begin{equation}
+        \mathbf{B} \gets \operatorname*{arg\,min}_{\mathbf{B} \in F(K, N)} \left\| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \right\|_F^2
+        \end{equation}
+        \State Update archetypes:
+        \begin{equation}
+        \mathbf{Z} \gets \mathbf{B} \mathbf{X}
+        \end{equation}
+        \If{convergence criterion is met} \label{proto:convergence}
+            \State \textbf{break}
+        \EndIf
+    \EndFor
+    \State \textbf{Return:} $\mathbf{A}, \mathbf{B}, \mathbf{Z}$
+    \end{algorithmic}
+\end{algorithm}
+
+Building on the alternating scheme in Algorithm~\ref{alg:proto}, we implement three solver variants—(i) regularised non-negative least squares (RNNLS) \autocite{cutlerArchetypalAnalysis1994}, (ii) principal convex-hull analysis (PCHA) \autocite{morupArchetypalAnalysisMachine2012}, and (iii) a projection-free Frank-Wolfe (FW) update \autocite{bauckhageArchetypalAnalysisAutoencoder2015} - each differing in how the simplex constraints are enforced. The next three subsections detail these variants.  For a broader survey of alternative optimisers, the reader is referred to \textcite{alcacerSurveyArchetypalAnalysis2025}.
+
+\subsubsection{Regularized Nonnegative Least Squares (RNNLS)}
+
+Introduced by \textcite{cutlerArchetypalAnalysis1994}, this was the first algorithm to solve the archetypal analysis objective in Equation~\eqref{eq:objective}.
+
+The authors proposed to solve the constrained optimization problems in lines ~\ref{proto:computeA} and ~\ref{proto:computeB} of Algorithm~\ref{alg:proto} using a Nonnegative Least Squares (NNLS) solver and enforcing the convexity constraints using a penalty term with regularization parameter $\lambda$. So for each sample $\mathbf{a}_1, ..., \mathbf{a}_N$ (i.e. each row in $\mathbf{A}$) we solve
+\begin{equation}
+    \label{eq:rnnls_update_A}
+    \begin{aligned}
+        \mathbf{a}_n
+        &= \underset{\mathbf{a}_n \in \mathbb{R}^K}{\argmin} \|\mathbf{x}_n - \mathbf{Z}^T \mathbf{a}_n\|_2^2 + \lambda \left(1 - \mathbf{1}_K^T \mathbf{a}_n \right)^2 \quad \text{ subject to } \quad \mathbf{a}_n \geq 0 \\
+        &\approx \underset{\mathbf{a}_n \in \mathbb{R}^K}{\argmin} \left\| \begin{bmatrix} \mathbf{x}_n \\ \lambda \end{bmatrix} -  \begin{bmatrix} \mathbf{Z}^T \\ \lambda \mathbf{1}_K^T \end{bmatrix} \mathbf{a}_n \right\|_2^2 \quad \text{ subject to } \quad \mathbf{a}_n \geq 0
+    \end{aligned}
+\end{equation}
+
+Then to optimize $\mathbf{B}$, we first compute the optimal $\mathbf{Z}$ given the current $\mathbf{A}$ using a standard least squares solver, for example the one implemented in \href{https://numpy.org/doc/stable/reference/generated/numpy.linalg.lstsq.html}{\texttt{numpy}}.
+\begin{equation}
+\mathbf{Z} = \underset{\mathbf{Z} \in \mathbb{R}^{K \times D}}{\argmin} \| \mathbf{X} - \mathbf{A} \mathbf{Z}\|_F^2.
+\end{equation}
+
+Then for each archetype $\mathbf{b}_1, ..., \mathbf{b}_K$ (i.e. each row in $\mathbf{B}$) we solve
+\begin{equation}
+    \label{eq:rnnls_update_B}
+    \begin{aligned}
+        \mathbf{b}_k &= \underset{\mathbf{b}_k \in \mathbb{R}^N}{\argmin} \|\mathbf{z}_k - \mathbf{X}^T \mathbf{b}_k\|_2^2 + \lambda \left( 1 - \mathbf{1}_N^T \mathbf{b}_k \right)^2 \quad \text{ subject to } \quad \mathbf{b}_k \geq 0 \\
+        &\approx \underset{\mathbf{b}_k \in \mathbb{R}^N}{\argmin} \left\| \begin{bmatrix} \mathbf{z}_k \\ \lambda \end{bmatrix} -  \begin{bmatrix} \mathbf{X}^T \\ \lambda \mathbf{1}_N^T \end{bmatrix} \mathbf{b}_k \right\|_2^2 \quad \text{ subject to } \quad \mathbf{b}_k \geq 0
+    \end{aligned}
+\end{equation}
+
+\subsubsection{Principal Convex Hull Analysis (PCHA)}
+
+Inspired by the projected gradient method for NMF \autocite{linProjectedGradientMethods2007} and normalization invariance approach introduced for NMF \autocite{eggertSparseCodingNMF2004}, the principal convex hull analysis (PCHA) algorithm was introduced by \autocite{morupArchetypalAnalysisMachine2012} to solve the archetypal analysis objective in Equation~\eqref{eq:objective}.
+
+First, we recast the optimization problem in terms of the $\ell_1$-normalization invariant variables $\tilde{a}_n$ and $\tilde{b}_k$ (called invariant because these variables won't change if one applies $\ell_1$-normalization).
+\begin{equation}
+\tilde{a}_{nk} = \frac{\max(a_{nk}, 0)}{\sum_{k^{\prime \prime}=1}^K \max(a_{nk^{\prime \prime}}, 0)}, \quad \tilde{b}_{kn} = \frac{\max(b_{kn}, 0)}{\sum_{n^{\prime \prime}=1}^N \max(b_{kn^{\prime \prime}}, 0)}
+\end{equation}
+
+Thus our objective becomes
+\begin{equation}
+\label{eq:objective_pcha}
+    \begin{aligned}
+        \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{\begin{subarray}{c} \mathbf{A} \in \mathbb{R}^{N \times K} \\
+        \mathbf{B} \in \mathbb{R}^{K \times N} \end{subarray}}{\argmin} \| \mathbf{X} - \tilde{\mathbf{A}} \tilde{\mathbf{B}} \mathbf{X}\|_F^2 \quad \text{with} \quad \tilde{\mathbf{A}} = P_{\Delta_{K-1}}(\mathbf{A}), \tilde{\mathbf{B}} = P_{\Delta_{N-1}}(\mathbf{B})
+    \end{aligned}
+\end{equation}
+
+where we define $P_{\Delta_M}$ as the rowwise projection onto the $M$ simplex, i.e. for any matrix $\mathbf{H} \in \mathbb{R}^{N \times M}$ we have
+\begin{equation}
+    \left[ P_{\Delta_M}(\mathbf{H}) \right]_{nm} = \frac{\max(\mathbf{H}_{nm},0)}{\sum_{m^\prime=1}^M \max(\mathbf{H}_{nm^\prime}, 0)}
+\end{equation}
+
+Then the gradient of the RSS with respect to $\mathbf{a}_{n}$ is obtained via the chain rule
+\begin{equation}
+    \begin{aligned}
+        \frac{\partial \text{RSS}}{\partial \mathbf{a}_{n}} &= \frac{\partial \text{RSS}}{\partial \tilde{\mathbf{a}}_n} \frac{\partial \tilde{\mathbf{a}}_n}{\partial \mathbf{a}_n}
+    \end{aligned}
+\end{equation}
+
+The first part (see Section~\ref{subsec:gradient_vanilla_obj}) is given by
+\begin{equation}
+    \begin{aligned}
+        \frac{\partial \text{RSS}}{\partial \tilde{\mathbf{a}}_n}
+        &= 2 \left( \tilde{\mathbf{a}}_n \mathbf{Z} \mathbf{Z}^T - \mathbf{x}_n \mathbf{Z}^T \right)^T \\
+        &= \left( \tilde{g}^{(\mathbf{A})}_n \right)^T
+    \end{aligned}
+\end{equation}
+
+The second part (see Section~\ref{subsec:gradl1}) is given by
+\begin{equation}
+    \frac{\partial  \tilde{\mathbf{a}}_n}{\partial \mathbf{a}_{n}} = \left( \frac{\left( \sum_{k^{\prime \prime}=1}^K a_{nk^{\prime \prime}} \right) \mathbf{I}_K - a_n \mathbf{1}_K^T}{\left( \sum_{k^{\prime \prime}=1}^K a_{nk^{\prime \prime}} \right)^2} \right)
+    \operatorname{diag} \begin{bmatrix} \mathds{1} \left[ a_1 \geq 0 \right] & ... & \mathds{1} \left[ a_K \geq 0 \right] \end{bmatrix}
+\end{equation}
+
+Together we have
+\begin{equation}
+    \begin{aligned}
+        \frac{\partial \text{RSS}}{\partial \mathbf{a}_{n}} &= \frac{\partial \text{RSS}}{\partial \tilde{a}_n} \frac{\partial  \tilde{a}_n}{\partial a_n} \\
+        &= \left( \tilde{g}^{(\mathbf{A})}_n \right)^T \left( \frac{\left( \sum_{k^{\prime \prime}=1}^K a_{nk^{\prime \prime}} \right) \mathbf{I}_K - a_n \mathbf{1}_K^T}{\left( \sum_{k^{\prime \prime}=1}^K a_{nk^{\prime \prime}} \right)^2} \right)
+        \operatorname{diag} \begin{bmatrix} \mathds{1} \left[ a_1 \geq 0 \right] & ... & \mathds{1} \left[ a_K \geq 0 \right] \end{bmatrix}
+        \\
+        %&= \frac{\left( \sum_{k^{\prime \prime}=1}^K a_{nk^{\prime \prime}} \right) \left( \tilde{g}^{(A)}_n \right)^T \mathbf{I}_K - \left( \tilde{g}^{(A)}_n \right)^T \mathbf{a}_{n} \mathbf{1}_K^T}{\left( \sum_{k^{\prime \prime}=1}^K a_{nk^{\prime \prime}} \right)^2}
+        % \operatorname{diag} \begin{bmatrix} \mathds{1} \left[ a_1 \geq 0 \right] & ... & \mathds{1} \left[ a_K \geq 0 \right] \end{bmatrix}
+    \end{aligned}
+\end{equation}
+
+If we assume that $\mathbf{a}_{n}$ has been $\ell_1$ normalized in the previous iteration (which we can easily do, since $\ell_1$ normalization does not change the objective) the derivative simplifies to
+\begin{equation}
+    \begin{aligned}
+        \frac{\partial \text{RSS}}{\partial \mathbf{a}_{n}}
+        &= \left( \tilde{g}^{(\mathbf{A})}_n \right)^T \left( \mathbf{I}_K - a_n \mathbf{1}_K^T \right) \\
+        &= \left( \tilde{g}^{(A)}_n \right)^T \mathbf{I}_K - \left( \tilde{g}^{(A)}_n \right)^T a_n \mathbf{1}_K^T \\
+        &= \left( \tilde{g}^{(A)}_n \right)^T - \left( \sum_{k^{\prime \prime}=1}^K  \tilde{g}^{(A)}_{n k^{\prime \prime}} a_{nk^{\prime \prime}} \right) \mathbf{1}_K^T
+    \end{aligned}
+\end{equation}
+
+So for a single element we have
+\begin{equation}
+    \begin{aligned}
+        \frac{\partial \text{RSS}}{\partial a_{nk}}
+        &= \tilde{g}^{(A)}_{nk} - \sum_{k^{\prime \prime}=1}^K  \tilde{g}^{(A)}_{n k^{\prime \prime}} a_{nk^{\prime \prime}}.
+    \end{aligned}
+\end{equation}
+
+which is the same as in Section 2.2 of \autocite{morupArchetypalAnalysisMachine2012}.
+
+The algorithm to update $\mathbf{A}$ is given in Algorithm~\ref{alg:pcha_update_A}. The gradient descent step sizes are determined using line search.
+
+\begin{algorithm}[H]
+    \caption{Update $\mathbf{A}$ via Principal Convex Hull Analysis (PCHA)}
+    \label{alg:pcha_update_A}
+    \begin{algorithmic}[1]
+        \State \textbf{Input:} $\mathbf{X}$, $\tilde{\mathbf{A}}$, $\mathbf{Z}$
+        \State \textbf{Output:} Updated $\mathbf{A}$
+        \State $\text{RSS} \gets \| \mathbf{X} - \mathbf{A} \mathbf{Z} \|_F^2$
+        \State $\mu \gets 1$
+        \For{$t = 1$ to $T$}
+            \State $\tilde{\mathbf{G}}^{(\mathbf{A})} \gets 2 \left( \tilde{\mathbf{A}} \mathbf{Z} \mathbf{Z}^T - \mathbf{X} \mathbf{Z}^T \right)$
+            \State $\mathbf{G}^{(\mathbf{A})} \gets \tilde{\mathbf{G}}^{(\mathbf{A})} - \left(\tilde{\mathbf{G}}^{(\mathbf{A})} \odot \tilde{\mathbf{A}} \right) \mathbf{1}_K \mathbf{1}_K^T$
+
+            \For{$t^{\text{(line)}} = 1$ to $T^{(\text{line})}$} \Comment{line search}
+                \State $\mathbf{A} \gets \mathbf{A} - \mu \mathbf{G}^{(\mathbf{A})}$
+                \State $\tilde{\mathbf{A}} \gets P_{\Delta_{K-1}}(\mathbf{A})$
+                \State $\text{RSS}^{\text{(t)}} \gets \| \mathbf{X} - \tilde{\mathbf{A}} \mathbf{Z} \|_F^2$
+                \If{$\text{RSS}^{\text{(t)}} < (1+\epsilon)\cdot \text{RSS}$}
+                    \State $\mu \gets 1.2 \cdot \mu$
+                    \State $\text{RSS} \gets \text{RSS}^{\text{(t)}}$
+                    \State \textbf{break}
+                \Else
+                    \State $\mu \gets 0.5 \cdot \mu$
+                \EndIf
+                \EndFor
+        \EndFor
+    \State \textbf{Return:} $\tilde{\mathbf{A}}$
+    \end{algorithmic}
+\end{algorithm}
+
+Similarly, under the assumption that $\mathbf{b}_k$ has been $\ell_1$ normalized in the previous iteration, the gradient with respect to $\mathbf{b}_k$ is given by:
+\begin{equation}
+    \frac{\partial \text{RSS}}{\partial b_k} = \left( \tilde{g}^{(B)}_k \right)^T \mathbf{I}_N - \left( \sum_{n^{\prime \prime}=1}^N  \tilde{g}^{(B)}_{k n^{\prime \prime}} b_{kn^{\prime \prime}} \right) \mathbf{1}_N^T
+\end{equation}
+
+The algorithm to update $\mathbf{B}$ is given in Algorithm~\ref{alg:pcha_update_B}.
+
+\begin{algorithm}[H]
+    \caption{Update $\mathbf{B}$ via Principal Convex Hull Analysis (PCHA)}
+    \label{alg:pcha_update_B}
+    \begin{algorithmic}[1]
+        \State \textbf{Input:} $\mathbf{X}$, $\tilde{\mathbf{A}}$, $\tilde{\mathbf{B}}$
+        \State \textbf{Output:} Updated $\mathbf{B}$
+        \State $\text{RSS} \gets \| \mathbf{X} - \tilde{\mathbf{A}} \tilde{\mathbf{B}} \mathbf{X} \|_F^2$
+        \State $\mu \gets 1$
+        \For{$t = 1$ to $T$}
+                \State $\tilde{\mathbf{G}}^{(\mathbf{B})} \gets 2 \left( \tilde{\mathbf{A}}^T \tilde{\mathbf{A}} \tilde{\mathbf{B}} \mathbf{X} \mathbf{X}^T - \tilde{\mathbf{A}}^T \mathbf{X} \mathbf{X}^T \right)$
+                \State $\mathbf{G}^{(\mathbf{B})} \gets \tilde{\mathbf{G}}^{(\mathbf{B})} - \left( \tilde{\mathbf{G}}^{(\mathbf{B})} \odot \tilde{\mathbf{B}} \right) \mathbf{1}_N \mathbf{1}_N^T$
+
+            \For{$t^{\text{(line)}} = 1$ to $T^{(\text{line})}$} \Comment{line search}
+                \State $\mathbf{B} \gets \mathbf{B} - \mu \mathbf{G}^{(\mathbf{B})}$
+                \State $\tilde{\mathbf{B}} \gets P_{\Delta_{N-1}}(\mathbf{B})$
+                \State $\text{RSS}^{(t)} \gets \| \mathbf{X} - \tilde{\mathbf{A}} \tilde{\mathbf{B}} \mathbf{X} \|_F^2$
+                \If{$\text{RSS}^{(t)} < (1+\epsilon) \cdot \text{RSS}$}
+                    \State $\mu \gets 1.2 \cdot \mu$
+                    \State $\text{RSS} \gets \text{RSS}^{(t)}$
+                    \State \textbf{break}
+                \Else
+                    \State $\mu \gets 0.5 \cdot \mu$
+                \EndIf
+                \EndFor
+        \EndFor
+    \State \textbf{Return:} $\tilde{\mathbf{B}}$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Frank-Wolfe (FW) Algorithm}
+\label{subsec:frank_wolfe}
+
+The Frank-Wolfe (FW) algorithm is a first-order iterative method for solving constrained optimization problems. In contrast to projected-gradient methods, such as PCHA, FW replaces the projection step with a linear minimization over the feasible set. Specifically, it solves a linear approximation of the objective at each iterate and moves toward the minimizer, thereby ensuring that all updates remain within the feasible region. For the classical FW algorithm to be applicable, the feasible set must be compact and convex. The absence of projections makes FW particularly attractive for structured domains where linear minimization is computationally cheaper than projection. For more details, see \autocite{frankAlgorithmQuadraticProgramming1956a, clarksonCoresetsSparseGreedy2010, jaggiRevisitingFrankWolfeProjectionFree2013, bauckhageArchetypalAnalysisAutoencoder2015}.
+
+In our alternating optimization scheme the optimization in~$\mathbf{A}$ (resp.\ $\mathbf{B}$) is over the standard $(K-1)$-simplex (resp.\ $(N-1)$-simplex), both of which are convex (Appendix ~\ref{subsec:convexity_simplex}) and compact (Appendix ~\ref{subsec:compactness_simplex}).  Thus the prerequisites for the vanilla FW algorithm are met.
+
+Given a continuously differentiable objective function $f: \mathcal{D} \rightarrow \mathbb{R}$, and convex, compact feasible set $\mathcal{D}$, the FW algorithm is outlined in Algorithm~\ref{alg:frank_wolfe_vanilla}.
+
+\begin{algorithm}[H]
+    \caption{Vanilla Frank-Wolfe \autocite{frankAlgorithmQuadraticProgramming1956a, jaggiRevisitingFrankWolfeProjectionFree2013}}
+    \label{alg:frank_wolfe_vanilla}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Convex, compact feasible set $\mathcal{D}$, continuously differentiable objective function $f: \mathcal{D} \rightarrow \mathbb{R}$, number of iterations $T$
+    \State \textbf{Initialize:} $\mathbf{x}^{(1)} \in \mathcal{D}$
+    \For{$t = 1$ to $T$}
+        \State Compute linear minimizer:
+        \begin{equation}
+        \mathbf{s}^{(t)} = \operatorname*{arg\,min}_{\mathbf{s} \in \mathcal{D}} \left( \nabla f\left(\mathbf{x}^{(t)}\right) \right)^T \mathbf{s}
+        \end{equation}
+        \State Set step size:
+        \begin{equation}
+        \mu^{(t)} = \frac{2}{t+2}
+        \end{equation}
+        \State Update $\mathbf{x}$:
+        \begin{equation}
+        \mathbf{x}^{(t+1)} = (1-\mu^{(t)}) \mathbf{x}^{(t)} + \mu^{(t)} \mathbf{s}^{(t)}
+        \end{equation}
+    \EndFor
+    \State \textbf{Return:} $\mathbf{x}^{(T+1)}$
+    \end{algorithmic}
+\end{algorithm}
+
+Because $0 \le \mu^{(t)} \le 1$ and both $\mathbf{x}^{(t)}$ and $\mathbf{s}^{(t)}$ lie in $\mathcal{D}$, every iterate $x^{(t+1)}$ remains in the feasible set by convexity.
+
+Now, in the case of archetypal analysis, when updating the rows of $\mathbf{A}$, the feasible set is the standard simplex $\Delta_{K-1}$:\begin{equation}
+    \mathbf{a}_n = \underset{\mathbf{a}_n \in \Delta_{K-1}}{\argmin} \;\|\mathbf{x}_n - \mathbf{Z}^T \mathbf{a}_n\|_2^2.
+\end{equation}
+
+As shown in Equation~\ref{eq:gradA}, the gradient with respect to $\mathbf{a}_n$ is given by\begin{equation}
+    g_n^{(\mathbf{A})} = 2 \left( \mathbf{a}_n^T \mathbf{Z} \mathbf{Z}^T - \mathbf{x}_n^T \mathbf{Z} \right).
+\end{equation}
+
+Accordingly, the FW linear subproblem becomes\begin{equation}
+    \mathbf{s}^{(t)} = \underset{\mathbf{s} \in \Delta_{K-1}}{\argmin} \;\left( g_n^{(\mathbf{A})} \right)^T \mathbf{s}.
+\end{equation}
+
+Since the objective is linear in $\mathbf{s}$ and $\Delta_{K-1}$ is convex and compact, the minimizer is attained at a vertex of the simplex. That is, the solution lies in $\{\mathbf{e}_1, \ldots, \mathbf{e}_K\}$, where $\mathbf{e}_k$ denotes the $k$th standard basis vector:\begin{equation}
+    \mathbf{s}^{(t)} = \underset{\mathbf{s} \in \{\mathbf{e}_1, \ldots, \mathbf{e}_K\}}{\argmin} \;\left( g_n^{(\mathbf{A})} \right)^T \mathbf{s}.
+\end{equation}
+
+This simply selects the direction of steepest descent, i.e. the component where the gradient is most negative:\begin{equation}
+    \mathbf{s}^{(t)} = \mathbf{e}_{k^\prime} \quad \text{where} \quad
+    k^\prime = \underset{k \in \{1, \ldots, K\}}{\argmin} \; g_{nk}^{(\mathbf{A})}.
+\end{equation}
+
+Putting everything together, we obtain the update rule for $\mathbf{A}$, as outlined in Algorithm~\ref{alg:frank_wolfe_update_A}.
+
+\begin{algorithm}[H]
+    \caption{Update A via Frank-Wolfe}
+    \label{alg:frank_wolfe_update_A}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} $\mathbf{X}$, $\mathbf{A}$, $\mathbf{Z}$
+    \State \textbf{Output:} Updated $\mathbf{A}$
+    \State Initialize: $\mathbf{A}^{(1)} = \mathbf{A}$
+    \For{$t = 1$ to $T$}
+        \State Compute gradient for all rows of $\mathbf{A}$:
+        \begin{equation}
+        \mathbf{G}^{(\mathbf{A})} \gets 2 \left( \mathbf{A} \mathbf{Z} \mathbf{Z}^T - \mathbf{X} \mathbf{Z}^T \right)
+        \end{equation}
+        \For{$n = 1$ to $N$}
+            \State Compute linear minimizer:
+            \begin{equation}
+            \mathbf{s}_n^{(t)} = \mathbf{e}_{k^\prime} \quad \text{where} \quad k^\prime = \operatorname*{arg\,min}_{ k \in \{1, ..., K\} } g_{nk}^{(\mathbf{A})}
+            \end{equation}
+            \State Set step size:
+            \begin{equation}
+            \mu^{(t)} = \frac{2}{t+2}
+            \end{equation}
+            \State Update $\mathbf{a}_n$:
+            \begin{equation}
+            \mathbf{a}_n^{(t+1)} = (1-\mu^{(t)}) \mathbf{a}_n^{(t)} + \mu^{(t)} \mathbf{s}_n^{(t)}
+            \end{equation}
+        \EndFor
+    \EndFor
+    \State \textbf{Return:} $\mathbf{A}^{(T+1)}$
+    \end{algorithmic}
+\end{algorithm}
+
+Following the derivation of the FW update of $\mathbf{A}$, the FW update for $\mathbf{B}$ is outlined in Algorithm~\ref{alg:frank_wolfe_update_B}.
+
+\begin{algorithm}[H]
+    \caption{Update B via Frank-Wolfe}
+    \label{alg:frank_wolfe_update_B}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} $\mathbf{X}$, $\mathbf{A}$, $\mathbf{B}$
+    \State \textbf{Output:} Updated $\mathbf{B}$
+    \State Initialize: $\mathbf{B}^{(1)} = \mathbf{B}$
+    \For{$t = 1$ to $T$}
+        \State Compute gradient for all rows of $\mathbf{B}$:
+        \begin{equation}
+        \mathbf{G}^{(\mathbf{B})} \gets 2 \left( \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T - \mathbf{A}^T \mathbf{X} \mathbf{X}^T \right)
+        \end{equation}
+        \For{$k = 1$ to $K$}
+            \State Compute linear minimizer:
+            \begin{equation}
+            \mathbf{s}_k^{(t)} = \mathbf{e}_{n^\prime} \quad \text{where} \quad n^\prime = \operatorname*{arg\,min}_{ n \in \{1, ..., N\} } g_{kn}^{(\mathbf{B})}
+            \end{equation}
+            \State Set step size:
+            \begin{equation}
+            \mu^{(t)} = \frac{2}{t+2}
+            \end{equation}
+            \State Update $\mathbf{b}_k$:
+            \begin{equation}
+            \mathbf{b}_k^{(t+1)} = (1-\mu^{(t)}) \mathbf{b}_k^{(t)} + \mu^{(t)} \mathbf{s}_k^{(t)}
+            \end{equation}
+        \EndFor
+    \EndFor
+    \State \textbf{Return:} $\mathbf{B}^{(T+1)}$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Initialization}
+
+\subsubsection{Uniform}
+
+Sampling data points with uniform probability from the data set to initialize the archetypes was the first initialization scheme used for archetypal analysis \autocite{cutlerArchetypalAnalysis1994}. However, already this original work the authors stated that initializing archetypes too close to each other can impede convergence speed.
+
+\subsubsection{Furthest Sum}
+
+Inspired by the \textit{FurthestFirst} initialization for $K$-means clustering \autocite{hochbaumBestPossibleHeuristic1985}, the \textit{FurthestSum} initialization for archetypal analysis was introduced by \textcite{morupArchetypalAnalysisMachine2012}. The algorithm is outlined in Algorithm~\ref{alg:furthest_sum}. The idea is to greedily select points such that each point that is added, maximizes the sum of distances to all the other points that have already been chosen. To dampen the effect of an "unlucky" random seed, we let the selection
+run for $K+10$ iterations and discard the first $10$ indices, this "burn-in" leaves exactly $K$
+archetypes.
+
+\begin{algorithm}[H]
+    \caption{Furthest Sum Initialization}
+    \label{alg:furthest_sum}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$, number of archetypes $K \leq N$
+    \State \textbf{Output:} Set of selected indices $\mathcal{S}$
+    \State Define full index set $\mathcal{I} = \{1, \dots, N\}$
+    \State Initialize set of selected indices $\mathcal{S} \gets \left( i_1 \right)$, where $i_1$ is randomly chosen
+    \For{$t = 2$ to $K + 10$}
+        \If{$|\mathcal{S}| > K$}
+            \State $\mathcal{S} \gets \mathcal{S} \setminus i_{t-K}$ \Comment{Remove the oldest index from $\mathcal{S}$}
+        \EndIf
+        \For{$n \in \mathcal{I} \setminus \mathcal{S}$} \Comment{Compute distances to current archetypes}
+            \State $d_n^{\text{(sum)}} = \sum_{s \in \mathcal{S}} \left\| x_n - x_s \right\|_2$
+        \EndFor
+    \State $i_t = \underset{n \in \mathcal{I} \setminus \mathcal{S}}{\arg \max} \; d_n^{\text{(sum)}}$ \Comment{Select new data point}
+    \State $\mathcal{S} \gets \mathcal{S} \cup \{i_t\}$ \Comment{Add $i_t$ to $\mathcal{S}$}
+    \EndFor
+    \State \textbf{Return:} $\mathcal{S}$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Archetypal Analysis++}
+
+The \textit{FurthestSum} algorithm does not guarantee that the selected archetypes are non-redundant. An archetype is redundant if it lies in the convex hull of the already selected archetypes \autocite{sulemanIllconceivedInitializationArchetypal2017}. Furthermore, in some cases it has been reported that the \textit{FurthestSum} initialization yields inferior results compared to the uniform initialization \autocite{krohneClassificationSocialAnhedonia2019, olsenCombiningElectroMagnetoencephalography2022}. To address these limitations, \textcite{mairArchetypalAnalysisRethinking2024} introduced the \textit{AA++} initialization algorithm outlined in Algorithm~\ref{alg:archetypal-plus-plus}. At each iteration, the sampling probability is proportional to distance to the convex hull of the already selected archetypes, which ensures that new archetypes are not redundant.
+
+\begin{algorithm}[H]
+    \caption{Archetypal++ Initialization}
+    \label{alg:archetypal-plus-plus}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$, number of archetypes $K \leq N$
+    \State \textbf{Output:} Set of selected indices $\mathcal{S}$
+    \State Initialize set of selected indices $\mathcal{S} \gets \left\{ i_1 \right\}$, where $i_1$ is randomly chosen
+    \For{$t = 2$ to $K$}
+        \State Let $\mathbf{Z}$ be the submatrix of $\mathbf{X}$ with rows in $\mathcal{S}$
+        \For{$n = 1$ to $N$}
+        \State $d_n = \min_{a_n} \left\| x_n - \mathbf{Z}^T a_n \right\|_2$ \Comment{Compute distance to convex hull of $\mathbf{Z}$}
+        \EndFor
+        \For{$n = 1$ to $N$}
+            \State $p_n = \frac{d_n}{\sum_{n^\prime}^N d_{n^\prime}}$ \Comment{Compute sample probability}
+        \EndFor
+        \State $i_t \sim \operatorname{Categorical}(\mathbf{p})$ \Comment{Sample new data point}
+        \State $\mathcal S \gets \mathcal S \cup \{i_t\}$ \Comment{Add $i_t$ to $\mathcal{S}$}
+    \EndFor
+    \State \textbf{Return:} $\mathcal{S}$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Coresets}
+\label{subsec:coresets}
+
+The idea of a \emph{coreset} is to replace the full dataset
+$\mathcal{X}=\{\mathbf{x}_n\}_{n=1}^{N}$ with a much smaller, \emph{weighted} subset
+\begin{equation}
+    \tilde{\mathcal{X}} := \left\{(w_{\tilde{n}} \in \mathbb{R}_+, \; \mathbf{x}_{\tilde{n}} \in \mathcal{X}) \right\}_{_{\tilde{n}}=1}^{\tilde{N}} \quad \text{where} \quad \tilde{N} \ll N
+\end{equation}
+
+such that models fitted on the coreset also provide a good fit on the original dataset \autocite{feldmanIntroductionCoresetsUpdated2020}.
+
+However there are many different \emph{coreset} definitions, as reviewed by \textcite{feldmanIntroductionCoresetsUpdated2020}. In the following, we focus on three specific classes of coresets. Consider an optimization problem of the form
+\begin{equation}
+    \begin{aligned}
+        \underset{\mathcal{Z} \in \Theta}{\min} \; \sum_{n=1}^N d(\mathbf{x}_n, \mathcal{Z})^2
+    \end{aligned}
+\end{equation}
+
+where $\Theta := \{ \{z_1, ..., z_{K^\prime}\} \subset \mathbb{R}^D \mid K^\prime \leq K\}$ denotes the set of candidate solution sets $\mathcal{Z} \subset \mathbb{R}^D$ of cardinality at most $K$, and $d$ denotes some distance or loss function, for example in archetypal analysis (see Section~\ref{subsubsec:alternative_aa_formulation}) and $K$-means clustering:
+\begin{equation}
+    \label{eq:distances}
+    d(\mathbf{x}_n, \mathcal{Z})
+    =
+    \begin{cases}
+        \displaystyle
+        \min_{\mathbf{q}\in\operatorname{conv}(\mathcal{Z})}\| \mathbf{x}_n - \mathbf{q}\|_2^2,
+        &\text{(Archetypal Analysis)} \\
+        \displaystyle
+        \min_{\mathbf{z} \in\mathcal{Z}}\| \mathbf{x}_n - \mathbf{z} \|_2^2,
+        &\text{($K$-means)}
+    \end{cases}
+\end{equation}
+
+Now, for $\varepsilon \in [0, 1]$ and $K \in \mathbb{N}$, a weighted subset $\tilde{\mathcal{X}} = \{(w_{\tilde{n}}, x_{\tilde{n}})\}_{\tilde{n}=1}^{\tilde{N}}$ with $x_{\tilde{n}} \in \mathcal{X}$ and $w_{\tilde{n}} \in \mathbb{R}_+$ is called an $\varepsilon$-coreset, $\varepsilon$-lightweight-coreset, or $\varepsilon$-absolute-coreset, respectively, if for all $\mathcal{Z} \in \Theta$,
+\begin{equation}
+    \label{eq:coreset-cases}
+    \left|\,
+        \sum_{n=1}^N d(\mathbf{x}_n,\mathcal{Z})
+        \;-\;
+        \sum_{\tilde n=1}^{\tilde N} w_{\tilde n} \, d(\mathbf{x}_{\tilde n},\mathcal{Z})
+    \right|
+    \;\le\;
+    \begin{cases}
+        \varepsilon \sum_{n=1}^N d(\mathbf{x}_n,\mathcal{Z}),
+        & \varepsilon\text{-coreset},\\
+        \frac{\varepsilon}{2} \sum_{n=1}^N d(\mathbf{x}_n, \mathcal{Z}) + \frac{\varepsilon}{2} \sum_{n=1}^N d(\mathbf{x}_n, \{ \bar{\mathbf{x}} \}),
+        & \varepsilon\text{-lightweight-coreset},\\
+        \varepsilon,
+        & \varepsilon\text{-absolute-coreset}.
+    \end{cases}
+\end{equation}
+
+The standard (relative) $\varepsilon$-coreset is included here only as a reference, as it is the variant most widely used in the coreset literature and provides a point of comparison with the lightweight and absolute forms.  It is usually written in the multiplicative form
+\begin{equation}
+    \forall \mathcal{Z} \in \Theta: \quad (1-\varepsilon) \sum_{n=1}^N d(\mathbf{x}_n, \mathcal{Z}) \leq \sum_{\tilde{n}=1}^{\tilde{N}} w_{\tilde{n}} d(\mathbf{x}_{\tilde{n}}, \mathcal{Z}) \leq (1+\varepsilon)  \sum_{n=1}^N d(\mathbf{x}_n, \mathcal{Z})
+\end{equation}
+
+which highlights the $(1 \pm \varepsilon)$ multiplicative approximation guarantees.
+
+\textcite{mairCoresetsArchetypalAnalysis2019} showed that distance used in archetypal analysis is upper-bounded by the distance used in $K$-means clustering (see Lemma 1 and Proposition 1). Hence, the archetypal analysis loss is upper bounded by the $K$-means loss, i.e. for all $\mathcal{Z} \in \Theta$ we have
+\begin{equation}
+    \sum_{n=1}^N \min_{\mathbf{z} \in \operatorname{conv}(\mathcal{Z})} \| \mathbf{x}_n - \mathbf{z} \|_2^2 \leq
+    \sum_{n=1}^N \min_{\mathbf{z} \in \mathcal{Z}} \| \mathbf{x}_n - \mathbf{z} \|_2^2
+\end{equation}
+
+Consequently, any $\varepsilon$-coreset for $K$-means also satisfies Equation~\ref{eq:coreset-cases} for AA, with the same $\varepsilon$. \textcite{mairCoresetsArchetypalAnalysis2019} then constructed the first $\varepsilon$-\emph{absolute-coreset} for archetypal analysis by adapting the \emph{lightweight-coreset} construction of \textcite{bachemScalableMeansClustering2018}. Note that the coreset of \textcite{mairCoresetsArchetypalAnalysis2019} is not provably valid for every $\mathcal{Z}\in\Theta$; its guarantee holds only when the data mean $\bar{\mathbf{x}}$ lies in $\operatorname{conv}(\mathcal Z)$ (see Corollary 1). In practice this requirement is mild, because archetypes are extreme points and their convex hull typically encloses $\bar{\mathbf{x}}$. The resulting algorithm is outlined in Algorithm~\ref{alg:coreset_aa}.
+
+\begin{algorithm}[H]
+    \caption{Coreset Construction for Archetypal Analysis}
+    \label{alg:coreset_aa}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$, coreset size $\tilde{N} < N$
+    \State \textbf{Output:} Coreset $\tilde{\mathbf{X}}$
+    \State $\bar{\mathbf{x}} \gets \frac{1}{N} \sum_{n=1}^N \mathbf{x}_n$ \Comment{Compute mean of data}
+    \For{$n = 1$ to $N$}
+        \State $q(\mathbf{x}_n) = \frac{d(\mathbf{x}_n, \bar{\mathbf{x}})^2}{\sum_{n^\prime=1}^N d(\mathbf{x}_{n^\prime}, \bar{\mathbf{x}})^2}$ \Comment{Compute sampling probability}
+    \EndFor
+    \State $\tilde{\mathcal{X}} \gets \emptyset$
+    \For{$\tilde{n} = 1$ to $\tilde{N}$}
+        \State $\tilde{\mathbf{x}}_{\tilde{n}} \sim q(\mathbf{x}_1, ..., \mathbf{x}_N)$ \Comment{Sample points with replacement}
+        \State $w_{\tilde{n}} = \frac{1}{\tilde{N} q(\tilde{\mathbf{x}}_{\tilde{n}})}$ \Comment{Assign weight}
+        \State $\tilde{\mathcal{X}} \gets \tilde{\mathcal{X}} \cup \left\{ \left( w_{\tilde{n}}, \mathbf{x}_{\tilde{n}} \right) \right\}$
+    \EndFor
+    \State \textbf{Return:} $\tilde{\mathcal{X}} = \left\{ \left( w_{\tilde{n}}, \tilde{\mathbf{x}}_{\tilde{n}} \right) \right\}_{\tilde{n}=1}^{\tilde{N}}$
+    \end{algorithmic}
+\end{algorithm}
+
+Accordingly the archetypal analysis objective from Equation~\ref{eq:objective} is adapted to incorporate weights
+\begin{equation}
+    \begin{aligned}
+    \mathbf{A}, \mathbf{B}
+        &= \; \underset{\begin{subarray}{c} \mathbf{A} \in F(\tilde{N}, K) \\
+        \mathbf{B} \in F(K, \tilde{N}) \end{subarray}}{\argmin} \sum_{\tilde{n}=1}^{\tilde{N}} w_{\tilde{n}} \|  \tilde{\mathbf{x}}_{\tilde{n}} - \tilde{\mathbf{X}}^T \mathbf{B}^T \mathbf{a}_{\tilde{n}} \|_2^2 \\
+        &= \underset{\begin{subarray}{c} \mathbf{A} \in F(\tilde{N}, K) \\
+        \mathbf{B} \in F(K, \tilde{N}) \end{subarray}}{\argmin}
+        \| \mathbf{W} \tilde{\mathbf{X}} - \mathbf{W} \mathbf{A} \mathbf{B} \tilde{\mathbf{X}} \|_F^2
+    \end{aligned}
+\end{equation}
+
+where $\mathbf{W} := \operatorname{diag}(w_1, ..., w_{\tilde{N}})$ and $\tilde{\mathbf{X}} \in \mathbb{R}^{\tilde{N} \times D}$ denotes the subsampled data. Because the weights do not influence the update rule for $\mathbf{A}$ (since each $\mathbf{a}_n$ is updated independently), it suffices to replace $\mathbf{X}$ by $\tilde{\mathbf{X}}$. In contrast, the update rule for $\mathbf{B}$ must be adjusted to account for the weights; it depends on both $\tilde{\mathbf{X}}$ and the weighted matrix $\mathbf{W}\tilde{\mathbf{X}}$.\begin{equation}
+    \label{eq:cs_objective_B}
+    \mathbf{B} \gets \operatorname*{arg\,min}_{\mathbf{B} \in F(K, \tilde{N})} \left\| \mathbf{W} \tilde{\mathbf{X}} - \mathbf{W} \mathbf{A} \mathbf{B} \tilde{\mathbf{X}} \right\|_F^2
+\end{equation}
+
+Originally the authors adapted the regularized nonnegative least squares (see Equation~\ref{eq:rnnls_update_B}) by recasting the update for $\mathbf{B}$ as
+\begin{equation}
+    \begin{aligned}
+        \mathbf{Z} &\gets \underset{\mathbf{Z} \in \mathbb{R}^{K \times D}}{\argmin} \| \mathbf{W} \tilde{\mathbf{X}} - \mathbf{W} \mathbf{A} \mathbf{Z}\|_F^2 \\
+        \mathbf{b}_k &\gets \underset{\mathbf{b}_k \in \mathbb{R}^{\tilde{N}}}{\argmin} \left\| \begin{bmatrix} \mathbf{z}_k \\ \lambda \end{bmatrix} - \begin{bmatrix} \tilde{\mathbf{X}}^T \\ \lambda \mathbf{1}_{\tilde{N}}^T \end{bmatrix} b_k \right\|_2^2
+    \end{aligned}
+\end{equation}
+
+To fully capitalize on the computational speed-ups afforded by the coreset, we replace the NNLS update with the more efficient PCHA and FW algorithm.  Accordingly, we re-derive their update rules from the weighted objective in Equation~\ref{eq:cs_objective_B}, using its gradient with respect to $\mathbf{B}$
+\begin{equation}
+    \label{eq:cs_grad_B}
+    \begin{aligned}
+        \tilde{G}^{(B)}
+        &= \nabla_B \widetilde{\operatorname{RSS}} \\
+        &= \nabla_B \| \mathbf{W} \tilde{\mathbf{X}} - \mathbf{W} \mathbf{A} \mathbf{B} \tilde{\mathbf{X}} \|_F^2 \\
+        & = 2 \left( \left(\mathbf{W} \mathbf{A} \right)^T  \left(\mathbf{W} \mathbf{A} \right) \mathbf{B} \tilde{\mathbf{X}} \tilde{\mathbf{X}}^T - \left(\mathbf{W} \mathbf{A} \right)^T \left( \mathbf{W} \tilde{\mathbf{X}} \right) \tilde{\mathbf{X}}^T \right)
+    \end{aligned}
+\end{equation}
+
+To summarize, Algorithm \ref{alg:proto_coreset} shows how to adapt a generic archetypal analysis solver to a coreset.
+
+\begin{algorithm}[H]
+    \caption{Prototypical Algorithm Optimization using Coreset}
+    \label{alg:proto_coreset}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$, subsampled data matrix $\tilde{\mathbf{X}} \in \mathbb{R}^{\tilde{N} \times D}$, coreset weights $\mathbf{W} \in \mathbb{R}_+^{\tilde{N} \times \tilde{N}}$ number of archetypes $K$, max iterations $T$
+    \State \textbf{Initialize:} Archetypes $\mathbf{Z} \in \mathbb{R}^{K \times D}$
+    \For{$t = 1$ to $T$}
+        \State Compute optimal weights $\mathbf{A} \in \mathbb{R}^{N \times K}$:
+        \begin{equation}
+        \mathbf{A} \gets \operatorname*{arg\,min}_{\mathbf{A} \in F(\tilde{N}, K)} \| \tilde{\mathbf{X}} - {\mathbf{A}} \mathbf{Z} \|_F^2
+        \end{equation}
+        \State Compute optimal weights $\mathbf{B} \in \mathbb{R}^{K \times N}$:
+        \begin{equation}
+        \mathbf{B} \gets \operatorname*{arg\,min}_{\mathbf{B} \in F(K, \tilde{N})} \| \mathbf{W} \tilde{\mathbf{X}} - \mathbf{W} \mathbf{A} \mathbf{B} \tilde{\mathbf{X}} \|_F^2
+        \end{equation}
+        \State Update archetypes:
+        \begin{equation}
+        \mathbf{Z} \gets \mathbf{B} \tilde{\mathbf{X}}
+        \end{equation}
+        \If{convergence criterion is met}
+            \State \textbf{break}
+        \EndIf
+    \EndFor
+    \State Recompute $\mathbf{A} \in F(N, K)$ on full dataset
+    \begin{equation}
+    \mathbf{A} \gets \operatorname*{arg\,min}_{\mathbf{A} \in F(N, K)} \| \mathbf{X} - {\mathbf{A}} \mathbf{Z} \|_F^2
+    \end{equation}
+    \State \textbf{Return:} $\mathbf{A}, \mathbf{B}, \mathbf{Z}$
+    \end{algorithmic}
+\end{algorithm}
+
+In particular, only the following adaptions are required
+
+\begin{enumerate}
+    \item Pre-compute the weighted data matrix, $\mathbf{W} \tilde{\mathbf{X}}$.
+    \item Evaluate the gradient with respect to $\mathbf{B}$ using Equation~\eqref{eq:cs_grad_B}.
+    \item After the algorithm converges, optimize $\mathbf{A}$ on the full dataset $\mathbf{X}$ while holding $\mathbf{Z}=\mathbf{B} \tilde{\mathbf{X}}$ fixed.
+\end{enumerate}
+
+\subsection{Relaxation of Archetype Constraints}
+\label{subsec:relaxation_archetype_constraints}
+
+We can relax the constraint that archetypes must be convex combinations of data points (i.e. that they must lie within the convex hull of the data).
+\begin{equation}
+\label{eq:relaxed_objective_1}
+    \begin{aligned}
+        \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{\begin{subarray}{c} \mathbf{A} \in \mathbb{R}^{N \times K} \\
+        \mathbf{B} \in \mathbb{R}^{K \times N} \end{subarray}}{\argmin}
+        \| {\mathbf{X}} - {\mathbf{A}} \mathbf{B} \mathbf{X}\|_F^2 \quad \text{ subject to } \\
+        & \mathbf{A} \geq 0, \quad \mathbf{A} \mathbf{1}_K = \mathbf{1}_N \\
+        & \mathbf{B} \geq 0, \quad \forall k \in \{1, ..., K\} \quad 1 - \delta \leq \| \mathbf{b}_k \|_1 \leq 1 + \delta
+    \end{aligned}
+\end{equation}
+
+Note that changing the constraint on $\mathbf{B}$ into two inequality constraints, the objective is still convex in $\mathbf{B}$ given a fixed $\mathbf{A}$ \autocite{morupArchetypalAnalysisMachine2012}. To optimize Equation~\ref{eq:relaxed_objective_1}, \textcite{morupArchetypalAnalysisMachine2012} first rewrite the objective by introducing a scaling vector $\boldsymbol{\alpha} \in \mathbb{R}_+^K$
+\begin{equation}
+\label{eq:relaxed_objective_2}
+    \begin{aligned}
+        \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{}{\argmin}
+        \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}\|_F^2 \quad \text{ subject to } \\
+        & \mathbf{A} \in F(N, K) \\
+        & \mathbf{B} \in F(K, N) \\
+        & \forall k \in \{1, ..., K\} \quad 1 - \delta \leq \alpha_k \leq 1 + \delta
+    \end{aligned}
+\end{equation}
+
+such that each row $k$ of $\mathbf{B}$ is scaled by $\alpha_k$. This formulation readily extends both the PCHA and the FW algorithm to the relaxed objective. Specifically, we can apply either method to update $\mathbf{A}$ and $\mathbf{B}$, using the gradients derived in Section~\ref{subsec:relaxed_objective_grad} and shown below. The gradient with respect to $\mathbf{A}$ is structurally identical to the standard case, with the archetype matrix given by $\mathbf{Z} = \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}$.
+\begin{equation}
+    \label{eq:relaxed_objective_grad_A_}
+    \begin{aligned}
+        \mathbf{G}^{(A)} &= \nabla_{\mathbf{A}} \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \|_F^2 \\
+        &= 2 \left( \mathbf{A} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) - \mathbf{X} \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \right) \\
+        &= 2 \left( \mathbf{A} \mathbf{Z} \mathbf{Z}^T - \mathbf{X}\mathbf{Z}^T \right) \\
+    \end{aligned}
+\end{equation}
+
+For $\mathbf{B}$ the gradient is given by
+\begin{equation}
+    \label{eq:relaxed_objective_grad_B_}
+    \begin{aligned}
+        \mathbf{G}^{(B)} &= \nabla_{\mathbf{B}} \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}\|_F^2 \\
+        &= 2
+        \left[
+            \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T
+            - \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{X}} \mathbf{X}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+At each iteration, $\boldsymbol{\alpha}$ can be updated via projected gradient descent using the gradient
+\begin{equation}
+    \label{eq:relaxed_objective_grad_alpha_}
+    \begin{aligned}
+        G^{(\alpha)} &= \nabla_{\alpha} \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}\|_F^2 \\
+        & = 2
+        \left[
+            \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T
+            - \mathbf{{A}}^T \mathbf{{X}} \mathbf{X}^T \mathbf{B}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+and the component-wise projection onto $[1-\delta, 1+\delta]$.
+
+The algorithm in outlined in Algorithm~\ref{alg:proto_relaxed_objective}.
+
+\begin{algorithm}[H]
+    \caption{Prototypical Algorithm for Objective with Relaxed Archetypal Constraints}
+    \label{alg:proto_relaxed_objective}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$, number of archetypes $K$, max iterations $T$
+    \State \textbf{Initialize:} Archetypes $\mathbf{Z} \in \mathbb{R}^{K \times D}$, $\boldsymbol{\alpha} = \mathbf{1}_K$
+    \For{$t = 1$ to $T$}
+        \State Compute optimal weights $\mathbf{A} \in \mathbb{R}^{N \times K}$:
+        \begin{equation}
+        \mathbf{A} \gets \operatorname*{arg\,min}_{\mathbf{A} \in F(N, K)} \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \|_F^2
+        \end{equation}
+        \State Compute optimal weights $\mathbf{B} \in \mathbb{R}^{K \times N}$:
+        \begin{equation}
+        \mathbf{B} \gets \operatorname*{arg\,min}_{\mathbf{B} \in F(K, N)} \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \|_F^2
+        \end{equation}
+        \State Compute optimal $\boldsymbol{\alpha} \in [1-\delta, 1+\delta]^K$:
+        \begin{equation}
+        \boldsymbol{\alpha} \gets \operatorname*{arg\,min}_{\boldsymbol{\alpha} \in [1-\delta, 1+\delta]^K} \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \|_F^2
+        \end{equation}
+        \State Update archetypes:
+        \begin{equation}
+        \mathbf{Z} \gets \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}
+        \end{equation}
+        \If{convergence criterion is met}
+            \State \textbf{break}
+        \EndIf
+    \EndFor
+    \State \textbf{Return:} $\mathbf{A}, \mathbf{B}, \mathbf{Z}$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Combining Coresets and Relaxation of Archetype Constraints}
+
+If we seek to use coresets and relax the constraint that archetypes must lie within the convex hull of the data, then we need to optimize the objective
+\begin{equation}
+\label{eq:relaxed_weighted_objective}
+    \begin{aligned}
+        \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{}{\argmin}
+        \| \mathbf{W} \tilde{\mathbf{X}} -  \mathbf{W} {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \|_F^2 \quad \text{ subject to } \\
+        & \mathbf{A} \in F(\tilde{N}, K) \\
+        & \mathbf{B} \in F(K, \tilde{N}) \\
+        & \forall k \in \{1, ..., K\} \quad 1 - \delta \leq \alpha_k \leq 1 + \delta
+    \end{aligned}
+\end{equation}
+
+As in Section~\ref{subsec:relaxation_archetype_constraints}, we can readily extends both the PCHA and the FW algorithm to the objective in Equation~\ref{eq:relaxed_weighted_objective}. Specifically, to update $\mathbf{A}$ we can use the simply use the gradient shown in Equation~\ref{eq:relaxed_objective_grad_A_}. To update $\mathbf{B}$ and $\boldsymbol{\alpha}$ we need to derive their gradient with respect to Equation~\ref{eq:relaxed_weighted_objective}. For $\mathbf{B}$ we have
+\begin{equation}
+    \label{eq:relaxed_weighted_objective_grad_B_}
+    \begin{aligned}
+        G^{(B)}
+        &= \nabla_{\mathbf{B}} \operatorname{RSS} \\
+        &= 2
+        \left[
+            \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \tilde{\mathbf{X}}^T
+            - \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{X}} \tilde{\mathbf{X}}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+as derived in Equation~\ref{eq:relaxed_weighted_objective_grad_B}. For $\boldsymbol{\alpha}$ we have
+\begin{equation}
+    \label{eq:relaxed_weighted_objective_grad_alpha_}
+    \begin{aligned}
+        G^{(\alpha)}
+        &= \nabla_{\boldsymbol{\alpha}} \operatorname{RSS} \\
+        & = 2
+        \left[
+            \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \tilde{\mathbf{X}}^T \mathbf{B}^T
+            - \breve{\mathbf{A}}^T \breve{\mathbf{X}} \tilde{\mathbf{X}}^T \mathbf{B}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+as derived in Equation~\ref{eq:relaxed_weighted_objective_grad_alpha}. The corresponding algorithm in outlined in Algorithm~\ref{alg:proto_relaxed_objective}
+
+\begin{algorithm}[H]
+    \caption{Prototypical Algorithm for using Coresets and Relaxation of Archetypal Constraints}
+    \label{alg:proto_relaxed_weighted_objective}
+    \begin{algorithmic}[1]
+    \State \textbf{Input:} Data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$, Subsampled data matrix $\tilde{\mathbf{X}} \in \mathbb{R}^{\tilde{N} \times D}$, coreset weights $\mathbf{W} \in \mathbb{R}_+^{\tilde{N} \times \tilde{N}}$ number of archetypes $K$, max iterations $T$
+    \State \textbf{Initialize:} Archetypes $\mathbf{Z} \in \mathbb{R}^{K \times D}$, $\boldsymbol{\alpha} = \mathbf{1}_K$
+    \For{$t = 1$ to $T$}
+        \State Compute optimal weights $\mathbf{A} \in \mathbb{R}^{N \times K}$:
+        \begin{equation}
+        \mathbf{A} \gets \operatorname*{arg\,min}_{\mathbf{A} \in F(\tilde{N}, K)} \| \tilde{\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \|_F^2
+        \end{equation}
+        \State Compute optimal weights $\mathbf{B} \in \mathbb{R}^{K \times N}$:
+        \begin{equation}
+        \mathbf{B} \gets \operatorname*{arg\,min}_{\mathbf{B} \in F(K, \tilde{N})} \| \mathbf{W} \tilde{\mathbf{X}} - \mathbf{W} {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \|_F^2
+        \end{equation}
+        \State Compute optimal $\boldsymbol{\alpha} \in [1-\delta, 1+\delta]^K$:
+        \begin{equation}
+        \boldsymbol{\alpha} \gets \operatorname*{arg\,min}_{\boldsymbol{\alpha} \in [1-\delta, 1+\delta]^K} \| \mathbf{W} \tilde{\mathbf{X}} - \mathbf{W} {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \|_F^2
+        \end{equation}
+        \State Update archetypes:
+        \begin{equation}
+        \mathbf{Z} \gets \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}}
+        \end{equation}
+        \If{convergence criterion is met}
+            \State \textbf{break}
+        \EndIf
+    \EndFor
+    \State Recompute $\mathbf{A} \in F(N, K)$ on full dataset
+    \begin{equation}
+    \mathbf{A} \gets \operatorname*{arg\,min}_{\mathbf{A} \in F(N, K)} \| \mathbf{X} - {\mathbf{A}} \mathbf{Z} \|_F^2
+    \end{equation}
+    \State \textbf{Return:} $\mathbf{A}, \mathbf{B}, \mathbf{Z}$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Simulating Archetypes}
+
+\subsubsection{Archetype Generation}
+
+Let $K$ be the number of archetypes and $D$ the dimensionality of the feature space. We first generate a set of $M$ candidate points $C = \{c_1, \dots, c_M\} \subset \mathbb{R}^D$, sampled independently from a standard multivariate normal
+\begin{equation}
+    \mathbf{c}_i \sim \mathcal{N}(\mathbf{0}, \mathbf{I}_D)
+\end{equation}
+
+We compute the convex hull $\mathrm{conv}(C)$ of the candidate set and extract its vertices:
+\begin{equation}
+    \mathcal{V} = \mathrm{vertices}(\mathrm{conv}(C)) \subseteq C.
+\end{equation}
+
+Thereby, we make sure that we will not have any redundant archetypes. Note however that the procedure is computationally tractable only for modest dimensions $D$; in high-dimensional spaces the convex-hull construction incurs a worst-case complexity of $\mathcal{O}\!\bigl(M^{\lfloor D/2\rfloor}\bigr)$, making the overall algorithm prohibitively expensive.
+
+If $|\mathcal{V}| \geq K$, we select a subset $Z = \{\mathbf{z}_1, \dots, \mathbf{z}_K\} \subset \mathcal{V}$ by iteratively selecting points that maximize the minimum Euclidean distance to any of the points already selected. I.e. let $\mathcal{S} = \{\mathbf{v}_1, ..., \mathbf{v}_{t-1}\}$ be the set of points that have already been selected, then the next point is sampled according to:
+\begin{equation}
+    \mathbf{v}_t = \underset{\mathbf{v} \in \mathcal{V}}{\arg \max} \; \underset{\mathbf{v}^\prime \in \mathcal{S}}{\min} \| \mathbf{v} - \mathbf{v}^\prime \|_2^2
+\end{equation}
+
+If $|\mathcal{V}| < K$, additional candidates are generated, and the process is repeated up to a maximum number of attempts.
+
+\subsubsection{Coefficient Matrix Sampling}
+
+Given $N$ desired samples, we generate a matrix $\mathbf{A} \in \mathbb{R}^{N \times K}$ of mixing coefficients, where each row $\mathbf{a}_n = [a_{n1}, \dots, a_{nK}]^T$ is sampled from a Dirichlet distribution
+\begin{equation}
+    \mathbf{a}_n \sim \operatorname{Dirichlet}(\mathbf{1}_K)
+\end{equation}
+
+ensuring that each $\mathbf{a}_n \in \Delta_{K-1}$.
+
+\subsubsection{Data Generation}
+
+Let $\mathbf{Z} \in \mathbb{R}^{K \times D}$ be the matrix whose rows are the selected archetypes. The synthetic data matrix $\mathbf{X} \in \mathbb{R}^{N \times D}$ is constructed via convex combinations of the archetypes:
+\begin{equation}
+\mathbf{X} = \mathbf{A} \mathbf{Z}.
+\end{equation}
+
+Optionally, zero-mean isotropic Gaussian noise can be added to simulate measurement noise:
+\begin{equation}
+    x_{nd} \leftarrow x_{nd} + \varepsilon_{nd}, \quad \varepsilon_{nd} \sim \mathcal{N}(0, \sigma^2),
+\end{equation}
+
+where $\sigma$ is a user-defined noise standard deviation.
+
+\subsection{Implementation Details}
+
+\subsubsection{Centering \& Scaling}
+
+By default we center the data matrix $\mathbf{X}$, and globally scale $\mathbf{X}$ by
+\begin{equation}
+    \lambda = \frac{\| X \|_F}{N D}.
+\end{equation}
+
+This stabilizes the optimization, while translation and scaling invariance of the objective (see Section~\ref{subsubsec:translation_invariance} and Section~\ref{subsubsec:scale_invariance}) ensure that the optimal $\mathbf{A}, \mathbf{B}$ are unaffected by this preprocessing.
+
+\subsubsection{Convergence}
+
+Regardless of the objective and optimization algorithm, we use the moving average of the relative change in RSS, defined at iteration $t > 0$, as:
+\begin{equation}
+    c_t = \frac{1}{\min(t, 20)} \sum_{\tau = 1}^{\min(t, 20)} \frac{\text{RSS}_{t-\tau} - \text{RSS}_{t-(\tau+1)}}{\text{RSS}_{t-(\tau+1)}}
+\end{equation}
+
+We terminate the optimization if $c_t \geq 0$ or $|c_t| < 10^{-4}$.
+
+\subsubsection{Multiple Restarts}
+
+By default, the \href{https://github.com/saezlab/ParTIpy/blob/f0e2c9df82ba9ef18322ac9d97c085c14019bdf7/partipy/paretoti.py#L556-L716}{\texttt{compute\_archetypes}} function runs the optimization five times with different random seeds, retaining only the result with the lowest RSS.
+
+% \subsection{Robust Archetypal Analysis}
+
+% TODO
+
+\section{Number of Archetypes}
+
+There is no universally optimal method for selecting the number of archetypes \autocite{alcacerSurveyArchetypalAnalysis2025}. Here, we provide the following heuristics to guide the decision.
+
+\subsection{Variance Explained}
+
+For a given number of archetypes, the variance explained is computed as
+\begin{equation}
+    \begin{aligned}
+        R^2
+        &= \frac{\text{TSS} - \text{RSS}}{\text{TSS}} \\
+        &= 1 - \frac{\text{RSS}}{\text{TSS}} \\
+        &= 1 - \frac{\| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \|_F^2}{\| \mathbf{X} \|_F^2}
+    \end{aligned}
+\end{equation}
+
+where $\mathbf{A}, \mathbf{B}$ denote the optimized coefficient matrices.
+
+An "elbow" in this curve indicates that adding another archetype does not capture substantially more variance \autocite{cutlerArchetypalAnalysis1994,morupArchetypalAnalysisMachine2012, eugsterSpiderManHeroArchetypal2009}.
+
+\subsection{Information-Theoretic Criterion}
+
+\textcite{sulemanValidationArchetypalAnalysis2017} adapted the information-theoretic criterion from \textcite{sulemanMeasuringCongruenceFuzzy2017} for archetypal analysis, defining it as
+\begin{equation}
+    v_{AA} =
+    \log \left( \frac{1}{N D} \left\| \mathbf{X} - \hat{\mathbf{X}} \right\|_F^2 \right)
+    + 2 \frac{K_a + K_b + 1}{N \operatorname{tr}\left( \Sigma_{\hat{\mathbf{X}}} \Sigma_{\mathbf{X}}^{-1}\right)}
+\end{equation}
+
+where $\hat{\mathbf{X}} = \mathbf{A} \mathbf{B} \mathbf{X}$ is the reconstructed data matrix; $K_{a} = N (K-1)$ (denoted $K_\mu$ in \autocite{sulemanValidationArchetypalAnalysis2017}) is the number of parameters in $\mathbf{A}$; and $K_{b} = K (N-1)$ (denoted $K_\beta$ in \autocite{sulemanValidationArchetypalAnalysis2017}) is the number of parameters in $\mathbf{B}$. The matrices $\Sigma_{\hat{\mathbf{X}}}$ and $\Sigma_{\mathbf{X}}$ denote the empirical covariances of $\hat{\mathbf{X}}$ and $\mathbf{X}$, respectively.
+
+This criterion measures the goodness of fit by balancing model complexity and reconstruction accuracy: a lower value indicates a more favorable trade-off between the number of archetypes and the variance explained.
+
+\subsection{Bootstrapping}
+
+Following the approach in \autocite{Hart2015, Korem2015}, we assess the stability of the inferred archetypes using a bootstrap-based method.
+
+For a given number of archetypes $K$, we first compute the optimal archetypes $\{ \mathbf{z}_1, ..., \mathbf{z}_K \}$ on the full dataset.
+
+Then, for each bootstrap sample $t = 1, ..., T$, we compute the corresponding optimal archetypes $\{ \mathbf{z}_1^{(t)}, ..., \mathbf{z}_K^{(t)} \}$. These are matched to the original archetypes by solving the linear assignment problem:
+\begin{equation}
+    \sigma^{(t)} = \underset{\sigma \in S_K}{\argmin} \sum_{k=1}^K c\left( \mathbf{z}_k, \mathbf{z}_{\sigma(k)}^{(t)} \right),
+\end{equation}
+
+where $S_K$ is the set of all permutations of $\{1, ..., K\}$, and the cost function $c$ is defined as the Euclidean distance, i.e.,
+\begin{equation}
+    c(\mathbf{z}_k, \mathbf{z}_{k^\prime}) = \left\| \mathbf{z}_k - \mathbf{z}_{k^\prime} \right\|_2.
+\end{equation}
+
+We then compute the boostrap variance per archetype $k$ as
+\begin{equation}
+    v_k = \frac{1}{T D} \sum_{t=1}^T \left\| \mathbf{z}_k^{(t)} - \bar{\mathbf{z}}_k \right\|_2^2,
+\end{equation}
+
+where the mean archetype is defined as $\bar{\mathbf{z}}_k = \frac{1}{T} \sum_{t=1}^T \mathbf{z}_k^{(t)}$.
+
+The variance $v_k$ serves as a measure of the stability of archetype $k$: a low variance indicates a robust and well-defined archetype, whereas a high variance suggests sensitivity to resampling.
+
+\section{Archetype Characterization}
+\label{sec:archetype_character}
+
+To characterize each archetype $k$, we define a smooth weighting over all cells $n$ using a squared exponential kernel:
+\begin{equation}
+    w_{kn} = \frac{
+        \exp \left[ - \frac{\| \mathbf{z}_k - \mathbf{x}_n \|_2^2 }{ 2 \ell^2} \right]
+        }{
+        \sum_{n^\prime=1}^N \exp \left[ - \frac{\| \mathbf{z}_k - \mathbf{x}_{n^\prime} \|_2^2 }{ 2 \ell^2} \right]
+        }, \quad \mathbf{W} \in [0, 1]^{K \times N}
+\end{equation}
+
+Thereby, cells that are close to an archetype get a large weight for that archetype.
+
+By default, the length scale $\ell$ is determined automatically as
+\begin{equation}
+    \ell = \frac{1}{2} \operatorname{median} \left( \left\{\| \mathbf{z}_k - \bar{\mathbf{x}} \|_2 \mid k \in \{1, ..., K\} \right\} \right)
+\end{equation}
+
+where $\bar{\mathbf{x}} = \frac{1}{N} \sum_{n=1}^N \mathbf{x}_n$ denotes the data mean.
+
+Note that the weight computation also implies that for each archetype $k$ we have
+\begin{equation}
+    \mathbf{w}_{k} \geq 0 \text{ and } \sum_{n=1}^N w_{kn} = 1.
+\end{equation}
+
+Multiplying the weight matrix $\mathbf{W} \in \mathbb{R}^{K \times N}$ with the original feature matrix $\mathbf{Y}^{(\mathbf{X})} \in \mathbb{R}^{N \times G}$ (where $G$ denotes the number of original features) yields a feature profile for each archetype.
+\begin{equation}
+    \mathbf{Y}^{(\mathbf{Z})} = \mathbf{W} \mathbf{Y}^{(\mathbf{X})} \in \mathbb{R}^{K \times G}
+\end{equation}
+
+For downstream analysis, we multiply the weight matrix with the z-scored, log1p-normalized expression matrix $\mathbf{Y}^{(\mathbf{X})}_{\text{z-scores}}$ (where z-scores are computed across cells). This highlights genes and biological processes that distinguish the archetypes, since uniformly expressed genes exhibit low z-scores, while cell state-specific genes display high z-scores.
+
+Similarly, to associate continuous covariates (e.g. age, pseudotime) with archetypes, we multiply the weight matrix with the covariate vector.
+
+For categorical covariates, we first one-hot encode the covariate yielding some matrix $\mathbf{H} \in \{0, 1\}^{N \times C}$ where $C$ is the number of categories. To account for different number of samples per category, we normalize each column (i.e. category) $c$ to sum to one
+\begin{equation}
+    \tilde{h}_{nc} = \frac{h_{nc}}{\sum_{n^\prime=1}^N h_{n^\prime c}}, \quad \tilde{\mathbf{H}} \in [0, 1]^{N \times C}
+\end{equation}
+
+This normalization ensures that archetype scores are not biased by class size. Then multiplying the weight matrix $\mathbf{W}$ with $\tilde{\mathbf{H}}$ yields enrichment scores per archetype per category.
+\begin{equation}
+    \mathbf{S} = \mathbf{W} \tilde{\mathbf{H}} \in \mathbb{R}_+^{K \times C}
+\end{equation}
+
+\subsection{Enrichment Analysis}
+
+To perform enrichment analysis we use decoupler-py \autocite{badiaDecoupler2022}. By default, we use the univariate linear model (ULM) implemented in the package. Briefly, given some gene set with weights $\mathbf{w} = \left[w_1, ..., w_G\right]^T$, the ULM method models the expression profile of archetype $k$, denoted $\mathbf{y}^{(Z)}_{k}$, as
+\begin{equation}
+    \mathbf{y}^{(Z)}_{k} = \beta_0 + \beta_1 \mathbf{w} + \mathbf{\epsilon}_{k}.
+\end{equation}
+
+Intuitively, if genes with higher weights tend to be more highly expressed in archetype $k$, the coefficient $\beta_1$ will be large. Conversely, if the weights are unrelated to expression, $\beta_1$ will be close to zero.
+
+For unweighted gene sets, such as the Hallmark gene sets \autocite{subramanianGSEA2005}, weights are binary—set to one if a gene is in the set and zero otherwise.
+
+The enrichment score is then calculated as the t-value of $\beta_1$
+\begin{equation}
+    t_{\beta_1} = \frac{\hat{\beta_1}}{\operatorname{SE}(\hat{\beta_1})}
+\end{equation}
+
+Note that the modular implementation of ParTIpy facilitates using any other enrichment analysis software.
+
+\subsection{Spatial Mapping}
+\label{subsec:spatial_mapping}
+
+Consider the setting where we have a \emph{dissociated} single-cell dataset with log1p-normalized gene-expression matrix $\mathbf{Y}\in\mathbb{R}^{N\times G}$ and corresponding low-dimensional embedding $\mathbf{X}\in\mathbb{R}^{N\times D}$. In the same biological context, we also have a spatial single-cell dataset with log1p-normalized expression matrix $\mathbf{Y}'\in\mathbb{R}^{N'\times G'}$, where typically $G' < G$. Because the dissociated dataset captures more genes and therefore more information, we infer the archetypes on $\mathbf{X}$, yielding the characteristic expression profiles $\mathbf{Y}^{(\mathbf{Z})}\in\mathbb{R}^{K\times G}$ as described above. To relate the spatial cells to these archetypes, we restrict $\mathbf{Y}^{(\mathbf{Z})}$ to the intersection of genes between the two datasets (denoting the size of the intersection with $G^{\prime \prime}$), obtaining $\mathbf{Y}^{(\mathbf{Z})}_{\mathcal{G}}\in\mathbb{R}^{K\times G''}$. We then apply decoupler-py's univariate linear model (ULM) \autocite{badiaDecoupler2022} to each profile $\mathbf{y}^{(\mathbf{Z})}_{k,\mathcal{G}}$ to compute enrichment scores which quantify how strongly each cell $n^\prime$ in the spatial dataset is associated with each archetype $k$.
+
+\subsection{Archetype Crosstalk Networks}
+\label{subsec:crosstalk}
+
+The observed distribution of cells between archetypes can be understood as functional \emph{division of labor} between the task that each archetype is specialized in. Ligand-receptor (LR) signaling (e.g. lateral inhibition) is one potential mechanism that establishes and maintains this pattern of specialization \autocite{adlerDivisionOfLabor2023}. To map the possible lines of communication between archetypes, we combine their characteristic expression profiles with LR databases \autocite{liana2022,lianaPlus2024}, following the workflow adapted from \textcite{adlerDivisionOfLabor2023}.
+
+\paragraph{Step 1: Identify archetype-enriched genes.}
+For each archetype $k$ and gene $g$ we compute a specificity score\begin{equation}
+    s_{kg}=y^{(\mathbf{Z})}_{kg}-\max_{k'\neq k}y^{(\mathbf{Z})}_{k'g},
+\end{equation}
+
+where $\mathbf{Y}^{(\mathbf{Z})}\in\mathbb{R}^{K\times G}$ is the matrix of characteristic expression profiles inferred using the z-scored log1p single-cell expression profiles. Genes with $s_{kg}>\tau$ (default $\tau=0.1$) are deemed \emph{enriched} in archetype $k$.
+
+\paragraph{Step 2: Filter to archetype-specific LR pairs.}
+Let $\mathcal{D}=\{(l,r)\}$ be a curated set of cognate LR pairs \autocite{liana2022,lianaPlus2024}. For every ordered pair of archetype $(k, k^\prime)$, we retain only those pairs whose ligand is enriched in $k$ and whose receptor is enriched in $k^\prime$:\begin{equation}
+    \mathcal{D}_{k\to k'}=\left\{(l,r)\in\mathcal{D}:
+    l\;\text{enriched in }k,\; r\;\text{enriched in }k'\right\}.
+\end{equation}
+
+\paragraph{Step 3: Build archetype crosstalk network}
+For every ordered pair $(k,k^\prime)$ with $\lvert \mathcal{D}_{k\to k^\prime} \rvert>0$ we insert a directed edge $k \to k^\prime$ and assign it the weight $w_{k\to k^\prime}=\lvert \mathcal{D}_{k \to k^\prime} \rvert$.
+
+The resulting weighted graph summarizes the potential signaling axes that may coordinate the division of labor among archetypes.
+
+\section{References}
+
+\printbibliography[heading=none]
+
+\clearpage
+\section{Appendix}
+
+\subsection{Proof for Translation Invariance}
+\label{subsec:translation_invariance}
+
+Let $\mathbf{v} \in \mathbb{R}^{D}$, and let $\tilde{\mathbf{X}} = \mathbf{X} + \mathbf{1}_N \mathbf{v}^T$ be the translated matrix. Then for any feasible $\mathbf{A}, \mathbf{B}$
+\begin{equation}
+    \begin{aligned}
+    \tilde{\mathbf{X}} - \mathbf{A} \mathbf{B} \tilde{\mathbf{X}}
+    &= \left(\mathbf{X} + \mathbf{1}_N \mathbf{v}^T \right) - \mathbf{A} \mathbf{B} \left(\mathbf{X} + \mathbf{1}_N \mathbf{v}^T \right) \\
+    &= \mathbf{X} + \mathbf{1}_N \mathbf{v}^T - \mathbf{A} \mathbf{B} \mathbf{X} -  \mathbf{A} \mathbf{B} \mathbf{1}_N \mathbf{v}^T
+    \end{aligned}
+\end{equation}
+
+Since $\mathbf{B} \mathbf{1}_N = \mathbf{1}_K$ and  $\mathbf{A} \mathbf{1}_K = \mathbf{1}_N$, this simplifies to
+\begin{equation}
+    \begin{aligned}
+    \tilde{\mathbf{X}} - \mathbf{A} \mathbf{B} \tilde{\mathbf{X}}
+    &= \mathbf{X} + \mathbf{1}_N \mathbf{v}^T - \mathbf{A} \mathbf{B} \mathbf{X} - \mathbf{1}_N \mathbf{v}^T \\
+    &= \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}
+    \end{aligned}
+\end{equation}
+
+Therefore, the reconstruction error remains unchanged, and the minimizers $\mathbf{A}, \mathbf{B}$ are invariant under such translations. Thus, the minimizers $\mathbf{A}, \mathbf{B}$ are invariant to centering the data.
+
+\subsection{Proof for Scaling Invariance}
+\label{subsec:scaling_invariance}
+
+Let $\lambda \neq 0$, and let $\tilde{\mathbf{X}} = \lambda \mathbf{X}$ be the scaled matrix. Then for any feasible $\mathbf{A}, \mathbf{B}$
+\begin{equation}
+    \begin{aligned}
+    \tilde{\mathbf{X}} - \mathbf{A} \mathbf{B} \tilde{\mathbf{X}}
+    &= \lambda \mathbf{X} - \mathbf{A} \mathbf{B} \lambda \mathbf{X} \\
+    &= \lambda \left( \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \right)
+    \end{aligned}
+\end{equation}
+
+Thus the objective for the scaled matrix is given by
+\begin{equation}
+    \underset{\begin{subarray}{c} \mathbf{A} \in F(N, K) \\ \mathbf{B} \in F(K, N) \end{subarray}}{\argmin} \| \tilde{\mathbf{X}} - \mathbf{A} \mathbf{B} \tilde{\mathbf{X}} \|_F^2 = \underset{\begin{subarray}{c} \mathbf{A} \in F(N, K) \\ \mathbf{B} \in F(K, N) \end{subarray}}{\argmin} \lambda^2 \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \|_F^2
+\end{equation}
+
+Since $\lambda \neq 0$, we have $\lambda^2 > 0$, and thus the objective is scaled by a positive constant. Multiplying the objective function by a positive scalar does not affect the location of its minimum, because the ordering of objective values is preserved. In particular, the first-order (stationarity) and second-order (convexity/curvature) necessary conditions for optimality remain unchanged under such scaling.
+
+\subsection{Proof for Uniqueness up to Permutation}
+\label{subsec:uniqueness}
+
+Assuming that for each archetype $k$, there exists one data point $n$ that is best reconstructed using only this archetype, i.e.
+\begin{equation}
+    \label{eq:cond1_}
+    \forall k \in \{1, ..., K\} \exists n \in \{1, ..., N\} \; a_{n k} = 1
+\end{equation}
+
+and that for each archetype there exists one data point that is only used to define this archetype and not any other archetype, i.e.
+\begin{equation}
+    \label{eq:cond2_}
+    \forall k \in \{1, ..., K\} \exists n \in \{1, ..., N\} \; b_{k n} > 0 \; \land \; b_{k^\prime n} = 0 \; \forall k^\prime \neq k
+\end{equation}
+
+then the objective does not suffer from rotational ambiguity. I.e. any orthogonal matrix $\mathbf{Q} \in \mathbb{R}^{K \times K}$ that satisfies
+\begin{equation}
+    \begin{aligned}
+    \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}\|_F^2
+    &= \| \mathbf{X} - \mathbf{A} \mathbf{Q} \mathbf{Q}^{-1} \mathbf{B} \mathbf{X}\|_F^2 \\
+    &= \| \mathbf{X} - \tilde{\mathbf{A}} \tilde{\mathbf{B}} \mathbf{X}\|_F^2 \\
+    \end{aligned}
+\end{equation}
+
+must be a permutation matrix.
+
+Condition 1 implies that $\mathbf{A}$ has at least $K$ rows that have only one non-zero value, and this non-zero value equals one.
+
+Condition 2 implies that $\mathbf{B}$ has at least $K$ columns that have only one non-zero value.
+
+Example: If we had $3$ archetpyes, the following weight matrices $\mathbf{A}$, $\mathbf{B}$ would satisfy these conditions
+\begin{equation}
+    \mathbf{A} =
+    \left[
+        \begin{array}{ccc}
+            \vdots & \vdots & \vdots \\
+            1 & 0 & 0 \\
+            \vdots & \vdots & \vdots \\
+            0 & 0 & 1 \\
+            \vdots & \vdots & \vdots \\
+            0 & 1 & 0 \\
+            \vdots & \vdots & \vdots \\
+        \end{array}
+    \right]
+    , \quad
+    \mathbf{B} =
+    \left[
+        \begin{array}{ccccccc}
+            \cdots & 0 & \cdots & 0.4 & \cdots & 0 & \cdots \\
+            \cdots & 0 & \cdots & 0 & \cdots & 0.1 & \cdots \\
+            \cdots & 0.2 & \cdots & 0 & \cdots & 0 & \cdots \\
+        \end{array}
+    \right]
+\end{equation}
+
+%Remark, these conditions mean that both $\mathbf{A}$ and $\mathbf{B}$ have rank $K$ (i.e. $K$ linearly indendent columns / rows).
+
+Let $\mathbf{Q} \in \mathbf{R}^{K \times K}$ be some invertible matrix
+\begin{equation}
+    \mathbf{A} \mathbf{B} \mathbf{X} = \mathbf{A} \mathbf{Q} \mathbf{Q}^{-1} \mathbf{B} \mathbf{X} = \tilde{\mathbf{A}} \tilde{\mathbf{B}} \mathbf{X}
+\end{equation}
+
+Requiring that $\tilde{\mathbf{A}} \in F(N, K)$ and $\tilde{\mathbf{B}} \in F(K, N)$ (i.e. that both $\tilde{\mathbf{A}}$, $\tilde{\mathbf{B}}$ are still row-stochastic), we can derive the following properties that $\mathbf{Q}$ must fullfull.
+
+First, since we require $\tilde{\mathbf{A}} \geq 0$, and $\mathbf{A} \geq 0$, and $\tilde{\mathbf{A}} = \mathbf{A} \mathbf{Q}^{-1}$, and Equation~\eqref{eq:cond1} must hold, we know that $\mathbf{Q} \geq 0$.
+
+Proof: Any column $k \in \{1, ..., K\}$ of $Q A$ is given by a linear combination of the columns of $A$
+\begin{equation}
+    (Q A)_{:, k} = A q_{:, k} = \sum_{k^\prime = 1}^K a_{:, k} q_{k^\prime, k}
+\end{equation}
+
+Now if any coefficient $q_{1, k}, ..., q_{K, k}$ is negative, then the resulting vector must have at least one negative element, since according to condition one, for every column vector there exists some index $n^\prime \in \{1, ..., N\}$ where the value corresponds to one, and for all other column vectors, the value at that index is zero. (see also the example matrices above)
+
+However, since we require that $\sum_{k^\prime = 1}^K a_{:, k} q_{k^\prime, k} \geq 0$, no element of $q_{:, k}$ can be negative, and this applies to any column $k \in \{1, ..., K\}$, so $Q$ must be non-negative.
+
+Second, since we require $\tilde{\mathbf{B}} \geq 0$, and $\mathbf{B} \geq 0$, and $\tilde{\mathbf{B}} = \mathbf{Q}^{-1} \mathbf{B}$, and Equation~\eqref{eq:cond2} must hold, we know that $\mathbf{Q}^{-1} \geq 0$. The proof is analogous to the proof above.
+
+Then, since $\mathbf{Q}$ and $\mathbf{Q}^{-1}$ are non-negative, Lemma 1.1 from \textcite{mincNonnegativeMatrices1988} states that $\mathbf{Q}$ must be a generalized permutation matrix, i.e. there exists some diagonal matrix $\mathbf{D} \in \mathbb{R}^{K \times K}$ and permutation matrix $\mathbf{P} \in \mathbb{R}^{K \times K}$ such that $\mathbf{Q} = \mathbf{D} \mathbf{P}$.
+
+Third, since we require $\tilde{\mathbf{A}} \mathbf{1}_K = \mathbf{1}_N = \mathbf{A} \mathbf{Q} \mathbf{1}_K = \mathbf{1}_N$, we know that $\mathbf{Q} \mathbf{1}_K = \mathbf{1}_K$ and thus $\mathbf{Q} \in F(K, K)$ (i.e. $\mathbf{Q}$ must be a row-stochastic matrix)
+
+Then, this means that $\mathbf{Q}$ must be a permutation matrix since
+\begin{equation}
+    \begin{aligned}
+        &\mathbf{Q} \mathbf{1}_K = \mathbf{1}_K \\
+        \rightarrow &\mathbf{D} \mathbf{P} \mathbf{1}_K = \mathbf{1}_K \\
+        \rightarrow &\mathbf{D} \mathbf{1}_K = \mathbf{1}_K \\
+        \rightarrow &\mathbf{D} = \mathbf{I}_K
+    \end{aligned}
+\end{equation}
+
+%Fourth, since we require $\tilde{\mathbf{B}} \mathbf{1}_K = \mathbf{1}_N = \mathbf{Q}^{-1} \mathbf{B} \mathbf{1}_N = \mathbf{1}_K$, we know that $\mathbf{Q}^{-1} \mathbf{1}_K = \mathbf{1}_K$ and thus $\mathbf{Q}^{-1} \in F(K, K)$ (i.e. $\mathbf{Q}^{-1}$ must be a row-stochastic matrix)
+
+\subsection{Proof for Convexity of Objective}
+\label{subsec:proof_convexity}
+
+If we measure the reconstruction error with the RSS, the objective in Eq.~\eqref{eq:objective} is biconvex: it is convex in $\mathbf{A}$ when $\mathbf{B}$ is fixed and vice-versa. We prove convexity in~$\mathbf{A}$; the argument for~$\mathbf{B}$ is analogous.
+
+Let $\mathbf Z := \mathbf{B} \mathbf{X} \in \mathbb R^{K\times D}$. With $\mathbf{B}$ fixed, Eq.~\eqref{eq:objective} reduces to the quadratic programme
+
+\begin{equation}
+\label{eq:A_subproblem}
+    \hat{\mathbf{A}}\;=\;
+    \underset{\mathbf{A}\in\mathbb R^{N\times K}}{\arg\min}\;
+    \|\mathbf X-\mathbf{A}\mathbf Z\|_F^{2}
+    \quad\text{s.\,t.}\quad
+    \mathbf{A}\ge0,\;
+    \mathbf{A}\mathbf 1_K=\mathbf 1_N .
+\end{equation}
+
+As shown in Section~\ref{subsec:convexity_simplex}, the feasible set is convex. We now rewrite the objective in canonical quadratic form.
+
+Defining the vectorizations
+\begin{equation}
+    \begin{aligned}
+        \operatorname{vec}(\mathbf{X}) &= \begin{bmatrix} x_{11} & ... & x_{1D} & ... & x_{N1} & ... & x_{ND} \end{bmatrix}^T \in \mathbb{R}^{ND} \\
+        \operatorname{vec}(\mathbf{A}) &= \begin{bmatrix} a_{11} & ... & a_{1K} & ... & a_{N1} & ... & a_{NK} \end{bmatrix}^T \in \mathbb{R}_+^{NK}
+    \end{aligned}
+\end{equation}
+
+and Kronecker stack $\mathbf{Z}_{\otimes}$
+\begin{equation}
+    \mathbf{Z}_{\otimes} =
+        \begin{bmatrix}
+            \mathbf{Z}^T & 0 & 0 & 0 \\
+            0 & \mathbf{Z}^T & 0 & 0 \\
+            0 & 0 & \ddots & 0 \\
+            0 & 0 & 0 & \mathbf{Z}^T \\
+        \end{bmatrix} = \mathbf{I}_N \otimes \mathbf{Z}^T \in \mathbb{R}^{ND \times NK}
+\end{equation}
+
+we can rewrite the squared Frobenius norm as squared $\ell_2$-norm\begin{equation}
+    \begin{aligned}
+        \| \mathbf{X} - \mathbf{A} \mathbf{Z} \|_F^2
+        &= \bigl\|
+            \operatorname{vec}(\mathbf{X}) - \mathbf{Z}_{\otimes} \operatorname{vec}(\mathbf{A})
+        \bigr\|_2^{2} \\
+        &= \left( \operatorname{vec}(\mathbf{X}) - \mathbf{Z}_{\otimes} \operatorname{vec}(\mathbf{A}) \right)^T
+        \left( \operatorname{vec}(\mathbf{X}) - \mathbf{Z}_{\otimes} \operatorname{vec}(\mathbf{A}) \right) \\
+        &=  \operatorname{vec}(\mathbf{X})^T  \operatorname{vec}(\mathbf{X})
+        - 2 \operatorname{vec}(\mathbf{X})^T \mathbf{Z}_{\otimes} \operatorname{vec}(\mathbf{A})
+        + \operatorname{vec}(\mathbf{A})^T \mathbf{Z}_{\otimes}^T \mathbf{Z}_{\otimes} \operatorname{vec}(\mathbf{A}).
+    \end{aligned}
+\end{equation}
+
+Thus, the optimization problem can be written in the canonical form of a quadratic program
+\begin{equation}
+    \underset{\operatorname{vec}(\mathbf{A}) \in \mathbb{R}^{NK}}{\argmin}
+    \frac{1}{2} \operatorname{vec}(\mathbf{A})^T \mathbf{Q} \operatorname{vec}(\mathbf{A}) + \mathbf{c}^T \operatorname{vec}(\mathbf{A})
+    \quad\text{s.t.}\quad
+    \operatorname{vec}(\mathbf{A}) \geq 0, \;
+    \mathbf{C} \operatorname{vec}(\mathbf{A}) = \mathbf{1}_N
+\end{equation}
+
+with
+\begin{equation}
+    \begin{aligned}
+        \frac{1}{2} \mathbf{Q} &= \mathbf{Z}_{\otimes}^T \mathbf{Z}_{\otimes}
+        = (\mathbf{I}_N \otimes \mathbf{Z}^T)^T (\mathbf{I}_N \otimes \mathbf{Z}^T)
+        = (\mathbf{I}_N^T \otimes \mathbf{Z}) (\mathbf{I}_N \otimes \mathbf{Z}^T)
+        = \mathbf{I}_N^T \mathbf{I}_N \otimes \mathbf{Z} \mathbf{Z}^T
+        = \mathbf{I}_N \otimes \mathbf{Z} \mathbf{Z}^T
+        \\
+        \mathbf{c}^T &= - 2 \operatorname{vec}(\mathbf{X})^T \mathbf{Z}_{\otimes} \\
+        \mathbf{C} &= \mathbf{1}_K^T \otimes \mathbf{I}_N
+    \end{aligned}
+\end{equation}
+
+Because $\mathbf Z\mathbf Z^{\!\top}\succeq0$, the Kronecker product $\mathbf I_N\otimes(\mathbf Z\mathbf Z^{\!\top})$ is also positive semi-definite, and scaling by~\(2\) preserves this property. Hence $\mathbf{Q} \succeq 0$.
+
+The objective in~\eqref{eq:A_subproblem} is a convex quadratic, and the constraints are linear; therefore the $\mathbf{A}$-subproblem is a convex quadratic programme. Fixing $\mathbf{A}$ and repeating the same construction for
+$\mathbf{B}$ proves the corresponding convexity in~$\mathbf{B}$.
+
+\subsection{Proof for Convexity of Standard Simplex}
+\label{subsec:convexity_simplex}
+
+Let $\mathbf{x}, \mathbf{y} \in \Delta_{K-1}$, then for all $0 \leq \lambda \leq 1$, it is true that $\mathbf{z}=\lambda \mathbf{x} + (1-\lambda) \mathbf{y} \in \Delta_{K-1}$
+
+First we show that for all $k \in \{1, ..., K\}$, $z_k \geq 0$. Recall that $z_k = \lambda x_k + (1-\lambda) y_k$. Since $0 \leq \lambda \leq 1$, we have $1-\lambda \geq 0$. Since $\mathbf{x}, \mathbf{y} \in \Delta_{K-1}$, we have $x_k \geq 0$ and $y_k \geq 0$. Thus $z_k = \lambda x_k + (1-\lambda) y_k \geq 0$.
+
+Then, we show that the elements of $\mathbf{z}$ sum to one.
+
+$$
+\begin{aligned}
+\| \mathbf{z} \|_1 &= \sum_{k=1}^K z_k \\
+&= \sum_{k=1}^K \left[ \lambda x_k + (1-\lambda) y_k \right] \\
+&= \lambda \underbrace{\sum_{k=1}^K x_k}_{=1} + (1-\lambda) \underbrace{\sum_{k=1}^K y_k}_{=1} \\
+&= \lambda + 1 - \lambda \\
+&= 1
+\end{aligned}
+$$
+
+\subsection{Proof for Compactness of Standard Simplex}
+\label{subsec:compactness_simplex}
+
+The standard $(K-1)$-simplex $\Delta_{K-1}$
+\begin{equation}
+    \Delta_{K-1} := \left\{ \mathbf{x} \in \mathbb{R}^{K} \mid \forall k \in \{1, ..., K \}, x_k \geq 0 \land \sum_{k=1}^{K} x_k = 1 \right\}.
+\end{equation}
+
+is a subset of a finite-dimensional Euclidean space. By the \emph{Heine-Borel theorem}, a subset of $\mathbb R^{K}$ is compact if and only if it is both \emph{closed} and \emph{bounded}.
+
+\textbf{Step 1: Closedness.}
+
+We can write $\Delta_{K-1}$  as the finite intersection
+\begin{equation}
+   \Delta_{K-1} = \Bigl(\;\bigcap_{k=1}^{K}
+          \underbrace{\bigl\{\mathbf x\in\mathbb R^{K}:x_k\ge 0\bigr\}}_{=:A_k}
+        \Bigr)
+   \;\cap\;
+   \underbrace{\bigl\{\mathbf x\in\mathbb R^{K}:\sum_{k=1}^{K}x_k=1\bigr\}}_{=:B}.
+\end{equation}
+
+\begin{itemize}
+\item\emph{Each $A_k$ is closed.}
+      Let $\pi_k:\mathbb R^{K}\to\mathbb R,\ \pi_k(\mathbf x)=x_k$.
+      The coordinate projection $\pi_k$ is linear, hence continuous.
+      Because $[0,\infty)\subset\mathbb R$ is closed, its pre-image
+      \begin{equation}
+        A_k \;=\; \pi_k^{-1}\bigl([0,\infty)\bigr)
+      \end{equation}
+      is closed. Geometrically each $A_k$ is a closed half-space.
+
+\item\emph{$B$ is closed.}
+      Define $g:\mathbb R^{K}\to\mathbb R,\ g(\mathbf x)=\sum_{k=1}^{K}x_k$.
+      The set $B$ can be written as $g^{-1}(\{1\})$.
+      Since $g$ is continuous and $\{1\}$ is closed in $\mathbb R$, $B$ is closed.
+\end{itemize}
+
+Because a \emph{finite} intersection of closed sets is closed, it follows that $\Delta_{K-1}$ is closed.
+
+\textbf{Step 2: Boundedness.}
+
+For $\mathbf{x} \in \Delta_{K-1}$ we have $0\le x_k\le 1$ and $\sum_{k=1}^{K}x_k = 1$. Since $x_k^2\le x_k$ on $[0,1]$,
+\begin{equation}
+    \|\mathbf x\|_2^2
+    \;=\;
+    \sum_{k=1}^{K}x_k^2
+    \;\le\;
+    \sum_{k=1}^{K}x_k
+    \;=\;
+    1,
+    \qquad\Longrightarrow\qquad
+    \|\mathbf x\|_2\le 1.
+\end{equation}
+
+Hence every element of $\Delta_{K-1}$ lies in the closed Euclidean ball $B_2(0,1)$. Hence, the simplex is bounded.
+
+\textbf{Step 3: Compactness.}
+
+Since $\Delta_{K-1}$ is both closed (Step 1) and bounded (Step 2), the Heine-Borel theorem implies that $\Delta_{K-1}$ is compact in $\mathbb R^{K}$.
+
+\subsection{Gradient of Vanilla Objective}
+\label{subsec:gradient_vanilla_obj}
+
+To compute the gradient of the unconstrained objective with respect to $\mathbf{A}$ and $\mathbf{B}$, we first rewrite the residual sum of squares (Frobenius norm) in Equation~\eqref{eq:objective} in terms of the trace\begin{equation}
+    \begin{aligned}
+        \operatorname{RSS} &= \| \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X}\|_F^2 \\
+        &= \operatorname{tr} \left( \left( \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \right)^T \left( \mathbf{X} - \mathbf{A} \mathbf{B} \mathbf{X} \right) \right) \\
+        &=  \operatorname{tr}(\mathbf{X}^T \mathbf{X}) - \operatorname{tr}(\mathbf{X}^T \mathbf{A} B \mathbf{X}) - \operatorname{tr}(\mathbf{X}^T \mathbf{B}^T \mathbf{A}^T \mathbf{X}) + \operatorname{tr}(\mathbf{X}^T \mathbf{B}^T \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X}) \\
+        &=  \operatorname{tr}(\mathbf{X}^T \mathbf{X}) - 2 \operatorname{tr}(\mathbf{X}^T \mathbf{A} \mathbf{B} \mathbf{X}) + \operatorname{tr}(\mathbf{X}^T \mathbf{B}^T \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X}) \\
+    \end{aligned}
+\end{equation}
+where we used that for any $\mathbf{G}, \mathbf{H} \in \mathbb{R}^{N \times N}$ it is true that $\operatorname{tr}(\mathbf{G} + \mathbf{H}) = \operatorname{tr}(\mathbf{G})+\operatorname{tr}(\mathbf{H})$ and $\operatorname{tr}(\mathbf{G}^T)=\operatorname{tr}(\mathbf{G})$
+
+Next we will use Equation 101 from \textcite{petersenMatrixCookbook2012} which states that for any matrices $G, H, J \in \mathbb{R}^{N \times N}$ we have\begin{equation}
+    \label{eq:cookbook_101}
+    \frac{\partial}{\partial H}\operatorname{tr}(GHJ) = G^T J^T
+\end{equation}
+
+and Equation 116 which states that for any matrices $G, H, J \in \mathbb{R}^{N \times N}$ we have
+\begin{equation}
+    \label{eq:cookbook_116}
+    \frac{\partial}{\partial H}\operatorname{tr}(G^T H^T J H G) = J^T H G G^T + J H G G^T
+\end{equation}
+
+So computing the gradient of the RSS with respect to $\mathbf{A}$ we have
+\begin{equation}
+    \label{eq:gradA}
+    \begin{aligned}
+        G^{(\mathbf{A})} &= \nabla_\mathbf{A} \operatorname{RSS} \\
+        &=\nabla_\mathbf{A} \left[ \operatorname{tr}(\mathbf{X}^T \mathbf{X}) - 2 \operatorname{tr}(\mathbf{X}^T \mathbf{A} \mathbf{B} \mathbf{X}) + \operatorname{tr}(\mathbf{X}^T \mathbf{B}^T \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X}) \right] \\
+        &= - 2 \nabla_\mathbf{A} \operatorname{tr}(\underbrace{\mathbf{X}^T}_{G} \underbrace{\mathbf{A}}_{H} \underbrace{\mathbf{B} \mathbf{X}}_{J}) + \nabla_\mathbf{A} \operatorname{tr}(\underbrace{(\mathbf{B} X)^T}_{G^T} \underbrace{\mathbf{A}^T}_{H^T} \underbrace{\mathbf{I}}_{J} \underbrace{\mathbf{A}}_{H} \underbrace{\mathbf{B} \mathbf{X}}_{G}) \\
+        &= - 2 \mathbf{X} \mathbf{X}^T \mathbf{B}^T + \left( \mathbf{I}^T \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T + \mathbf{I} \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T \right) \\
+        &= - 2 \mathbf{X} \mathbf{X}^T \mathbf{B}^T + 2 \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T \\
+        &= 2 \left( \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T - \mathbf{X} \mathbf{X}^T \mathbf{B}^T \right) \\
+        &= 2 \left( \mathbf{A} \mathbf{Z} \mathbf{Z}^T - \mathbf{X} \mathbf{Z}^T \right)
+    \end{aligned}
+\end{equation}
+
+Similarly, computing the gradient of the RSS with respect to $\mathbf{B}$ we have
+\begin{equation}
+    \label{eq:gradB}
+    \begin{aligned}
+        G^{(\mathbf{B})} &= \nabla_\mathbf{B} \operatorname{RSS} \\
+        &= \nabla_\mathbf{B} \left[ \operatorname{tr}(\mathbf{X}^T \mathbf{X}) - 2 \operatorname{tr}(\mathbf{X}^T \mathbf{A} \mathbf{B} X) + \operatorname{tr}(\mathbf{X}^T \mathbf{B}^T \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X}) \right] \\
+        &= - 2 \nabla_\mathbf{B} \operatorname{tr}(\underbrace{\mathbf{X}^T \mathbf{A}}_{G} \underbrace{\mathbf{B}}_{H} \underbrace{\mathbf{X}}_{J}) + \nabla_\mathbf{B} \operatorname{tr}(\underbrace{\mathbf{X}^T}_{G^T} \underbrace{\mathbf{B}^T}_{H^T} \underbrace{\mathbf{A}^T \mathbf{A}}_{J} \underbrace{\mathbf{B}}_{H} \underbrace{\mathbf{X}}_{G}) \\
+        & = - 2 \mathbf{A}^T \mathbf{X} \mathbf{X}^T + \left( \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T + \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T \right) \\
+        & = - 2 \mathbf{A}^T \mathbf{X} \mathbf{X}^T + 2 \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T  \\
+        & = 2 \left( \mathbf{A}^T \mathbf{A} \mathbf{B} \mathbf{X} \mathbf{X}^T - \mathbf{A}^T \mathbf{X} \mathbf{X}^T \right)
+    \end{aligned}
+\end{equation}
+
+\subsection{Gradient of l1-Normalization}
+\label{subsec:gradl1}
+
+Let $\mathbf{p} \in \mathbb{R}^K$. Define $\mathbf{r} \in \mathbb{R}^K$ element-wise as
+\begin{equation}
+    {r}_k = \frac{\max(p_k, 0)}{\sum_{k^{\prime \prime}=1}^K \max(p_{k^{\prime \prime}}, 0)} = \frac{q_k}{\sum_{k^{\prime \prime}=1}^K q_{k^{\prime \prime}}}
+\end{equation}
+
+where we define $q_k = \max(p_k, 0)$.
+
+Then the gradient $\frac{d \mathbf{r}}{d \mathbf{p}} \in \mathbb{R}^{K \times K}$ is given by the chain rule
+\begin{equation}
+    \frac{d \mathbf{r}}{d \mathbf{p}} = \frac{d \mathbf{r}}{d \mathbf{q}} \frac{d \mathbf{q}}{d \mathbf{p}}
+\end{equation}
+
+The gradient of the rectified linear unit is given by
+\begin{equation}
+    \frac{d \mathbf{q}}{d \mathbf{p}} = \operatorname{diag} \begin{bmatrix}
+        \mathds{1} \left[ p_1 \geq 0 \right] & ... & \mathds{1} \left[ p_K \geq 0 \right]
+    \end{bmatrix}^T
+\end{equation}
+
+While the gradient of the normalization is given by (see derivation below)
+\begin{equation}
+    \frac{d \mathbf{r}}{d \mathbf{q}} =
+    \frac{\left( \sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}}\right) I_K - \mathbf{q} \mathbf{1}_K^T}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}}
+\end{equation}
+
+Thus we have
+\begin{equation}
+    \frac{d \mathbf{r}}{d \mathbf{p}} =
+    \frac{\left( \sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}}\right) I_K - \mathbf{q} \mathbf{1}_K^T}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}} \operatorname{diag} \begin{bmatrix}
+        \mathds{1} \left[ p_1 > 0 \right] & ... & \mathds{1} \left[ p_K > 0 \right]
+    \end{bmatrix}^T
+\end{equation}
+
+The gradient $\frac{d \mathbf{r}}{d \mathbf{p}} \in \mathbb{R}^{K \times K}$ has the form
+\begin{equation}
+    \frac{d \mathbf{r}}{d \mathbf{q}} =
+        \left[
+            \begin{array}{ccc}
+                \frac{\partial r_1}{\partial q_1} & ... & \frac{\partial r_1}{\partial q_K} \\
+                \vdots & \ddots & \vdots \\
+                \frac{\partial r_K}{\partial q_1} & ... & \frac{\partial r_K}{\partial q_K} \\
+            \end{array}
+        \right]
+\end{equation}
+
+The off-diagonal terms (i.e. $k \neq k^\prime$) are given by
+\begin{equation}
+    \begin{aligned}
+        \frac{\partial r_k}{\partial q_{k^\prime}}
+        &= \frac{\partial}{\partial q_{k^\prime}} \frac{{q_k}}{\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}}} \\
+        &= {q_k}  \frac{\partial}{\partial q_{k^\prime}} \left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{-1} \\
+        &= {q_k} (-1)\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{-2} \underbrace{\frac{\partial}{\partial q_{k^\prime}} \left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)}_{=1} \\
+        &= - \frac{q_k}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}}
+    \end{aligned}
+\end{equation}
+
+To compute the diagonal terms we need to use the chain rule and can re-use the result from above
+\begin{equation}
+    \begin{aligned}
+        \frac{\partial r_k}{\partial q_{k}}
+        &= \frac{\partial}{\partial q_{k}} \frac{{q_k}}{\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}}} \\
+        &= \frac{\partial}{\partial q_{k}} \left[\left(\frac{\partial}{\partial q_{k}} q_k \right) \left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{-1} \right]
+        + \left[ q_{k} \left(\frac{\partial}{\partial q_{k}} \left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{-1} \right) \right] \\
+        &= \left[ 1 \left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{-1}\right] + \left[ - \frac{q_k}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}} \right] \\
+        &= \frac{\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}}}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}}
+        - \frac{q_k}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}} \\
+        %&= \frac{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right) - x_k}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}}
+    \end{aligned}
+\end{equation}
+
+Now putting everything together we have
+\begin{equation}
+    \frac{d \mathbf{r}}{d \mathbf{q}} =
+    \frac{\left( \sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}}\right) I_K - \mathbf{q} \mathbf{1}_K^T}{\left(\sum_{k^{\prime \prime}=1}^K {q}_{k^{\prime \prime}} \right)^{2}}
+\end{equation}
+
+\subsection{Gradient of Objective with Relaxed Archetype Constraints}
+\label{subsec:relaxed_objective_grad}
+
+Given the objective
+\begin{equation}
+\label{eq:relaxed_objective_standard}
+    \begin{aligned}
+        \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{\begin{subarray}{c} \mathbf{A} \in \mathbb{R}^{N \times K} \\
+        \mathbf{B} \in \mathbb{R}^{K \times N} \end{subarray}}{\argmin}
+        \| {\mathbf{X}} - {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}\|_F^2 \quad \text{ subject to } \\
+        & \mathbf{A} \geq 0, \quad \mathbf{A} \mathbf{1}_K = \mathbf{1}_N \\
+        & \mathbf{B} \geq 0, \quad \mathbf{B} \mathbf{1}_N = \mathbf{1}_K \\
+        & \forall k \in \{1, ..., K\} \quad 1 - \delta \leq \alpha_k \leq 1 + \delta
+    \end{aligned}
+\end{equation}
+
+we seek to derive the gradient with respect to $\mathbf{A}$, $\mathbf{B}$, and $\boldsymbol{\alpha}$. Following section~\ref{subsec:gradient_vanilla_obj} we first rewrite the objective in terms of the trace.
+\begin{equation}
+    \label{eq:relaxed_objective_standard_trace}
+    \begin{aligned}
+        \operatorname{RSS} &= \| \mathbf{{X}} - \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \|_F^2 \\
+        &= \operatorname{tr} \left( \left( \mathbf{{X}} - \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)^T
+            \left( \mathbf{{X}} - \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right) \right) \\
+        &= \operatorname{tr} \left( \mathbf{{X}}^T \mathbf{{X}} \right)
+            - \operatorname{tr} \left( \mathbf{{X}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+            - \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{X}} \right) \\
+        &\quad + \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right) \\
+        &= \operatorname{tr}\left( \mathbf{X}^T \mathbf{X} \right)
+            - 2 \operatorname{tr} \left( \mathbf{{X}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+            + \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right) \\
+    \end{aligned}
+\end{equation}
+
+We will use again the identities from Equation~\ref{eq:cookbook_101} and Equation~\ref{eq:cookbook_116}
+
+Computing the gradient of the RSS with respect to $\mathbf{A}$ we have
+\begin{equation}
+    \label{eq:relaxed_objective_grad_A}
+    \begin{aligned}
+        G^{(A)} &= \nabla_{\mathbf{A}} \operatorname{RSS} \\
+        &=\nabla_{\mathbf{A}}
+        \left[
+            \operatorname{tr}\left( \mathbf{X}^T \mathbf{X} \right)
+            - 2 \operatorname{tr} \left( \mathbf{{X}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+            + \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+        \right] \\
+        &= - 2 \nabla_{\mathbf{A}} \operatorname{tr}(\underbrace{\mathbf{X}^T}_{G} \underbrace{\mathbf{A}}_{H} \underbrace{\operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}}_{J})
+            + \nabla_{\mathbf{A}} \operatorname{tr}(\underbrace{(\operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X})^T}_{G^T} \underbrace{\mathbf{A}^T}_{H^T} \underbrace{\mathbf{I}}_{J} \underbrace{\mathbf{A}}_{H} \underbrace{\operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X}}_{G}) \\
+        &= - 2 \mathbf{X} \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) + 2 \mathbf{A} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \\
+        &= 2 \left( \mathbf{A} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) - \mathbf{X} \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \right) \\
+    \end{aligned}
+\end{equation}
+
+Computing the gradient of the RSS with respect to $\mathbf{B}$ we have
+\begin{equation}
+    \label{eq:relaxed_objective_grad_B}
+    \begin{aligned}
+        G^{(B)} &= \nabla_{\mathbf{B}} \operatorname{RSS} \\
+        &= \nabla_{\mathbf{B}}
+        \left[
+            \operatorname{tr}\left( \mathbf{X}^T \mathbf{X} \right)
+            - 2 \operatorname{tr} \left( \mathbf{{X}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+            + \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+        \right] \\
+        &=
+            - 2 \nabla_{\mathbf{B}} \operatorname{tr}(\underbrace{\mathbf{{X}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha})}_{G} \underbrace{\mathbf{B}}_{H} \underbrace{\mathbf{X}}_{J})
+            + \nabla_{\mathbf{B}} \operatorname{tr}(\underbrace{\mathbf{X}^T}_{G^T} \underbrace{\mathbf{B}^T}_{H^T} \underbrace{\operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha})}_{J} \underbrace{\mathbf{B}}_{H} \underbrace{\mathbf{X}}_{G}) \\
+        & =
+            -2 \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{X}} \mathbf{X}^T
+            +2 \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T \\
+        & = 2
+        \left[
+            \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T
+            - \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{X}} \mathbf{X}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+Finally, computing the gradient of the RSS with respect to $\boldsymbol{\alpha}$ we have
+\begin{equation}
+    \label{eq:relaxed_objective_grad_alpha}
+    \begin{aligned}
+        G^{(\alpha)} &= \nabla_{\alpha} \operatorname{RSS} \\
+        &= \nabla_{\alpha}
+        \left[
+            \operatorname{tr}\left( \mathbf{X}^T \mathbf{X} \right)
+            - 2 \operatorname{tr} \left( \mathbf{{X}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+            + \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right)
+        \right] \\
+        &=
+            - 2 \nabla_B \operatorname{tr}(\underbrace{\mathbf{{X}}^T \mathbf{{A}}}_{G} \underbrace{\operatorname{diag}(\boldsymbol{\alpha})}_{H} \underbrace{\mathbf{B} \mathbf{X}}_{J})
+            + \nabla_B \operatorname{tr}(\underbrace{\mathbf{X}^T \mathbf{B}^T }_{G^T} \underbrace{\operatorname{diag}(\boldsymbol{\alpha})}_{H^T} \underbrace{\mathbf{{A}}^T \mathbf{{A}}}_{J} \underbrace{\operatorname{diag}(\boldsymbol{\alpha})}_{H} \underbrace{\mathbf{B} \mathbf{X}}_{G}) \\
+        & =
+            -2 \mathbf{{A}}^T \mathbf{{X}} \mathbf{X}^T \mathbf{B}^T
+            +2 \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T  \\
+        & = 2
+        \left[
+            \mathbf{{A}}^T \mathbf{{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \mathbf{X}^T \mathbf{B}^T
+            - \mathbf{{A}}^T \mathbf{{X}} \mathbf{X}^T \mathbf{B}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+\subsection{Gradient of Objective with Relaxed Archetype Constraints and Coresets}
+\label{subsec:relaxed_weighted_objective_grad}
+
+Given the objective
+\begin{equation}
+\label{eq:relaxed_weighted_objective_}
+    \begin{aligned}
+        \hat{\mathbf{A}}, \hat{\mathbf{B}} =& \; \underset{}{\argmin}
+        \| \mathbf{W} \tilde{\mathbf{X}} -  \mathbf{W} {\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \|_F^2 \quad \text{ subject to } \\
+        & \mathbf{A} \in F(\tilde{N}, K) \\
+        & \mathbf{B} \in F(K, \tilde{N}) \\
+        & \forall k \in \{1, ..., K\} \quad 1 - \delta \leq \alpha_k \leq 1 + \delta
+    \end{aligned}
+\end{equation}
+
+we seek to derive the gradient with respect to $\mathbf{A}$, $\mathbf{B}$, and $\boldsymbol{\alpha}$.
+
+To simplify the derivation we define $\breve{\mathbf{A}} = \mathbf{W} \mathbf{A}$ and $\breve{\mathbf{X}} = \mathbf{W} \mathbf{X}$. Following section~\ref{subsec:gradient_vanilla_obj} we first rewrite the objective in terms of the trace.
+\begin{equation}
+    \label{eq:relaxed_weighted_objective_trace}
+    \begin{aligned}
+        \operatorname{RSS} &= \| \breve{\mathbf{X}} - \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \|_F^2 \\
+        &= \operatorname{tr} \left( \left( \breve{\mathbf{X}} - \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right)^T
+            \left( \breve{\mathbf{X}} - \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right) \right) \\
+        &= \operatorname{tr} \left( \breve{\mathbf{X}}^T \breve{\mathbf{X}} \right)
+            - \operatorname{tr} \left( \breve{\mathbf{X}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right)
+            - \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \tilde{\mathbf{X}} \right) \\
+        &\quad + \operatorname{tr} \left( \mathbf{X}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \mathbf{X} \right) \\
+        &= \operatorname{tr}\left( \breve{\mathbf{X}}^T \breve{\mathbf{X}} \right)
+            - 2 \operatorname{tr} \left( \breve{\mathbf{X}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right)
+            + \operatorname{tr} \left( \tilde{\mathbf{X}}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right) \\
+    \end{aligned}
+\end{equation}
+
+Using the identities from Equation~\ref{eq:cookbook_101} and Equation~\ref{eq:cookbook_116}, the gradient of the RSS with respect to $\mathbf{B}$ is given by
+\begin{equation}
+    \label{eq:relaxed_weighted_objective_grad_B}
+    \begin{aligned}
+        G^{(B)} &= \nabla_{\mathbf{B}} \operatorname{RSS} \\
+        &= \nabla_{\mathbf{B}}
+        \left[
+            \operatorname{tr}\left( \breve{\mathbf{X}}^T \breve{\mathbf{X}} \right)
+            - 2 \operatorname{tr} \left( \breve{\mathbf{X}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right)
+            + \operatorname{tr} \left( \tilde{\mathbf{X}}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right)
+        \right] \\
+        &=
+            - 2 \nabla_{\mathbf{B}} \operatorname{tr}(\underbrace{\breve{\mathbf{X}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha})}_{G} \underbrace{\mathbf{B}}_{H} \underbrace{\tilde{\mathbf{X}}}_{J})
+            + \nabla_{\mathbf{B}} \operatorname{tr}(\underbrace{\tilde{\mathbf{X}}^T}_{G^T} \underbrace{\mathbf{B}^T}_{H^T} \underbrace{\operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha})}_{J} \underbrace{\mathbf{B}}_{H} \underbrace{\tilde{\mathbf{X}}}_{G}) \\
+        & =
+            -2 \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{X}} \tilde{\mathbf{X}}^T
+            +2 \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \tilde{\mathbf{X}}^T \\
+        & = 2
+        \left[
+            \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \tilde{\mathbf{X}}^T
+            - \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{X}} \tilde{\mathbf{X}}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+Computing the graident of the RSS with respect to $\boldsymbol{\alpha}$ we have
+\begin{equation}
+    \label{eq:relaxed_weighted_objective_grad_alpha}
+    \begin{aligned}
+        G^{(\alpha)}
+        &= \nabla_{\boldsymbol{\alpha}} \operatorname{RSS} \\
+        &= \nabla_{\boldsymbol{\alpha}}
+        \left[
+            \operatorname{tr}\left( \breve{\mathbf{X}}^T \breve{\mathbf{X}} \right)
+            - 2 \operatorname{tr} \left( \breve{\mathbf{X}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right)
+            + \operatorname{tr} \left( \tilde{\mathbf{X}}^T \mathbf{B}^T \operatorname{diag}(\boldsymbol{\alpha}) \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \right)
+        \right] \\
+        &=
+            - 2 \nabla_{\boldsymbol{\alpha}} \operatorname{tr}(\underbrace{\breve{\mathbf{X}}^T \breve{\mathbf{A}}}_{G} \underbrace{\operatorname{diag}(\boldsymbol{\alpha})}_{H} \underbrace{\mathbf{B} \tilde{\mathbf{X}}}_{J})
+            + \nabla_{\boldsymbol{\alpha}} \operatorname{tr}(\underbrace{\tilde{\mathbf{X}}^T \mathbf{B}^T }_{G^T} \underbrace{\operatorname{diag}(\boldsymbol{\alpha})}_{H^T} \underbrace{\breve{\mathbf{A}}^T \breve{\mathbf{A}}}_{J} \underbrace{\operatorname{diag}(\boldsymbol{\alpha})}_{H} \underbrace{\mathbf{B} \tilde{\mathbf{X}}}_{G}) \\
+        & =
+            -2 \breve{\mathbf{A}}^T \breve{\mathbf{X}} \tilde{\mathbf{X}}^T \mathbf{B}^T
+            +2 \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \tilde{\mathbf{X}}^T \mathbf{B}^T  \\
+        & = 2
+        \left[
+            \breve{\mathbf{A}}^T \breve{\mathbf{A}} \operatorname{diag}(\boldsymbol{\alpha}) \mathbf{B} \tilde{\mathbf{X}} \tilde{\mathbf{X}}^T \mathbf{B}^T
+            - \breve{\mathbf{A}}^T \breve{\mathbf{X}} \tilde{\mathbf{X}}^T \mathbf{B}^T
+        \right]
+    \end{aligned}
+\end{equation}
+
+\end{document}

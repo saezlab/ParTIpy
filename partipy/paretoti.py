@@ -488,9 +488,7 @@ def t_ratio_significance(
     # input validation
     _validate_aa_config(adata=adata)
 
-    if "t_ratio" not in adata.uns:
-        print("Computing t-ratio...")
-        compute_t_ratio(adata)
+    compute_t_ratio(adata)
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
     n_dimensions = adata.uns["AA_config"]["n_dimensions"]
@@ -524,7 +522,7 @@ def t_ratio_significance(
         adata.uns["AA_permutation"] = {"t_ratio": t_ratios_perm, "rss": rss_perm}
 
     # Calculate the p-value
-    t_ratio_p_value = 1 - np.mean(t_ratio > t_ratios_perm)
+    t_ratio_p_value = 1 - np.mean(np.abs(1 - t_ratio) < np.abs(1 - t_ratios_perm))
     rss_p_value = 1 - np.mean(rss < rss_perm)
 
     return {"t_ratio_p_value": t_ratio_p_value, "rss_p_value": rss_p_value}

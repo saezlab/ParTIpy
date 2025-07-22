@@ -5,11 +5,12 @@
 [![GitHub issues](https://img.shields.io/github/issues/saezlab/partipy.svg)](https://github.com/saezlab/partipy/issues/)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/saezlab/ParTIpy/main.svg)](https://results.pre-commit.ci/latest/github/saezlab/ParTIpy/main)
 <!-- badges: end -->
-`partipy` provides a scalable and user-friendly implementation of the Pareto Task Inference (ParTI) framework [1,2] for analyzing functional trade-offs in single-cell and spatial omics data.
+
+`partipy` (Pareto Task Inference in Python) provides a scalable and user-friendly implementation of the Pareto Task Inference (ParTI) framework [1,2] for analyzing functional trade-offs in biological data, particularly in high-throughput single-cell and spatial omics data.
 
 ParTI models gene expression variability within a cell type by capturing functional trade-offs - e.g., glycolysis vs. gluconeogenesis. The framework posits that cells lie along Pareto fronts, where improving one biological task inherently compromises another, forming a functional landscape represented as a polytope. Vertices of this polytope correspond to specialist cells optimized for distinct tasks, while generalists occupy interior regions balancing multiple functions.
 
-To infer this structure, *Archetypal Analysis (AA)* models each cell as a convex combination of extremal points, called archetypes. These archetypes are constrained to lie within the convex hull of the data, ensuring interpretability and biological plausibility. In contrast to clustering methods that impose hard boundaries, AA preserves the continuous nature of gene expression variability and reveals functional trade-offs without artificial discretization.
+To infer this structure, **archetypal analysis** models each cell as a convex combination of extremal points, called archetypes. These archetypes are constrained to lie within the convex hull of the data, ensuring interpretability and biological plausibility. In contrast to clustering methods that impose hard boundaries, archetypal analysis preserves the continuous nature of gene expression variability and reveals functional trade-offs without artificial discretization.
 
 `partipy` integrates with the scverse ecosystem, supports AnnData, and employs coreset-based optimization for scalability to millions of cells.
 
@@ -23,17 +24,31 @@ For further information and example tutorials, please check our [documentation](
 
 ## Installation
 
-Since `partipy` is still in the beta stage and updated frequently, we recommend installing it directly from GitHub:
+You need to have Python 3.10 or newer installed on your system.
+
+There are several alternative options to install `partipy`:
+
+1. Install the latest stable release from [PyPI](https://pypi.org/project/partipy/) with minimal dependancies:
+
+```
+pip install partipy
+```
+
+2. Install the latest stable full release from [PyPI](https://pypi.org/project/partipy/) with extra dependancies:
+
+```
+pip install partipy[extra]
+```
+
+3. Install the latest development version:
 
 ```
 pip install git+https://github.com/saezlab/partipy.git
 ```
 
-Alternatively, `partipy` can be installed from PyPI:
+## Release notes
 
-```
-pip install partipy
-```
+See the [changelog](https://partipy.readthedocs.io/en/latest/changelog.html).
 
 ## Questions & Issues
 
