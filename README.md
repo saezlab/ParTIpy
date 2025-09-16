@@ -61,4 +61,14 @@ If you have any questions or issues, do not hesitate to open an [issue](https://
 
 ## Citation
 
-TBD
+```
+@article{schafer2025partipy,
+  title   = {ParTIpy: A Scalable Framework for Archetypal Analysis and Pareto Task Inference},
+  author  = {Sch{\"a}fer, Philipp Sven Lars and Zimmermann, Leoni and Burmedi, Paul L. and Walfisch, Avia and Goldenberg, Noa and Yonassi, Shira and Shaer Tamar, Einat and Adler, Miri and Tanevski, Jovan and Ramirez Flores, Ricardo O. and Saez-Rodriguez, Julio},
+  journal = {bioRxiv},
+  year    = {2025},
+  doi     = {10.1101/2025.09.08.674797}
+}
+```
+
+
