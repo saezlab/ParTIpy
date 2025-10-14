@@ -692,11 +692,11 @@ def plot_bootstrap_variance(
     ----------
     adata : anndata.AnnData
         Annotated data object containing bootstrap results in ``adata.uns["AA_bootstrap"]``.
-    summary_method : {"median", "max", "mean"}, default "median"
-        Summary statistic to display as a dotted line across archetype counts.
+    summary_method : str, default ``"median"``
+        Summary statistic to display as a dotted line across archetype counts. Must be one of ``{"median", "max", "mean"}``.
     result_filters : Mapping[str, Any] | None, default `None`
-        Filters forwarded to ``_resolve_aa_result`` to select the AA configuration for which bootstrap
-        results are summarized. If ``None``, a configuration with matching bootstrap data must exist uniquely.
+        Filters forwarded to :func:`~partipy.paretoti._resolve_aa_result` to select the AA configuration for which
+        bootstrap results are summarized. If ``None``, a configuration with matching bootstrap data must exist uniquely.
 
     Returns
     -------

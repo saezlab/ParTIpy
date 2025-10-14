@@ -225,7 +225,7 @@ def compute_selection_metrics(
     This function fits AA models for each value in `n_archetypes_list`, optionally across multiple restarts,
     and records variance explained, information criterion, and residual sum of squares. Results are cached in
     `adata.uns["AA_selection_metrics"]` keyed by the AA optimization configuration, and the corresponding AA fits
-    are stored in `adata.uns["AA_results"]` via :func:`compute_archetypes`.
+    are stored in `adata.uns["AA_results"]` via :func:`~partipy.paretoti.compute_archetypes`.
 
     Parameters
     ----------
@@ -265,7 +265,7 @@ def compute_selection_metrics(
     -------
     None | pandas.DataFrame
         Returns None unless `return_result` is True, in which case the aggregated DataFrame is returned.
-        Cached per-configuration tables can later be concatenated via :func:`summarize_aa_metrics`.
+        Cached per-configuration tables can later be concatenated via :func:`~partipy.paretoti.summarize_aa_metrics`.
     """
     _validate_aa_config(adata=adata)
 
@@ -821,7 +821,7 @@ def compute_t_ratio(
     adata : anndata.AnnData
         AnnData object with AA configuration and stored archetypes.
     result_filters : Mapping[str, Any] | None, optional
-        Filters passed to :func:`get_aa_result` to disambiguate which AA result to use when multiple
+        Filters passed to :func:`~partipy.paretoti.get_aa_result` to disambiguate which AA result to use when multiple
         configurations are cached. Ignored when `adata.uns["AA_results"]` uses the legacy format.
     save_to_anndata : bool, default `True`
         Whether to store the computed t-ratio in `adata.uns["t_ratio"]`.
@@ -884,7 +884,7 @@ def t_ratio_significance(
     n_jobs : int, default `-1`
         Number of jobs for parallelization. Use -1 to use all available cores.
     result_filters : Mapping[str, Any] | None, optional
-        Filters forwarded to :func:`get_aa_result` to select which cached AA result is evaluated when multiple
+        Filters forwarded to :func:`~partipy.paretoti.get_aa_result` to select which cached AA result is evaluated when multiple
         configurations are present.
 
     Returns
