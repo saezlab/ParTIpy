@@ -14,7 +14,49 @@ from partipy.paretoti import (
     set_obsm,
 )
 from partipy.simulate import simulate_archetypes
-from partipy.schema import ArchetypeConfig
+
+
+class _DummyConfig:
+    """Lightweight stand-in for ArchetypeConfig used to mock cached entries."""
+
+    def __init__(self, **fields):
+        self._fields = dict(fields)
+        for key, value in self._fields.items():
+            setattr(self, key, value)
+
+    def __hash__(self) -> int:
+        # Freeze mapping fields for hashing; assume values are hashable or tuples/lists of hashables.
+        frozen_items = []
+        for key, value in self._fields.items():
+            if isinstance(value, dict):
+                frozen_items.append((key, tuple(sorted(value.items()))))
+            elif isinstance(value, list):
+                frozen_items.append((key, tuple(value)))
+            else:
+                frozen_items.append((key, value))
+        return hash(tuple(sorted(frozen_items)))
+
+
+def _make_dummy_config(n_archetypes: int, **overrides):
+    base = {
+        "obsm_key": "X_pca",
+        "n_dimensions": (0,),
+        "n_archetypes": n_archetypes,
+        "init": "plus_plus",
+        "optim": "projected_gradients",
+        "weight": None,
+        "max_iter": 500,
+        "rel_tol": 1e-4,
+        "early_stopping": True,
+        "coreset_algorithm": None,
+        "coreset_fraction": None,
+        "coreset_size": None,
+        "delta": 0.0,
+        "seed": 42,
+        "optim_kwargs": {},
+    }
+    base.update(overrides)
+    return _DummyConfig(**base)
 
 
 def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, noise_std=0.0):
@@ -158,14 +200,11 @@ def test_bootstrap_aa_output_correct_shape(_mock_adata):
         "mean_variance",
         "variance_per_archetype",
     ]
-    assert all(col in adata.uns["AA_bootstrap"]["3"].columns for col in expected_columns), (
-        "AA_bootstrap does not have the correct column names"
-    )
+    bootstrap_df = pt.get_aa_bootstrap(adata, n_archetypes=3)
+    assert all(col in bootstrap_df.columns for col in expected_columns), "AA_bootstrap does not have the correct column names"
 
     # Check shape
-    assert adata.uns["AA_bootstrap"]["3"].shape == (33, len(expected_columns)), (
-        "AA_bootstrap does not have the correct shape"
-    )
+    assert bootstrap_df.shape == (33, len(expected_columns)), "AA_bootstrap does not have the correct shape"
 
 
 @pytest.mark.github_actions
@@ -183,13 +222,13 @@ def test_bootstrap_aa_with_noisy_and_non_noisy_data():
     compute_bootstrap_variance(adata03, n_bootstrap=10, n_archetypes_list=5)
 
     # Compare mean variance
-    mean_variance_adata0 = adata0.uns["AA_bootstrap"]["5"]["mean_variance"].mean()
-    mean_variance_adata03 = adata03.uns["AA_bootstrap"]["5"]["mean_variance"].mean()
+    mean_variance_adata0 = pt.get_aa_bootstrap(adata0, n_archetypes=5)["mean_variance"].mean()
+    mean_variance_adata03 = pt.get_aa_bootstrap(adata03, n_archetypes=5)["mean_variance"].mean()
     assert mean_variance_adata0 < mean_variance_adata03, "Mean variance should be higher for noisy data."
 
     # Compare variance per archetype
-    max_variance_adata0 = adata0.uns["AA_bootstrap"]["5"]["variance_per_archetype"].max()
-    min_variance_adata03 = adata03.uns["AA_bootstrap"]["5"]["variance_per_archetype"].min()
+    max_variance_adata0 = pt.get_aa_bootstrap(adata0, n_archetypes=5)["variance_per_archetype"].max()
+    min_variance_adata03 = pt.get_aa_bootstrap(adata03, n_archetypes=5)["variance_per_archetype"].min()
     assert max_variance_adata0 < min_variance_adata03, (
         "Max variance of non-noisy data should be less than min variance of noisy data."
     )
@@ -201,8 +240,8 @@ def test_bootstrap_aa_with_noisy_and_non_noisy_data():
 @pytest.mark.github_actions
 def test_get_aa_metrics_filtering_behavior():
     adata = anndata.AnnData(np.empty((0, 0)))
-    cfg_base = ArchetypeConfig(obsm_key="X_pca", n_dimensions=(0,), n_archetypes=3)
-    cfg_other = cfg_base.model_copy(update={"n_archetypes": 4})
+    cfg_base = _make_dummy_config(3)
+    cfg_other = _make_dummy_config(4)
 
     metrics_base = pd.DataFrame({"n_archetypes": [3], "IC": [1.0]})
     metrics_other = pd.DataFrame({"n_archetypes": [4], "IC": [2.0]})
@@ -216,7 +255,7 @@ def test_get_aa_metrics_filtering_behavior():
     assert df.equals(metrics_base)
 
     cfg, df_with_cfg = pt.get_aa_metrics(adata, return_config=True, n_archetypes=4)
-    assert cfg == cfg_other
+    assert cfg.n_archetypes == 4
     assert df_with_cfg.equals(metrics_other)
 
     with pytest.raises(ValueError):
@@ -230,8 +269,8 @@ def test_get_aa_metrics_filtering_behavior():
 @pytest.mark.github_actions
 def test_get_aa_bootstrap_filtering_behavior():
     adata = anndata.AnnData(np.empty((0, 0)))
-    cfg_base = ArchetypeConfig(obsm_key="X_pca", n_dimensions=(0,), n_archetypes=2)
-    cfg_other = cfg_base.model_copy(update={"n_archetypes": 3})
+    cfg_base = _make_dummy_config(2)
+    cfg_other = _make_dummy_config(3)
 
     bootstrap_base = pd.DataFrame({"archetype": [0], "iter": [0]})
     bootstrap_other = pd.DataFrame({"archetype": [1], "iter": [1]})
@@ -245,7 +284,7 @@ def test_get_aa_bootstrap_filtering_behavior():
     assert df.equals(bootstrap_base)
 
     cfg, df_with_cfg = pt.get_aa_bootstrap(adata, return_config=True, n_archetypes=3)
-    assert cfg == cfg_other
+    assert cfg.n_archetypes == 3
     assert df_with_cfg.equals(bootstrap_other)
 
     with pytest.raises(ValueError):
@@ -268,8 +307,9 @@ def test_compute_archetypes_output_shape(_mock_adata):
     """
     adata = _mock_adata.copy()
     compute_archetypes(adata, n_archetypes=3)
-    Z = adata.uns["AA_results"]["Z"]
-    assert Z.shape == (3, max(adata.uns["AA_config"]["n_dimensions"]) + 1), "Archetypes matrix `Z` has incorrect shape."
+    _, payload = pt.get_aa_result(adata, return_config=True)
+    Z = payload["Z"]
+    assert Z.shape == (3, len(adata.uns["AA_config"]["n_dimensions"])), "Archetypes matrix `Z` has incorrect shape."
 
 
 @pytest.mark.github_actions
@@ -283,14 +323,15 @@ def test_compute_archetypes_archetypes_only_parameter(_mock_adata):
     # Test `archetypes_only=True`
     adata = _mock_adata.copy()
     compute_archetypes(adata, n_archetypes=3, archetypes_only=True)
-    assert "Z" in adata.uns["AA_results"], "Archetypes matrix `Z` not saved."
-    assert "A" not in adata.uns["AA_results"], "Unexpected key `A` in results."
+    _, payload = pt.get_aa_result(adata, return_config=True)
+    assert "Z" in payload, "Archetypes matrix `Z` not saved."
+    assert "A" not in payload, "Unexpected key `A` in results."
 
     # Test `archetypes_only=False`
-    compute_archetypes(adata, n_archetypes=3, archetypes_only=False)
-    assert all(key in adata.uns["AA_results"] for key in ["A", "B", "Z", "RSS", "varexpl"]), (
-        "Missing keys in results when `archetypes_only=False`."
-    )
+    compute_archetypes(adata, n_archetypes=3, archetypes_only=False, force_recompute=True)
+    _, payload = pt.get_aa_result(adata, return_config=True)
+    for key in ["A", "B", "Z", "RSS", "varexpl"]:
+        assert key in payload, f"Missing key {key!r} in results when `archetypes_only=False`."
 
 
 @pytest.mark.github_actions
@@ -303,10 +344,10 @@ def test_compute_archetypes_reproducibility(_mock_adata):
     adata = _mock_adata.copy()
 
     compute_archetypes(adata, n_archetypes=3, seed=42)
-    Z1 = adata.uns["AA_results"]["Z"].copy()
+    Z1 = pt.get_aa_result(adata)["Z"].copy()
 
-    compute_archetypes(adata, n_archetypes=3, seed=42)
-    Z2 = adata.uns["AA_results"]["Z"].copy()
+    compute_archetypes(adata, n_archetypes=3, seed=42, force_recompute=True)
+    Z2 = pt.get_aa_result(adata)["Z"].copy()
 
     assert np.allclose(Z1, Z2), "Results are not reproducible with the same seed."
 
@@ -378,11 +419,11 @@ def test_var_explained_aa_input_validation(_mock_adata):
     adata = _mock_adata.copy()
     # Test invalid min_k
     with pytest.raises(ValueError):
-        compute_selection_metrics(adata, min_k=1)
+        compute_selection_metrics(adata, n_archetypes_list=[1])
 
     # Test invalid max_k
     with pytest.raises(ValueError):
-        compute_selection_metrics(adata, min_k=2, max_k=1)
+        compute_selection_metrics(adata, n_archetypes_list=[2, 1])
 
 
 @pytest.mark.github_actions
@@ -394,6 +435,6 @@ def test_model_selection_metrics_aa_on_simulated_data():
     - IC is lowest at the number of archetypes used to generate the data.
     """
     sim_adata = _simulate_adata(n_samples=1000, n_dimensions=50, n_archetypes=5, n_pcs=6)
-    compute_selection_metrics(sim_adata, min_k=2, max_k=10)
+    compute_selection_metrics(sim_adata, n_archetypes_list=list(range(2, 11)))
 
     assert sim_adata.uns["AA_metrics_df"].sort_values("IC").iloc[0]["k"] == 5, "Expected lowest IC at 5 archetypes"

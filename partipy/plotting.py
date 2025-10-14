@@ -695,24 +695,6 @@ def plot_bootstrap_variance(
 
     filters = dict(result_filters or {})
 
-    def _core_signature(cfg: ArchetypeConfig) -> tuple:
-        return (
-            cfg.obsm_key,
-            cfg.n_dimensions,
-            cfg.init,
-            cfg.optim,
-            cfg.weight,
-            cfg.max_iter,
-            cfg.rel_tol,
-            cfg.early_stopping,
-            cfg.coreset_algorithm,
-            cfg.coreset_fraction,
-            cfg.coreset_size,
-            cfg.delta,
-            cfg.seed,
-            cfg.optim_kwargs,
-        )
-
     matching_items: list[tuple[ArchetypeConfig, pd.DataFrame]] = []
     for cfg, df in bootstrap_store.items():
         if not isinstance(cfg, ArchetypeConfig):
@@ -727,8 +709,13 @@ def plot_bootstrap_variance(
             "Ensure bootstrap_variance was computed for a configuration matching result_filters."
         )
 
-    signatures = {_core_signature(cfg) for cfg, _ in matching_items}
-    if len(signatures) > 1:
+    matching_configs = [cfg for cfg, _ in matching_items]
+    reference_cfg = matching_configs[0]
+    equivalent_configs = set(
+        query_configs_by_signature(matching_configs, reference_cfg, ignore_fields=("n_archetypes",))
+    )
+
+    if any(cfg not in equivalent_configs for cfg in matching_configs):
         raise ValueError(
             "Multiple optimization configurations match the provided filters. "
             "Please supply more specific result_filters (e.g., init, optim, weight)."
