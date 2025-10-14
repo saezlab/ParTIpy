@@ -111,7 +111,8 @@ class ArchetypeConfig(BaseModel):
 
     def _signature(self, *, ignore_fields: Iterable[str] = ("n_archetypes",)) -> tuple[tuple[str, Any], ...]:
         ignore = set(ignore_fields)
-        return tuple((name, getattr(self, name)) for name in self.model_fields.keys() if name not in ignore)
+        fields = type(self).model_fields  # <-- class-level access (v2-safe)
+        return tuple((name, getattr(self, name)) for name in fields if name not in ignore)
 
     def _matches_signature(
         self,

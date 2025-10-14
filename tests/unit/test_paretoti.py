@@ -1,5 +1,6 @@
 import anndata
 import numpy as np
+import pandas as pd
 import partipy as pt
 import pytest
 import scanpy as sc
@@ -13,6 +14,7 @@ from partipy.paretoti import (
     set_obsm,
 )
 from partipy.simulate import simulate_archetypes
+from partipy.schema import ArchetypeConfig
 
 
 def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, noise_std=0.0):
@@ -191,6 +193,67 @@ def test_bootstrap_aa_with_noisy_and_non_noisy_data():
     assert max_variance_adata0 < min_variance_adata03, (
         "Max variance of non-noisy data should be less than min variance of noisy data."
     )
+
+
+### getter utilities ###
+
+
+@pytest.mark.github_actions
+def test_get_aa_metrics_filtering_behavior():
+    adata = anndata.AnnData(np.empty((0, 0)))
+    cfg_base = ArchetypeConfig(obsm_key="X_pca", n_dimensions=(0,), n_archetypes=3)
+    cfg_other = cfg_base.model_copy(update={"n_archetypes": 4})
+
+    metrics_base = pd.DataFrame({"n_archetypes": [3], "IC": [1.0]})
+    metrics_other = pd.DataFrame({"n_archetypes": [4], "IC": [2.0]})
+
+    adata.uns["AA_selection_metrics"] = {cfg_base: metrics_base, cfg_other: metrics_other}
+
+    with pytest.raises(ValueError):
+        pt.get_aa_metrics(adata)
+
+    df = pt.get_aa_metrics(adata, n_archetypes=3)
+    assert df.equals(metrics_base)
+
+    cfg, df_with_cfg = pt.get_aa_metrics(adata, return_config=True, n_archetypes=4)
+    assert cfg == cfg_other
+    assert df_with_cfg.equals(metrics_other)
+
+    with pytest.raises(ValueError):
+        pt.get_aa_metrics(adata, n_archetypes=5)
+
+    del adata.uns["AA_selection_metrics"]
+    with pytest.raises(ValueError):
+        pt.get_aa_metrics(adata)
+
+
+@pytest.mark.github_actions
+def test_get_aa_bootstrap_filtering_behavior():
+    adata = anndata.AnnData(np.empty((0, 0)))
+    cfg_base = ArchetypeConfig(obsm_key="X_pca", n_dimensions=(0,), n_archetypes=2)
+    cfg_other = cfg_base.model_copy(update={"n_archetypes": 3})
+
+    bootstrap_base = pd.DataFrame({"archetype": [0], "iter": [0]})
+    bootstrap_other = pd.DataFrame({"archetype": [1], "iter": [1]})
+
+    adata.uns["AA_bootstrap"] = {cfg_base: bootstrap_base, cfg_other: bootstrap_other}
+
+    with pytest.raises(ValueError):
+        pt.get_aa_bootstrap(adata)
+
+    df = pt.get_aa_bootstrap(adata, n_archetypes=2)
+    assert df.equals(bootstrap_base)
+
+    cfg, df_with_cfg = pt.get_aa_bootstrap(adata, return_config=True, n_archetypes=3)
+    assert cfg == cfg_other
+    assert df_with_cfg.equals(bootstrap_other)
+
+    with pytest.raises(ValueError):
+        pt.get_aa_bootstrap(adata, n_archetypes=4)
+
+    del adata.uns["AA_bootstrap"]
+    with pytest.raises(ValueError):
+        pt.get_aa_bootstrap(adata)
 
 
 ### compute_archetypes ###

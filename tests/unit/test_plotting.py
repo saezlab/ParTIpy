@@ -32,8 +32,7 @@ def _mock_adata():
     adata = anndata.AnnData(X=np.random.rand(1000, 50))
     sc.pp.pca(adata)
     pt.set_obsm(adata, "X_pca", 4)
-    pt.compute_bootstrap_variance(adata=adata, n_bootstrap=10, n_archetypes_list=range(3, 4))
-    pt.compute_archetypes(adata, n_archetypes=4)
+    pt.compute_bootstrap_variance(adata=adata, n_bootstrap=10, n_archetypes_list=[3])
     return adata
 
 
@@ -69,7 +68,7 @@ mock_meta_enrich_table = _mock_meta_enrich_table()
 
 @pytest.mark.github_actions
 def test_plot_2D(mock_adata=mock_adata):
-    p = plot_2D(mock_adata.X, mock_adata.uns["AA_results"]["Z"])
+    p = plot_2D(mock_adata.X, pt.get_aa_result(mock_adata, n_archetypes=3)["Z"])
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
 
 
@@ -78,7 +77,7 @@ def test_plot_2D(mock_adata=mock_adata):
 
 @pytest.mark.github_actions
 def test_plot_archetypes_2D(mock_adata=mock_adata):
-    p = plot_archetypes_2D(mock_adata)
+    p = plot_archetypes_2D(mock_adata, result_filters={"n_archetypes": 3})
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
 
 
@@ -89,7 +88,7 @@ def test_plot_archetypes_2D(mock_adata=mock_adata):
 def test_plot_archetypes_3D(mock_adata=mock_adata):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        p = plot_archetypes_3D(mock_adata)
+        p = plot_archetypes_3D(mock_adata, result_filters={"n_archetypes": 3})
         assert isinstance(p, go.Figure), "Expected a plotly graph_objects Figure"
 
 

@@ -16,7 +16,15 @@ from scipy.spatial import ConvexHull, QhullError
 from scipy.stats import chi2
 
 from ._docs import docs
-from .paretoti import _matches, _resolve_aa_result, _validate_aa_config, _validate_aa_results, compute_selection_metrics
+from .paretoti import (
+    _ensure_bootstrap_dict,
+    _matches,
+    _resolve_aa_result,
+    _validate_aa_config,
+    _validate_aa_results,
+    compute_selection_metrics,
+    get_aa_bootstrap,
+)
 from .schema import ArchetypeConfig, query_configs_by_signature
 
 DEFAULT_ARCHETYPE_COLORS = {
@@ -38,6 +46,17 @@ def generate_distinct_colors(n: int) -> list[str]:
         for h in range(n)
         for r, g, b in [colorsys.hls_to_rgb(h / n, 0.5, 1.0)]
     ]
+
+
+def _config_to_filters(cfg: ArchetypeConfig) -> dict[str, Any]:
+    """Convert an `ArchetypeConfig` into filters usable by the AA getter utilities."""
+    filters = cfg.model_dump()
+    optim_kwargs = filters.get("optim_kwargs")
+    if isinstance(optim_kwargs, Mapping):
+        filters["optim_kwargs"] = dict(optim_kwargs)
+    elif isinstance(optim_kwargs, tuple):
+        filters["optim_kwargs"] = dict(optim_kwargs)
+    return filters
 
 
 def _compute_contour_df_2D(bootstrap_df: pd.DataFrame, col_1: str, col_2: str, confidence_level: float = 0.95):
@@ -283,9 +302,7 @@ def plot_bootstrap_2D(
     if not (0 < contours_confidence_level < 1):
         raise ValueError("contours_confidence_level must be in the interval (0, 1)")
 
-    bootstrap_store = adata.uns.get("AA_bootstrap")
-    if not isinstance(bootstrap_store, Mapping) or not bootstrap_store:
-        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+    bootstrap_store = _ensure_bootstrap_dict(adata)
 
     filters = dict(result_filters or {})
 
@@ -324,10 +341,8 @@ def plot_bootstrap_2D(
             )
 
     cfg = reference_cfg
-    df = bootstrap_store.get(cfg)
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError(f"Bootstrap entry for {cfg} is not a pandas DataFrame.")
-    bootstrap_df = df.copy()
+    filters_for_getter = _config_to_filters(cfg)
+    bootstrap_df = get_aa_bootstrap(adata, **filters_for_getter).copy()
 
     obsm_key = cfg.obsm_key
     cfg_dims = tuple(cfg.n_dimensions)
@@ -428,9 +443,7 @@ def plot_bootstrap_3D(
 
     _validate_aa_config(adata=adata)
 
-    bootstrap_store = adata.uns.get("AA_bootstrap")
-    if not isinstance(bootstrap_store, Mapping) or not bootstrap_store:
-        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+    bootstrap_store = _ensure_bootstrap_dict(adata)
 
     filters = dict(result_filters or {})
 
@@ -470,10 +483,8 @@ def plot_bootstrap_3D(
             )
 
     cfg = reference_cfg
-    df = bootstrap_store.get(cfg)
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError(f"Bootstrap entry for {cfg} is not a pandas DataFrame.")
-    bootstrap_df = df.copy()
+    filters_for_getter = _config_to_filters(cfg)
+    bootstrap_df = get_aa_bootstrap(adata, **filters_for_getter).copy()
 
     obsm_key = cfg.obsm_key
     cfg_dims = tuple(cfg.n_dimensions)
@@ -680,9 +691,7 @@ def plot_bootstrap_variance(
     if summary_method not in {"median", "max", "mean"}:
         raise ValueError("summary_method must be one of {'median', 'max', 'mean'}")
 
-    bootstrap_store = adata.uns.get("AA_bootstrap")
-    if not isinstance(bootstrap_store, Mapping) or not bootstrap_store:
-        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+    bootstrap_store = _ensure_bootstrap_dict(adata)
 
     filters = dict(result_filters or {})
 
@@ -845,14 +854,14 @@ def plot_archetypes_2D(
 
     contour_df = None
     if show_contours:
-        bootstrap_store = adata.uns.get("AA_bootstrap")
-        if not isinstance(bootstrap_store, Mapping):
-            raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
-        if cfg not in bootstrap_store:
+        filters_for_getter = _config_to_filters(cfg)
+        try:
+            bootstrap_df = get_aa_bootstrap(adata, **filters_for_getter).copy()
+        except ValueError as err:
             raise ValueError(
-                f"{cfg} not found in adata.uns['AA_bootstrap']. Available keys: {list(bootstrap_store.keys())}"
-            )
-        bootstrap_df = bootstrap_store[cfg].copy()
+                "AA bootstrap results not found for the selected configuration. "
+                "Run `compute_bootstrap_variance` with matching parameters."
+            ) from err
         contour_df = _compute_contour_df_2D(
             bootstrap_df=bootstrap_df,
             col_1=f"{obsm_key}_{plot_dims[0]}",
@@ -1050,14 +1059,14 @@ def plot_archetypes_3D(
 
     contour_df = None
     if show_contours:
-        bootstrap_store = adata.uns.get("AA_bootstrap")
-        if not isinstance(bootstrap_store, Mapping):
-            raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
-        if cfg not in bootstrap_store:
+        filters_for_getter = _config_to_filters(cfg)
+        try:
+            bootstrap_df = get_aa_bootstrap(adata, **filters_for_getter).copy()
+        except ValueError as err:
             raise ValueError(
-                f"{cfg} not found in adata.uns['AA_bootstrap']. Available keys: {list(bootstrap_store.keys())}"
-            )
-        bootstrap_df = bootstrap_store[cfg].copy()
+                "AA bootstrap results not found for the selected configuration. "
+                "Run `compute_bootstrap_variance` with matching parameters."
+            ) from err
         contour_df = _compute_contour_df_3D(
             bootstrap_df=bootstrap_df,
             col_1=f"{obsm_key}_{plot_dims[0]}",

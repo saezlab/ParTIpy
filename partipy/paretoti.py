@@ -1289,6 +1289,30 @@ def _ensure_cell_weights_dict(adata) -> dict:
     return weights
 
 
+def _ensure_metrics_dict(adata) -> dict:
+    metrics = adata.uns.get("AA_selection_metrics")
+    if metrics is None:
+        raise ValueError(
+            "No AA selection metrics found in `adata.uns['AA_selection_metrics']`. "
+            "Run `compute_selection_metrics` first."
+        )
+    if not isinstance(metrics, dict) or len(metrics) == 0:
+        raise ValueError("`adata.uns['AA_selection_metrics']` is empty or not a dict.")
+    return metrics
+
+
+def _ensure_bootstrap_dict(adata) -> dict:
+    bootstrap = adata.uns.get("AA_bootstrap")
+    if bootstrap is None:
+        raise ValueError(
+            "No AA bootstrap results found in `adata.uns['AA_bootstrap']`. "
+            "Run `compute_bootstrap_variance` first."
+        )
+    if not isinstance(bootstrap, dict) or len(bootstrap) == 0:
+        raise ValueError("`adata.uns['AA_bootstrap']` is empty or not a dict.")
+    return bootstrap
+
+
 def get_aa_cell_weights(adata, /, *, return_config: bool = False, **filters):
     """
     Retrieve archetype-analysis cell weights stored in ``adata.uns['AA_cell_weights']``.
@@ -1341,3 +1365,111 @@ def get_aa_cell_weights(adata, /, *, return_config: bool = False, **filters):
 
     cfg, weights = matches[0]
     return (cfg, weights) if return_config else weights
+
+
+def get_aa_metrics(adata, /, *, return_config: bool = False, **filters):
+    """
+    Retrieve archetypal analysis selection metrics stored in ``adata.uns['AA_selection_metrics']``.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        AnnData object containing AA selection diagnostics.
+    return_config : bool, default ``False``
+        If True, return a tuple ``(ArchetypeConfig, dataframe)``, otherwise return only the DataFrame.
+    **filters :
+        ArchetypeConfig fields used to disambiguate which metrics table to return (e.g., ``n_archetypes=5``).
+
+    Returns
+    -------
+    pandas.DataFrame | tuple[ArchetypeConfig, pandas.DataFrame]
+        The selection-metrics DataFrame, optionally with the associated ``ArchetypeConfig``.
+    """
+    metrics_dict = _ensure_metrics_dict(adata)
+
+    if not filters:
+        if len(metrics_dict) == 1:
+            ((cfg, df),) = metrics_dict.items()
+            return (cfg, df) if return_config else df
+        raise ValueError(
+            f"Multiple AA selection metrics present ({len(metrics_dict)}). "
+            "Specify filters (e.g., n_archetypes=..., init=...)."
+        )
+
+    matches = [(cfg, df) for cfg, df in metrics_dict.items() if _matches(cfg, filters)]
+
+    if len(matches) == 0:
+        raise ValueError(f"No AA selection metrics match filters: {filters!r}")
+    if len(matches) > 1:
+        examples = [
+            {
+                "n_archetypes": m[0].n_archetypes,
+                "init": m[0].init,
+                "optim": m[0].optim,
+                "weight": m[0].weight,
+                "delta": m[0].delta,
+                "seed": m[0].seed,
+            }
+            for m in matches[:5]
+        ]
+        raise ValueError(
+            f"{len(matches)} AA selection metric tables match filters {filters!r}. "
+            f"Please add more filters. First few matches: {examples}"
+        )
+
+    cfg, df = matches[0]
+    return (cfg, df) if return_config else df
+
+
+def get_aa_bootstrap(adata, /, *, return_config: bool = False, **filters):
+    """
+    Retrieve bootstrap variance results stored in ``adata.uns['AA_bootstrap']``.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        AnnData object containing cached bootstrap runs.
+    return_config : bool, default ``False``
+        If True, return a tuple ``(ArchetypeConfig, dataframe)``, otherwise return only the DataFrame.
+    **filters :
+        ArchetypeConfig fields used to disambiguate which bootstrap table to return (e.g., ``n_archetypes=5``).
+
+    Returns
+    -------
+    pandas.DataFrame | tuple[ArchetypeConfig, pandas.DataFrame]
+        The bootstrap DataFrame, optionally with the associated ``ArchetypeConfig``.
+    """
+    bootstrap_dict = _ensure_bootstrap_dict(adata)
+
+    if not filters:
+        if len(bootstrap_dict) == 1:
+            ((cfg, df),) = bootstrap_dict.items()
+            return (cfg, df) if return_config else df
+        raise ValueError(
+            f"Multiple AA bootstrap entries present ({len(bootstrap_dict)}). "
+            "Specify filters (e.g., n_archetypes=..., init=...)."
+        )
+
+    matches = [(cfg, df) for cfg, df in bootstrap_dict.items() if _matches(cfg, filters)]
+
+    if len(matches) == 0:
+        raise ValueError(f"No AA bootstrap entries match filters: {filters!r}")
+    if len(matches) > 1:
+        examples = [
+            {
+                "n_archetypes": m[0].n_archetypes,
+                "init": m[0].init,
+                "optim": m[0].optim,
+                "weight": m[0].weight,
+                "delta": m[0].delta,
+                "seed": m[0].seed,
+            }
+            for m in matches[:5]
+        ]
+        raise ValueError(
+            f"{len(matches)} AA bootstrap entries match filters {filters!r}. "
+            f"Please add more filters. First few matches: {examples}"
+        )
+
+    cfg, df = matches[0]
+    return (cfg, df) if return_config else df
