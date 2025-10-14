@@ -1,3 +1,5 @@
+from typing import Any
+
 import anndata
 import numpy as np
 import pandas as pd
@@ -35,6 +37,20 @@ class _DummyConfig:
             else:
                 frozen_items.append((key, value))
         return hash(tuple(sorted(frozen_items)))
+
+    def _signature(self, *, ignore_fields=("n_archetypes",)) -> tuple[tuple[str, Any], ...]:
+        ignore = set(ignore_fields)
+        items = []
+        for key, value in self._fields.items():
+            if key in ignore:
+                continue
+            if isinstance(value, dict):
+                items.append((key, tuple(sorted(value.items()))))
+            elif isinstance(value, list):
+                items.append((key, tuple(value)))
+            else:
+                items.append((key, value))
+        return tuple(sorted(items))
 
 
 def _make_dummy_config(n_archetypes: int, **overrides):
