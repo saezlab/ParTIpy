@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "partipy"
-version = "0.0.4"
+version = "0.0.5"
 description = "Pareto Task Inference in Python"
 readme = "README.md"
 license = { file = "LICENSE" }
