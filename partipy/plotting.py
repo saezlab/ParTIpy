@@ -478,8 +478,7 @@ def plot_bootstrap_3D(
         )
         if len(matched_configs) != len(candidate_configs):
             raise ValueError(
-                "Multiple optimization configurations present. "
-                "Please provide result_filters to select one."
+                "Multiple optimization configurations present. Please provide result_filters to select one."
             )
 
     cfg = reference_cfg
@@ -825,12 +824,12 @@ def plot_archetypes_2D(
         raise ValueError("Matched AA payload does not contain 'Z'.")
 
     if dimensions is None:
-        if len(cfg_dims) < 3:
-            raise ValueError("Need at least three dimensions available to plot in 3D.")
-        plot_dims = list(cfg_dims[:3])
+        if len(cfg_dims) < 2:
+            raise ValueError("Need at least three dimensions available to plot in 2D.")
+        plot_dims = list(cfg_dims[:2])
     else:
-        if len(dimensions) != 3:
-            raise ValueError("dimensions must contain exactly 3 dimensions for 3D plotting")
+        if len(dimensions) != 2:
+            raise ValueError("dimensions must contain exactly 2 dimensions for 2D plotting")
         plot_dims = list(dimensions)
 
     for dim in plot_dims:

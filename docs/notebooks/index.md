@@ -3,6 +3,7 @@
 :maxdepth: 1
 
 quickstart
+data_access
 cross_condition_lupus
 spatial
 crosstalk

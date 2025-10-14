@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import cdist
 
-from .paretoti import get_aa_cell_weights, _resolve_aa_result, _validate_aa_config, _validate_aa_results
+from .paretoti import _resolve_aa_result, _validate_aa_config, _validate_aa_results, get_aa_cell_weights
 
 
 def compute_archetype_weights(
