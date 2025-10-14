@@ -854,7 +854,6 @@ def t_ratio_significance(
         "delta": config.delta,
         "seed": config.seed,
     }
-    print(aa_kwargs)
 
     config_optim_kwargs = dict(config.optim_kwargs)
     aa_kwargs.update(config_optim_kwargs)
@@ -1127,7 +1126,10 @@ def compute_archetypes(
     # ------------------ persist or return ------------------
     if save_to_anndata:
         if archetypes_only:
-            adata.uns["AA_results"][archetype_config] = {"Z": best["Z"]}
+            adata.uns["AA_results"][archetype_config] = {
+                "Z": best["Z"],
+                "cell_index": adata.obs.index.to_numpy().copy(),
+            }
         else:
             adata.uns["AA_results"][archetype_config] = {
                 "A": best["A"],
@@ -1136,6 +1138,7 @@ def compute_archetypes(
                 "RSS": best["RSS"],
                 "RSS_full": best["RSS_full"],
                 "varexpl": best["varexpl"],
+                "cell_index": adata.obs.index.to_numpy().copy(),
             }
 
     if return_result:
@@ -1274,3 +1277,67 @@ def delete_aa_result(adata, /, **filters):
     cfg, payload = matches[0]
     results.pop(cfg)
     return payload
+
+
+def _ensure_cell_weights_dict(adata) -> dict:
+    weights = adata.uns.get("AA_cell_weights")
+    if weights is None:
+        raise ValueError("No AA cell weights found in `adata.uns['AA_cell_weights']`. "
+                         "Run `compute_archetype_weights` first.")
+    if not isinstance(weights, dict) or len(weights) == 0:
+        raise ValueError("`adata.uns['AA_cell_weights']` is empty or not a dict.")
+    return weights
+
+
+def get_aa_cell_weights(adata, /, *, return_config: bool = False, **filters):
+    """
+    Retrieve archetype-analysis cell weights stored in ``adata.uns['AA_cell_weights']``.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        AnnData object containing stored cell weights.
+    return_config : bool, default ``False``
+        If True, return a tuple ``(ArchetypeConfig, weights)``, otherwise return only the weights.
+    **filters :
+        ArchetypeConfig fields used to disambiguate which weight matrix to return (e.g., ``n_archetypes=5``).
+
+    Returns
+    -------
+    numpy.ndarray | tuple[ArchetypeConfig, numpy.ndarray]
+        The cell-weight matrix, optionally with the associated ``ArchetypeConfig``.
+    """
+    weights_dict = _ensure_cell_weights_dict(adata)
+
+    if not filters:
+        if len(weights_dict) == 1:
+            ((cfg, weights),) = weights_dict.items()
+            return (cfg, weights) if return_config else weights
+        raise ValueError(
+            f"Multiple AA cell weight matrices present ({len(weights_dict)}). "
+            "Specify filters (e.g., n_archetypes=..., init=...)."
+        )
+
+    matches = [(cfg, weights) for cfg, weights in weights_dict.items() if _matches(cfg, filters)]
+
+    if len(matches) == 0:
+        raise ValueError(f"No AA cell weights match filters: {filters!r}")
+    if len(matches) > 1:
+        examples = [
+            {
+                "n_archetypes": m[0].n_archetypes,
+                "init": m[0].init,
+                "optim": m[0].optim,
+                "weight": m[0].weight,
+                "delta": m[0].delta,
+                "seed": m[0].seed,
+            }
+            for m in matches[:5]
+        ]
+        raise ValueError(
+            f"{len(matches)} AA cell weight matrices match filters {filters!r}. "
+            f"Please add more filters. First few matches: {examples}"
+        )
+
+    cfg, weights = matches[0]
+    return (cfg, weights) if return_config else weights

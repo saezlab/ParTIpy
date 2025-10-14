@@ -11,9 +11,60 @@ from partipy.enrichment import (
     extract_specific_processes,
 )
 from partipy.simulate import simulate_archetypes
+from partipy.schema import (
+    ArchetypeConfig,
+    DEFAULT_INIT,
+    DEFAULT_MAX_ITER,
+    DEFAULT_OPTIM,
+    DEFAULT_REL_TOL,
+    DEFAULT_WEIGHT,
+)
 from scipy.spatial.distance import cdist
 
 np.random.seed(42)
+
+
+def _create_config(
+    *,
+    n_archetypes: int,
+    obsm_key: str,
+    n_dimensions: tuple[int, ...],
+    seed: int = 42,
+) -> ArchetypeConfig:
+    return ArchetypeConfig(
+        obsm_key=obsm_key,
+        n_dimensions=n_dimensions,
+        n_archetypes=n_archetypes,
+        init=DEFAULT_INIT,
+        optim=DEFAULT_OPTIM,
+        weight=DEFAULT_WEIGHT,
+        max_iter=DEFAULT_MAX_ITER,
+        rel_tol=DEFAULT_REL_TOL,
+        early_stopping=True,
+        coreset_algorithm=None,
+        coreset_fraction=0.1,
+        coreset_size=None,
+        delta=0.0,
+        seed=seed,
+        optim_kwargs={},
+    )
+
+
+def _extract_weights(adata: anndata.AnnData, *, result_filters: dict | None = None) -> np.ndarray:
+    weights_store = adata.uns.get("AA_cell_weights")
+    if weights_store is None:
+        raise KeyError("No cell weights stored in AnnData object.")
+    if isinstance(weights_store, dict):
+        if result_filters:
+            for cfg, weights in weights_store.items():
+                match = all(getattr(cfg, k) == v for k, v in result_filters.items())
+                if match:
+                    return weights
+            raise KeyError("No weights matching the provided filters were found.")
+        if len(weights_store) != 1:
+            raise KeyError("Multiple weight matrices present; please provide result_filters.")
+        return next(iter(weights_store.values()))
+    return np.asarray(weights_store)
 
 
 def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, seed: int = 42):
@@ -22,12 +73,14 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, seed: int = 42
     )
     adata = anndata.AnnData(X)
     adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
+    dims = tuple(range(n_pcs))
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
-        "n_dimensions": list(range(n_pcs)),
+        "n_dimensions": list(dims),
     }
-    adata.uns["AA_results"] = {"Z": Z[:, :n_pcs]}
-    compute_archetype_weights(adata)
+    config = _create_config(n_archetypes=n_archetypes, obsm_key="X_pca", n_dimensions=dims, seed=seed)
+    adata.uns["AA_results"] = {config: {"Z": Z[:, :n_pcs]}}
+    compute_archetype_weights(adata, result_filters={"n_archetypes": n_archetypes})
     return adata
 
 
@@ -39,7 +92,7 @@ def test_compute_archetype_weights_anndata():
     """Test AnnData input with automatic and manual mode.
 
     Verifies:
-    - Saving results in `adata.obsm["cell_weights"]`
+    - Saving results in `adata.uns["AA_cell_weights"]`
     - Correct output shape (n_samples × n_archetypes)
     - Weight bounds [0, 1]
     """
@@ -47,22 +100,23 @@ def test_compute_archetype_weights_anndata():
     adata = _simulate_adata(n_samples=1000, n_dimensions=10, n_archetypes=5, n_pcs=4)
 
     # Test automatic mode
-    compute_archetype_weights(adata)
-    assert "cell_weights" in adata.obsm, "Weights are not saved correctly"
-    assert adata.obsm["cell_weights"].shape == (1000, 5), "Weights have wrong shape"
-    assert np.all(adata.obsm["cell_weights"] >= 0) and np.all(adata.obsm["cell_weights"] <= 1), (
-        "Weights are not saved correctly"
-    )
-    del adata.obsm["cell_weights"]
+    compute_archetype_weights(adata, result_filters={"n_archetypes": 5})
+    assert "AA_cell_weights" in adata.uns, "Weights are not saved correctly"
+    weights_store = adata.uns["AA_cell_weights"]
+    assert isinstance(weights_store, dict), "Weights should be stored per AA configuration"
+    ((cfg, weights),) = weights_store.items()
+    assert weights.shape == (1000, 5), "Weights have wrong shape"
+    assert np.all(weights >= 0) and np.all(weights <= 1), "Weights contain values outside [0, 1]"
+    del adata.uns["AA_cell_weights"]
 
     # Test manual mode
     length_scale = 1.0
-    compute_archetype_weights(adata, mode="manual", length_scale=length_scale)
-    assert "cell_weights" in adata.obsm, "Weights are not saved correctly"
-    assert adata.obsm["cell_weights"].shape == (1000, 5), "Weights have wrong shape"
-    assert np.all(adata.obsm["cell_weights"] >= 0) and np.all(adata.obsm["cell_weights"] <= 1), (
-        "Weights are not saved correctly"
-    )
+    compute_archetype_weights(adata, mode="manual", length_scale=length_scale, result_filters={"n_archetypes": 5})
+    weights_store = adata.uns["AA_cell_weights"]
+    assert isinstance(weights_store, dict), "Weights should be stored per AA configuration"
+    weights = next(iter(weights_store.values()))
+    assert weights.shape == (1000, 5), "Weights have wrong shape"
+    assert np.all(weights >= 0) and np.all(weights <= 1), "Weights contain values outside [0, 1]"
 
 
 @pytest.mark.github_actions
@@ -104,12 +158,35 @@ def test_compute_archetype_weights_ground_truth():
 
     # Test with manual length scale
     adata = anndata.AnnData(X=X, obsm={"X_pca": X})
-    adata.uns["AA_results"] = {"Z": Z}
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
-        "n_dimensions": list(range(2)),
+        "n_dimensions": [0, 1],
     }
-    weights = compute_archetype_weights(adata=adata, mode="manual", length_scale=1.0, save_to_anndata=False)
+    cfg = ArchetypeConfig(
+        obsm_key="X_pca",
+        n_dimensions=(0, 1),
+        n_archetypes=2,
+        init=DEFAULT_INIT,
+        optim=DEFAULT_OPTIM,
+        weight=DEFAULT_WEIGHT,
+        max_iter=DEFAULT_MAX_ITER,
+        rel_tol=DEFAULT_REL_TOL,
+        early_stopping=True,
+        coreset_algorithm=None,
+        coreset_fraction=0.1,
+        coreset_size=None,
+        delta=0.0,
+        seed=42,
+        optim_kwargs={},
+    )
+    adata.uns["AA_results"] = {cfg: {"Z": Z}}
+    weights = compute_archetype_weights(
+        adata=adata,
+        mode="manual",
+        length_scale=1.0,
+        save_to_anndata=False,
+        result_filters={"n_archetypes": 2},
+    )
     assert np.allclose(weights, expected_weights), "Manual mode weights do not match expected values"
 
     # Test if automatic scale is computed correctly
@@ -147,19 +224,26 @@ def test_compute_archetype_expression_ground_truth():
     weights = np.array([[0.8, 0.2], [0.3, 0.7]])
 
     adata = anndata.AnnData(X=expr)
-    adata.obsm["cell_weights"] = weights.T
     adata.var_names = ["gene1", "gene2"]
+    adata.uns["AA_config"] = {
+        "obsm_key": "X",
+        "n_dimensions": [0, 1],
+    }
+    cfg = _create_config(n_archetypes=2, obsm_key="X", n_dimensions=(0, 1))
+    adata.uns["AA_results"] = {cfg: {"Z": np.zeros((2, 2))}}
+    adata.obsm["X"] = expr.T
+    adata.uns["AA_cell_weights"] = {cfg: weights.T}
 
     expected_result = pd.DataFrame([[2.8, 5.6], [7.3, 14.6]], columns=["gene1", "gene2"])
 
     # Test default layer
-    result = compute_archetype_expression(adata)
+    result = compute_archetype_expression(adata, result_filters={"n_archetypes": 2})
     assert np.allclose(result, expected_result, atol=1e-4), "Did not return expected results"
 
     # Test with layer
     adata.layers["scaled"] = expr * 2
     expected_scaled = expected_result * 2
-    result_scaled = compute_archetype_expression(adata, layer="scaled")
+    result_scaled = compute_archetype_expression(adata, layer="scaled", result_filters={"n_archetypes": 2})
     assert np.allclose(result_scaled, expected_scaled, atol=1e-4), (
         "Did not return expected results when layer was specified"
     )
@@ -179,7 +263,7 @@ def test_compute_archetype_expression_input_validation():
     with pytest.raises(ValueError):
         compute_archetype_expression(adata, layer="dklmdsfm")
 
-    del adata.obsm["cell_weights"]
+    del adata.uns["AA_cell_weights"]
     with pytest.raises(ValueError):
         compute_archetype_expression(adata)
 
@@ -561,18 +645,24 @@ def test_compute_meta_enrichment_correct_assigned():
     # Setup with 6 cells, 2 cell types and 5 genes
     adata = anndata.AnnData(X=np.random.rand(6, 5))
     adata.obs["cell_type"] = ["A", "A", "A", "B", "B", "B"]
-    adata.obsm["cell_weights"] = np.array(
-        [
-            [0.9, 0.1],
-            [0.8, 0.2],
-            [0.8, 0.2],
-            [0.2, 0.8],
-            [0.3, 0.7],
-            [0.1, 0.9],
-        ]
-    )
+    adata.uns["AA_config"] = {"obsm_key": "X", "n_dimensions": [0, 1]}
+    cfg = _create_config(n_archetypes=2, obsm_key="X", n_dimensions=(0, 1))
+    adata.uns["AA_results"] = {cfg: {"Z": np.zeros((2, 2))}}
+    adata.obsm["X"] = adata.X
+    adata.uns["AA_cell_weights"] = {
+        cfg: np.array(
+            [
+                [0.9, 0.1],
+                [0.8, 0.2],
+                [0.8, 0.2],
+                [0.2, 0.8],
+                [0.3, 0.7],
+                [0.1, 0.9],
+            ]
+        )
+    }
 
-    result = compute_meta_enrichment(adata, "cell_type")
+    result = compute_meta_enrichment(adata, "cell_type", result_filters={"n_archetypes": 2})
 
     # Archetype 0 should be enriched for cell_type A
     assert result.loc[0, "A"] > result.loc[0, "B"], "Archetype 0 is not more enriched for cell type A"
@@ -601,7 +691,7 @@ def test_compute_meta_enrichment_input_validation():
     with pytest.raises(ValueError):
         compute_meta_enrichment(adata, meta_col="group", datatype="dfkjgn")
 
-    del adata.obsm["cell_weights"]
+    del adata.uns["AA_cell_weights"]
     with pytest.raises(ValueError):
         compute_meta_enrichment(adata, meta_col="group")
 
@@ -617,16 +707,21 @@ def test_compute_meta_enrichment_normalization():
     # Setup with 3 cells, 5 genes, 3 meta groups and 2 archetypes
     adata = anndata.AnnData(X=np.random.rand(3, 5))
     adata.obs["group"] = ["X", "Y", "Z"]
+    adata.uns["AA_config"] = {"obsm_key": "X", "n_dimensions": [0, 1]}
+    cfg = _create_config(n_archetypes=2, obsm_key="X", n_dimensions=(0, 1))
+    adata.uns["AA_results"] = {cfg: {"Z": np.zeros((2, 2))}}
+    adata.obsm["X"] = adata.X
+    adata.uns["AA_cell_weights"] = {
+        cfg: np.array(
+            [
+                [1.0, 0.0],  # Archetype 0 fully owns cell 0
+                [0.0, 1.0],  # Archetype 1 fully owns cell 1
+                [0.5, 0.5],  # Cell 2 split
+            ]
+        )
+    }
 
-    adata.obsm["cell_weights"] = np.array(
-        [
-            [1.0, 0.0],  # Archetype 0 fully owns cell 0
-            [0.0, 1.0],  # Archetype 1 fully owns cell 1
-            [0.5, 0.5],  # Cell 2 split
-        ]
-    )
-
-    result = compute_meta_enrichment(adata, "group")
+    result = compute_meta_enrichment(adata, "group", result_filters={"n_archetypes": 2})
     # 2/3 from Archetype 0 is X, 1/3 from Z
     assert np.isclose(result.loc[0, "X"], 0.666, atol=0.01), "Archetype 0 X contribution not as expected"
     assert np.isclose(result.loc[0, "Z"], 0.333, atol=0.01), "Archetype 0 Z contribution not as expected"
@@ -652,10 +747,10 @@ def test_compute_meta_enrichment_datatype_identification_and_shape():
     # Continuous metadata
     adata.obs["continuous"] = [1, 2.5, 3]
 
-    assert compute_meta_enrichment(adata, "categorical").shape == (2, 3), (
+    assert compute_meta_enrichment(adata, "categorical", result_filters={"n_archetypes": 2}).shape == (2, 3), (
         "Did not return expeected shape for categorical data"
     )
-    assert compute_meta_enrichment(adata, "continuous").shape == (2, 1), (
+    assert compute_meta_enrichment(adata, "continuous", result_filters={"n_archetypes": 2}).shape == (2, 1), (
         "Did not return expeected shape for continuous data"
     )
 
@@ -677,10 +772,11 @@ def test_compute_meta_enrichment_continuous_data(seed: int):
     adata.obs["age"] = np.random.randint(10, 50, len(adata.obs))
 
     # Force age bias
-    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 0] >= 0.03]
+    weights = _extract_weights(adata, result_filters={"n_archetypes": 3})
+    selected_cells = adata.obs_names[weights[:, 0] >= 0.03]
     adata.obs.loc[selected_cells, "age"] = 100
-    selected_cells = adata.obs_names[adata.obsm["cell_weights"][:, 1] >= 0.03]
+    selected_cells = adata.obs_names[weights[:, 1] >= 0.03]
     adata.obs.loc[selected_cells, "age"] = 5
 
-    res = compute_meta_enrichment(adata, "age", datatype="continuous")
+    res = compute_meta_enrichment(adata, "age", datatype="continuous", result_filters={"n_archetypes": 3})
     assert res.iloc[0].item() > res.iloc[2].item() > res.iloc[1].item()

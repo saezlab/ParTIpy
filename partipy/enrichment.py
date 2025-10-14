@@ -1,11 +1,14 @@
 """Functions to calculate which features (e.g. genes or covariates) are enriched at each archetype."""
 
+from collections.abc import Mapping
+from typing import Any
+
 import anndata
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import cdist
 
-from .paretoti import _validate_aa_config, _validate_aa_results
+from .paretoti import get_aa_cell_weights, _resolve_aa_result, _validate_aa_config, _validate_aa_results
 
 
 def compute_archetype_weights(
@@ -13,6 +16,7 @@ def compute_archetype_weights(
     mode: str = "automatic",
     length_scale: None | float = None,
     save_to_anndata: bool = True,
+    result_filters: Mapping[str, Any] | None = None,
 ) -> None | np.ndarray:
     """
     Calculate weights for the data points based on their distance to archetypes using a squared exponential kernel.
@@ -29,21 +33,29 @@ def compute_archetype_weights(
     length_scale : float, default `None`
         If `mode="manual"`, this is the user-defined length scale for the kernel. If `mode="automatic"`, it is calculated automatically.
     save_to_anndata : bool, default `True`
-        If `True`, the weights are saved to `adata.obsm["cell_weights"]`. If `False`, the function returns the weights as a numpy array.
+        If `True`, the weights are saved to `adata.uns["AA_cell_weights"]` under the resolved AA configuration. If `False`,
+        the weights are returned as a NumPy array.
+    result_filters : Mapping[str, Any] | None, default `None`
+        Filters forwarded to :func:`_resolve_aa_result` to select the AA configuration for which weights are computed.
 
     Returns
     -------
     np.ndarray
-        - If `save_to_anndata` is True, the weights are added to `X.obsm["cell_weights"]` and otherwise the weights are returned.
+        - If `save_to_anndata` is True, weights are stored in ``adata.uns["AA_cell_weights"]`` and ``None`` is returned.
+        - If `save_to_anndata` is False, the computed weights are returned as a NumPy array.
     """
     # input validation
     _validate_aa_config(adata=adata)
     _validate_aa_results(adata=adata)
 
-    obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    config, payload = _resolve_aa_result(adata, result_filters=result_filters)
+
+    obsm_key = config.obsm_key
+    n_dimensions = list(config.n_dimensions)
     X = adata.obsm[obsm_key][:, n_dimensions]
-    Z = adata.uns["AA_results"]["Z"]
+    Z = payload.get("Z")
+    if Z is None:
+        raise ValueError("Matched AA payload does not contain 'Z'.")
 
     # Calculate or validate length_scale based on mode
     if mode == "automatic":
@@ -63,14 +75,24 @@ def compute_archetype_weights(
     weights = weights.astype(np.float32)
 
     if save_to_anndata:
-        adata.obsm["cell_weights"] = weights
+        weights_store = adata.uns.get("AA_cell_weights")
+        if weights_store is None or not isinstance(weights_store, Mapping):
+            adata.uns["AA_cell_weights"] = {config: weights}
+        else:
+            updated = dict(weights_store)
+            updated[config] = weights
+            adata.uns["AA_cell_weights"] = updated
         return None
-    else:
-        return weights
+
+    return weights
 
 
 # compute_characteristic_gene_expression_per_archetype
-def compute_archetype_expression(adata: anndata.AnnData, layer: str | None = None) -> pd.DataFrame:
+def compute_archetype_expression(
+    adata: anndata.AnnData,
+    layer: str | None = None,
+    result_filters: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
     """
     Calculate a weighted average gene expression profile for each archetype.
 
@@ -81,19 +103,21 @@ def compute_archetype_expression(adata: anndata.AnnData, layer: str | None = Non
     ----------
     adata : anndata.AnnData
         An AnnData object containing the gene expression data and weights. The weights should be stored in
-        `adata.obsm["cell_weights"]` as a 2D array of shape (n_samples, n_archetypes).
+        ``adata.uns["AA_cell_weights"]`` keyed by the corresponding ``ArchetypeConfig``.
     layer : str, default `None`
-        The layer of the AnnData object to use for gene expression. If `None`, `adata.X` is used. For Pareto analysis of AA data,
+        The layer of the AnnData object to use for gene expression. If `None`, ``adata.X`` is used. For Pareto analysis of AA data,
         z-scaled data is recommended.
+    result_filters : Mapping[str, Any] | None, default `None`
+        Filters applied to ``ArchetypeConfig`` entries to select the optimization configuration whose weights should be used.
 
     Returns
     -------
     pd.DataFrame
         A DataFrame of shape (n_archetypes, n_genes) with weighted pseudobulk expression profiles.
     """
-    if "cell_weights" not in adata.obsm:
-        raise ValueError("No weights available. Please run compute_archetype_weights()")
-    weights = adata.obsm["cell_weights"].T
+    filters = dict(result_filters or {})
+    cfg, weights = get_aa_cell_weights(adata, return_config=True, **filters)
+    weights = weights.T
 
     if layer is None:
         expr = adata.X
@@ -244,13 +268,18 @@ def extract_specific_processes(
     return results
 
 
-def compute_meta_enrichment(adata: anndata.AnnData, meta_col: str, datatype: str = "automatic") -> pd.DataFrame:
+def compute_meta_enrichment(
+    adata: anndata.AnnData,
+    meta_col: str,
+    datatype: str = "automatic",
+    result_filters: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
     """
     Compute the enrichment of metadata categories across archetypes.
 
     This function estimates how enriched each metadata category is within each archetype using
     a weighted average approach. Weights are based on each cell’s contribution to each archetype
-    (`adata.obsm["cell_weights"]`).It supports both categorical and continuous metadata.
+    (``adata.uns["AA_cell_weights"]``). It supports both categorical and continuous metadata.
 
     Steps for categorical data:
         1. One-hot encode the metadata column from `adata.obs[meta_col]`.
@@ -265,7 +294,7 @@ def compute_meta_enrichment(adata: anndata.AnnData, meta_col: str, datatype: str
     ----------
     adata : anndata.AnnData
         AnnData object with categorical metadata in `adata.obs[meta_col]` and archetype weights
-        in `adata.obsm["cell_weights"]`
+        stored in ``adata.uns["AA_cell_weights"]``.
     meta_col : str
         The name of the categorical metadata column in `adata.obs` to use for enrichment analysis.
     datatype : str, default `automatic`
@@ -273,6 +302,8 @@ def compute_meta_enrichment(adata: anndata.AnnData, meta_col: str, datatype: str
         - "automatic": infers type based on column dtype.
         - "categorical": treats the column as categorical and one-hot encodes it.
         - "continuous": treats the column as numeric and computes weighted averages.
+    result_filters : Mapping[str, Any] | None, default `None`
+        Filters applied to ``ArchetypeConfig`` entries to select the optimization configuration whose weights should be used.
 
     Returns
     -------
@@ -283,11 +314,9 @@ def compute_meta_enrichment(adata: anndata.AnnData, meta_col: str, datatype: str
     """
     if meta_col not in adata.obs:
         raise ValueError("Metadata column does not exist")
-    if "cell_weights" not in adata.obsm:
-        raise ValueError("No weights available. Please run compute_archetype_weights()")
-
     metadata = adata.obs[meta_col]
-    weights = adata.obsm["cell_weights"].T
+    _, weights = get_aa_cell_weights(adata, return_config=True, **dict(result_filters or {}))
+    weights = weights.T
 
     if datatype == "automatic":
         if pd.api.types.is_numeric_dtype(metadata):

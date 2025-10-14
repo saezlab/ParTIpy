@@ -132,7 +132,7 @@ def query_configs_by_signature(
     Return all `ArchetypeConfig` objects from `configs` that match a given reference configuration,
     up to a set of ignored fields.
 
-    Two configurations are considered equivalent if their field–value pairs match exactly
+    Two configurations are considered equivalent if their field-value pairs match exactly
     after excluding all fields listed in `ignore_fields`. This function is useful for grouping
     or retrieving configurations that share the same hyperparameter signature except for
     specific parameters such as `n_archetypes`.
