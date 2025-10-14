@@ -23,6 +23,7 @@ from .paretoti import (
     get_aa_metrics,
     get_aa_result,
     set_obsm,
+    summarize_aa_metrics,
     t_ratio_significance,
 )
 from .plotting import (

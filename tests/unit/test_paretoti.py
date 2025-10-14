@@ -201,7 +201,9 @@ def test_bootstrap_aa_output_correct_shape(_mock_adata):
         "variance_per_archetype",
     ]
     bootstrap_df = pt.get_aa_bootstrap(adata, n_archetypes=3)
-    assert all(col in bootstrap_df.columns for col in expected_columns), "AA_bootstrap does not have the correct column names"
+    assert all(col in bootstrap_df.columns for col in expected_columns), (
+        "AA_bootstrap does not have the correct column names"
+    )
 
     # Check shape
     assert bootstrap_df.shape == (33, len(expected_columns)), "AA_bootstrap does not have the correct shape"
@@ -293,6 +295,26 @@ def test_get_aa_bootstrap_filtering_behavior():
     del adata.uns["AA_bootstrap"]
     with pytest.raises(ValueError):
         pt.get_aa_bootstrap(adata)
+
+
+@pytest.mark.github_actions
+def test_summarize_aa_metrics_requires_matching_configs():
+    adata = anndata.AnnData(np.empty((0, 0)))
+    cfg_base = _make_dummy_config(2)
+    cfg_other = _make_dummy_config(3)
+    cfg_mismatch = _make_dummy_config(4, init="uniform")
+
+    adata.uns["AA_selection_metrics"] = {
+        cfg_base: pd.DataFrame({"k": [2], "varexpl": [0.8]}),
+        cfg_other: pd.DataFrame({"k": [3], "varexpl": [0.85]}),
+        cfg_mismatch: pd.DataFrame({"k": [4], "varexpl": [0.9]}),
+    }
+
+    summary = pt.summarize_aa_metrics(adata, init="plus_plus")
+    assert set(summary["k"]) == {2, 3}
+
+    with pytest.raises(ValueError):
+        pt.summarize_aa_metrics(adata)
 
 
 ### compute_archetypes ###
@@ -437,4 +459,5 @@ def test_model_selection_metrics_aa_on_simulated_data():
     sim_adata = _simulate_adata(n_samples=1000, n_dimensions=50, n_archetypes=5, n_pcs=6)
     compute_selection_metrics(sim_adata, n_archetypes_list=list(range(2, 11)))
 
-    assert sim_adata.uns["AA_metrics_df"].sort_values("IC").iloc[0]["k"] == 5, "Expected lowest IC at 5 archetypes"
+    metrics_summary = pt.summarize_aa_metrics(sim_adata)
+    assert metrics_summary.sort_values("IC").iloc[0]["k"] == 5, "Expected lowest IC at 5 archetypes"

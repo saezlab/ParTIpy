@@ -22,8 +22,8 @@ from .paretoti import (
     _resolve_aa_result,
     _validate_aa_config,
     _validate_aa_results,
-    compute_selection_metrics,
     get_aa_bootstrap,
+    summarize_aa_metrics,
 )
 from .schema import ArchetypeConfig, query_configs_by_signature
 
@@ -160,31 +160,43 @@ def _compute_contour_df_3D(
     return contour_df
 
 
-def plot_var_explained(adata: anndata.AnnData, ymin: None | float = None, ymax: None | float = None) -> pn.ggplot:
+def plot_var_explained(
+    adata: anndata.AnnData,
+    ymin: None | float = None,
+    ymax: None | float = None,
+    result_filters: Mapping[str, Any] | None = None,
+) -> pn.ggplot:
     """
     Generate an elbow plot of the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
-    The data is retrieved from `adata.uns["AA_metrics_df"]`. If `adata.uns["AA_metrics_df"]` is not found, `var_explained_aa` is called.
+    Cached selection metrics are summarized on demand. Selection metrics must be computed beforehand via
+    :func:`compute_selection_metrics`.
 
     Parameters
     ----------
     adata : anndata.AnnData
-        AnnData object containing the variance explained data in `adata.uns["AA_metrics_df"]`.
+        AnnData object containing cached selection metrics in ``adata.uns["AA_selection_metrics"]``.
     ymin : None | float
 
     ymax : None | float
         specify y
+    result_filters : Mapping[str, Any] | None, default ``None``
+        Optional filters applied to ``ArchetypeConfig`` entries when summarizing cached metrics.
 
     Returns
     -------
     pn.ggplot
         A ggplot object showing the variance explained plot.
     """
-    # Validation input
-    if "AA_metrics_df" not in adata.uns:
-        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
-        compute_selection_metrics(adata=adata)
+    if "AA_selection_metrics" not in adata.uns:
+        raise ValueError(
+            "No cached selection metrics found in `adata.uns['AA_selection_metrics']`. "
+            "Run `compute_selection_metrics` before calling `plot_var_explained`."
+        )
+
+    filters = dict(result_filters or {})
+    plot_df = summarize_aa_metrics(adata, **filters)
     if ymin:
         assert (ymin >= 0.0) and (ymin < 1.0)
     if ymax:
@@ -192,7 +204,6 @@ def plot_var_explained(adata: anndata.AnnData, ymin: None | float = None, ymax: 
     if ymin and ymax:
         assert ymax > ymin
 
-    plot_df = adata.uns["AA_metrics_df"]
     plot_df_summary = plot_df.groupby("k")["varexpl"].mean().reset_index()
 
     # Create data for the diagonal line
@@ -222,29 +233,34 @@ def plot_var_explained(adata: anndata.AnnData, ymin: None | float = None, ymax: 
     return p
 
 
-def plot_IC(adata: anndata.AnnData) -> pn.ggplot:
+def plot_IC(adata: anndata.AnnData, result_filters: Mapping[str, Any] | None = None) -> pn.ggplot:
     """
     Generate a plot showing an information criteria for a range of archetypes.
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
-    The data is retrieved from `adata.uns["AA_metrics_df"]`. If `adata.uns["AA_metrics_df"]` is not found, `var_explained_aa` is called.
+    Cached selection metrics are summarized on demand. Selection metrics must be computed beforehand via
+    :func:`compute_selection_metrics`.
 
     Parameters
     ----------
     adata : anndata.AnnData
-        AnnData object containing the variance explained data in `adata.uns["AA_metrics_df"]`.
+        AnnData object containing cached selection metrics in ``adata.uns["AA_selection_metrics"]``.
+    result_filters : Mapping[str, Any] | None, default ``None``
+        Optional filters applied to ``ArchetypeConfig`` entries when summarizing cached metrics.
 
     Returns
     -------
     pn.ggplot
         A ggplot object showing the variance explained plot.
     """
-    # Validation input
-    if "AA_metrics_df" not in adata.uns:
-        print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
-        compute_selection_metrics(adata=adata)
+    if "AA_selection_metrics" not in adata.uns:
+        raise ValueError(
+            "No cached selection metrics found in `adata.uns['AA_selection_metrics']`. "
+            "Run `compute_selection_metrics` before calling `plot_IC`."
+        )
 
-    plot_df = adata.uns["AA_metrics_df"]
+    filters = dict(result_filters or {})
+    plot_df = summarize_aa_metrics(adata, **filters)
     plot_df_summary = plot_df.groupby("k")["IC"].mean().reset_index()
 
     p = (
@@ -910,7 +926,7 @@ def plot_archetypes_2D(
             **point_args,  # type: ignore[arg-type]
         )
 
-        if show_contours:
+        if show_contours and contour_df is not None:
             p += pn.geom_path(
                 data=contour_df,
                 mapping=pn.aes(
@@ -922,9 +938,9 @@ def plot_archetypes_2D(
                 size=contours_size,
                 alpha=contours_alpha,
             )
-            p += pn.scale_linetype_manual(values=dict.fromkeys(contour_df["archetype"].unique(), "solid"))
-
-            p += pn.scale_size_manual(values=dict.fromkeys(contour_df["archetype"].unique(), 1))
+            unique_archetypes = list(contour_df["archetype"].unique())
+            p += pn.scale_linetype_manual(values=dict.fromkeys(unique_archetypes, "solid"))
+            p += pn.scale_size_manual(values=dict.fromkeys(unique_archetypes, 1))
 
         p += pn.geom_point(
             data=arch_df,
@@ -948,7 +964,7 @@ def plot_archetypes_2D(
             **point_args,  # type: ignore[arg-type]
         )
 
-        if show_contours:
+        if show_contours and contour_df is not None:
             p += pn.geom_path(
                 data=contour_df,
                 mapping=pn.aes(

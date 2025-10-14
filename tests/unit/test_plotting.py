@@ -32,6 +32,7 @@ def _mock_adata():
     adata = anndata.AnnData(X=np.random.rand(1000, 50))
     sc.pp.pca(adata)
     pt.set_obsm(adata, "X_pca", 4)
+    pt.compute_selection_metrics(adata=adata, n_archetypes_list=[2, 3, 4])
     pt.compute_bootstrap_variance(adata=adata, n_bootstrap=10, n_archetypes_list=[3])
     return adata
 

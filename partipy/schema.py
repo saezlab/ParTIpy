@@ -21,9 +21,9 @@ CORESET_ALGS = get_args(CORESET_ALGS_TYPES)
 # -----------------------------
 # Defaults / constants
 # -----------------------------
-DEFAULT_INIT: str = "plus_plus"
-DEFAULT_WEIGHT: None | str = None
-DEFAULT_OPTIM: str = "projected_gradients"
+DEFAULT_INIT: INIT_ALG_TYPES = "plus_plus"
+DEFAULT_WEIGHT: WEIGHT_ALGS_TYPES = None
+DEFAULT_OPTIM: OPTIM_ALGS_TYPES = "projected_gradients"
 
 LAMBDA: float = 1_000.0
 MIN_ITERATIONS: int = 20

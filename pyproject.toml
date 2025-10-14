@@ -33,6 +33,7 @@ dependencies = [
   "plotnine",
   "matplotlib",
   "plotly",
+  "pydantic",
 ]
 optional-dependencies.extra = [
   "session-info2", # print system and package versions

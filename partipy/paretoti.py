@@ -15,7 +15,15 @@ from tqdm import tqdm
 
 from ._docs import docs
 from .arch import AA
-from .schema import DEFAULT_INIT, DEFAULT_MAX_ITER, DEFAULT_OPTIM, DEFAULT_REL_TOL, DEFAULT_WEIGHT, ArchetypeConfig
+from .schema import (
+    DEFAULT_INIT,
+    DEFAULT_MAX_ITER,
+    DEFAULT_OPTIM,
+    DEFAULT_REL_TOL,
+    DEFAULT_WEIGHT,
+    ArchetypeConfig,
+    query_configs_by_signature,
+)
 from .selection import compute_IC
 
 
@@ -216,9 +224,8 @@ def compute_selection_metrics(
 
     This function fits AA models for each value in `n_archetypes_list`, optionally across multiple restarts,
     and records variance explained, information criterion, and residual sum of squares. Results are cached in
-    `adata.uns["AA_selection_metrics"]` keyed by the AA optimization configuration, mirrored as a combined table in
-    `adata.uns["AA_metrics_df"]`, and the corresponding AA fits are stored in `adata.uns["AA_results"]` via
-    :func:`compute_archetypes`.
+    `adata.uns["AA_selection_metrics"]` keyed by the AA optimization configuration, and the corresponding AA fits
+    are stored in `adata.uns["AA_results"]` via :func:`compute_archetypes`.
 
     Parameters
     ----------
@@ -258,6 +265,7 @@ def compute_selection_metrics(
     -------
     None | pandas.DataFrame
         Returns None unless `return_result` is True, in which case the aggregated DataFrame is returned.
+        Cached per-configuration tables can later be concatenated via :func:`summarize_aa_metrics`.
     """
     _validate_aa_config(adata=adata)
 
@@ -374,8 +382,8 @@ def compute_selection_metrics(
 
         if cached_df is None:
             A, _B, Z, rss_trace, varexpl = _compute_best_result(n_archetypes=n_archetypes)
-            rss_arr = np.asarray(rss_trace, dtype=np.float64)
-            rss_full = float(rss_arr[-1]) if rss_arr.size else float(rss_trace)
+            rss_arr = np.asarray(rss_trace, dtype=np.float64).reshape(-1)
+            rss_full = float(rss_arr[-1])
             X_tilde = A @ Z
             ic = float(compute_IC(X=X, X_tilde=X_tilde, n_archetypes=n_archetypes))
 
@@ -405,13 +413,78 @@ def compute_selection_metrics(
 
     result_df = pd.concat(metrics_frames, axis=0, ignore_index=True)
 
-    if save_to_anndata:
-        adata.uns["AA_metrics_df"] = result_df
-
     if return_result:
         return result_df
 
     return None
+
+
+def summarize_aa_metrics(adata: anndata.AnnData, /, **filters) -> pd.DataFrame:
+    """
+    Concatenate cached selection metrics across archetype counts for a single AA configuration.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        AnnData object containing cached selection metrics in ``adata.uns["AA_selection_metrics"]``.
+    **filters :
+        ArchetypeConfig fields used to select which configuration(s) to summarize. All matched entries
+        must share identical parameters except for ``n_archetypes``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Concatenated metrics with an added ``n_archetypes`` column if missing.
+
+    Raises
+    ------
+    ValueError
+        If no cached metrics match the filters, or if the matched configurations differ in fields other than ``n_archetypes``.
+    """
+    metrics_dict = _ensure_metrics_dict(adata)
+    if not metrics_dict:
+        raise ValueError("`adata.uns['AA_selection_metrics']` is empty.")
+
+    filters = dict(filters or {})
+    matching_items = [(cfg, df) for cfg, df in metrics_dict.items() if not filters or _matches(cfg, filters)]
+
+    if not matching_items:
+        raise ValueError(
+            "No selection metrics match the provided filters. "
+            "Ensure `compute_selection_metrics` was run with matching parameters."
+        )
+
+    configs = [cfg for cfg, _ in matching_items]
+    reference = configs[0]
+    equivalent = set(
+        query_configs_by_signature(
+            configs,
+            reference,
+            ignore_fields=("n_archetypes",),
+        )
+    )
+
+    if any(cfg not in equivalent for cfg in configs):
+        raise ValueError(
+            "Multiple optimization configurations match the provided filters. "
+            "Please add more specific filters (e.g., init, optim, weight)."
+        )
+
+    frames: list[pd.DataFrame] = []
+    for cfg, df in matching_items:
+        if not isinstance(df, pd.DataFrame):
+            continue
+        copy_df = df.copy()
+        if "n_archetypes" not in copy_df.columns:
+            copy_df["n_archetypes"] = cfg.n_archetypes
+        if "k" not in copy_df.columns:
+            copy_df["k"] = cfg.n_archetypes
+        frames.append(copy_df)
+
+    if not frames:
+        raise ValueError("Matched selection metrics but no tabular data available.")
+
+    return pd.concat(frames, axis=0, ignore_index=True)
 
 
 @docs.dedent
@@ -640,6 +713,8 @@ def compute_bootstrap_variance(
     if return_result:
         return df_dict
 
+    return None
+
 
 # TODO: I could also just use any of the compute_A functions to achieve this more robustly!
 def _project_on_affine_subspace(X, Z) -> np.ndarray:
@@ -826,6 +901,7 @@ def t_ratio_significance(
         save_to_anndata=True,
         return_result=True,
     )
+    assert t_ratio is not None
 
     config, payload = _resolve_aa_result(adata, result_filters=result_filters)
     obsm_key = adata.uns["AA_config"]["obsm_key"]
@@ -835,8 +911,8 @@ def t_ratio_significance(
     rss_trace = payload.get("RSS")
     if rss_trace is None:
         raise ValueError("Selected AA result does not contain 'RSS' trace.")
-    rss_arr = np.asarray(rss_trace, dtype=np.float64)
-    rss = float(rss_arr[-1]) if rss_arr.size else float(rss_trace)
+    rss_arr = np.asarray(rss_trace, dtype=np.float64).reshape(-1)
+    rss = float(rss_arr[-1])
 
     _n_samples, n_features = X.shape
 
@@ -1146,6 +1222,8 @@ def compute_archetypes(
             return best["Z"]
         else:
             return best["A"], best["B"], best["Z"], best["RSS"], best["varexpl"]
+    else:
+        return None
 
 
 def _ensure_results_dict(adata) -> dict:
@@ -1282,8 +1360,9 @@ def delete_aa_result(adata, /, **filters):
 def _ensure_cell_weights_dict(adata) -> dict:
     weights = adata.uns.get("AA_cell_weights")
     if weights is None:
-        raise ValueError("No AA cell weights found in `adata.uns['AA_cell_weights']`. "
-                         "Run `compute_archetype_weights` first.")
+        raise ValueError(
+            "No AA cell weights found in `adata.uns['AA_cell_weights']`. Run `compute_archetype_weights` first."
+        )
     if not isinstance(weights, dict) or len(weights) == 0:
         raise ValueError("`adata.uns['AA_cell_weights']` is empty or not a dict.")
     return weights
@@ -1305,8 +1384,7 @@ def _ensure_bootstrap_dict(adata) -> dict:
     bootstrap = adata.uns.get("AA_bootstrap")
     if bootstrap is None:
         raise ValueError(
-            "No AA bootstrap results found in `adata.uns['AA_bootstrap']`. "
-            "Run `compute_bootstrap_variance` first."
+            "No AA bootstrap results found in `adata.uns['AA_bootstrap']`. Run `compute_bootstrap_variance` first."
         )
     if not isinstance(bootstrap, dict) or len(bootstrap) == 0:
         raise ValueError("`adata.uns['AA_bootstrap']` is empty or not a dict.")
