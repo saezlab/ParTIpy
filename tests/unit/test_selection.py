@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from partipy.arch import AA
-from partipy.const import OPTIM_ALGS
+from partipy.schema import OPTIM_ALGS
 from partipy.selection import compute_IC
 from partipy.simulate import simulate_archetypes
 

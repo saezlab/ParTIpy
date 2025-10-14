@@ -3,17 +3,6 @@
 import numpy as np
 
 from ._docs import docs
-from .const import (
-    DEFAULT_INIT,
-    DEFAULT_MAX_ITER,
-    DEFAULT_OPTIM,
-    DEFAULT_REL_TOL,
-    DEFAULT_WEIGHT,
-    INIT_ALGS,
-    MIN_ITERATIONS,
-    OPTIM_ALGS,
-    WEIGHT_ALGS,
-)
 from .coreset import construct_lightweight_coreset, construct_standard_coreset, construct_uniform_coreset
 from .initialize import _init_A, _init_furthest_sum, _init_plus_plus, _init_uniform
 from .optim import (
@@ -25,6 +14,17 @@ from .optim import (
     _compute_B_projected_gradients,
     _compute_B_regularized_nnls,
     _compute_RSS_AZ,
+)
+from .schema import (
+    DEFAULT_INIT,
+    DEFAULT_MAX_ITER,
+    DEFAULT_OPTIM,
+    DEFAULT_REL_TOL,
+    DEFAULT_WEIGHT,
+    INIT_ALGS,
+    MIN_ITERATIONS,
+    OPTIM_ALGS,
+    WEIGHT_ALGS,
 )
 from .weights import compute_bisquare_weights, compute_huber_weights
 
@@ -59,13 +59,10 @@ class AA:
     %(weight)s
     %(max_iter)s
     %(rel_tol)s
-    early_stopping : bool, default `True`
-        Whether to stop the optimization early if the relative change in RSS is below a certain threshold.
+    %(early_stopping)s
     %(coreset_algorithm)s
-    coreset_fraction : float, default `0.1`
-        Fraction of the data to use for the coreset. Only used if `coreset_algorithm` is none `None` and coreset_size is `None`.
-    coreset_size : int, default: `None`
-        If None, it is set to `n_samples * coreset_fraction`.
+    %(coreset_fraction)s
+    %(coreset_size)s
     %(delta)s
     centering : bool, default `True`
         Whether to center the data by subtracting the feature means before optimization.

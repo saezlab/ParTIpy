@@ -1,4 +1,6 @@
 import colorsys
+from collections.abc import Mapping
+from typing import Any
 
 import anndata
 import matplotlib.pyplot as plt
@@ -14,7 +16,8 @@ from scipy.spatial import ConvexHull, QhullError
 from scipy.stats import chi2
 
 from ._docs import docs
-from .paretoti import _validate_aa_config, _validate_aa_results, compute_selection_metrics
+from .paretoti import _matches, _resolve_aa_result, _validate_aa_config, _validate_aa_results, compute_selection_metrics
+from .schema import ArchetypeConfig
 
 DEFAULT_ARCHETYPE_COLORS = {
     0: "#4e79a7",  # muted blue
@@ -143,12 +146,12 @@ def plot_var_explained(adata: anndata.AnnData, ymin: None | float = None, ymax: 
     Generate an elbow plot of the variance explained by Archetypal Analysis (AA) for a range of archetypes.
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
-    The data is retrieved from `adata.uns["AA_metrics"]`. If `adata.uns["AA_metrics"]` is not found, `var_explained_aa` is called.
+    The data is retrieved from `adata.uns["AA_metrics_df"]`. If `adata.uns["AA_metrics_df"]` is not found, `var_explained_aa` is called.
 
     Parameters
     ----------
     adata : anndata.AnnData
-        AnnData object containing the variance explained data in `adata.uns["AA_metrics"]`.
+        AnnData object containing the variance explained data in `adata.uns["AA_metrics_df"]`.
     ymin : None | float
 
     ymax : None | float
@@ -160,7 +163,7 @@ def plot_var_explained(adata: anndata.AnnData, ymin: None | float = None, ymax: 
         A ggplot object showing the variance explained plot.
     """
     # Validation input
-    if "AA_metrics" not in adata.uns:
+    if "AA_metrics_df" not in adata.uns:
         print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
         compute_selection_metrics(adata=adata)
     if ymin:
@@ -170,7 +173,7 @@ def plot_var_explained(adata: anndata.AnnData, ymin: None | float = None, ymax: 
     if ymin and ymax:
         assert ymax > ymin
 
-    plot_df = adata.uns["AA_metrics"]
+    plot_df = adata.uns["AA_metrics_df"]
     plot_df_summary = plot_df.groupby("k")["varexpl"].mean().reset_index()
 
     # Create data for the diagonal line
@@ -205,12 +208,12 @@ def plot_IC(adata: anndata.AnnData) -> pn.ggplot:
     Generate a plot showing an information criteria for a range of archetypes.
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
-    The data is retrieved from `adata.uns["AA_metrics"]`. If `adata.uns["AA_metrics"]` is not found, `var_explained_aa` is called.
+    The data is retrieved from `adata.uns["AA_metrics_df"]`. If `adata.uns["AA_metrics_df"]` is not found, `var_explained_aa` is called.
 
     Parameters
     ----------
     adata : anndata.AnnData
-        AnnData object containing the variance explained data in `adata.uns["AA_metrics"]`.
+        AnnData object containing the variance explained data in `adata.uns["AA_metrics_df"]`.
 
     Returns
     -------
@@ -218,11 +221,11 @@ def plot_IC(adata: anndata.AnnData) -> pn.ggplot:
         A ggplot object showing the variance explained plot.
     """
     # Validation input
-    if "AA_metrics" not in adata.uns:
+    if "AA_metrics_df" not in adata.uns:
         print("AA_var not found in adata.uns. Computing variance explained by archetypal analysis...")
         compute_selection_metrics(adata=adata)
 
-    plot_df = adata.uns["AA_metrics"]
+    plot_df = adata.uns["AA_metrics_df"]
     plot_df_summary = plot_df.groupby("k")["IC"].mean().reset_index()
 
     p = (
@@ -240,7 +243,6 @@ def plot_IC(adata: anndata.AnnData) -> pn.ggplot:
 @docs.dedent
 def plot_bootstrap_2D(
     adata: anndata.AnnData,
-    n_archetypes: int,
     dimensions: list[int] | None = None,
     show_contours: bool = True,
     contours_confidence_level: float = 0.95,
@@ -248,62 +250,93 @@ def plot_bootstrap_2D(
     contours_alpha: float = 0.75,
     alpha: float = 1.0,
     size: float | None = None,
+    result_filters: Mapping[str, Any] | None = None,
 ) -> pn.ggplot:
     """
     Visualize the distribution and stability of archetypes across bootstrap samples in 2D PCA space.
 
-    Creates a static 2D scatter plot showing the positions of archetypes
-    computed from bootstrap samples, stored in `adata.uns["AA_bootstrap"]`.
-
     Parameters
     ----------
     adata : anndata.AnnData
-        Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
-    n_archetypes : int
-        The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
+        Annotated data object containing the archetype bootstrap data in ``adata.uns["AA_bootstrap"]``.
     dimensions : list[int] | None, default `None`
-        List of 2 dimension indices to plot. If None, uses first 2 dimensions specified in `adata.uns["AA_config"]["n_dimensions"]`.
+        List of 2 dimension indices to plot. If None, uses the first two dimensions specified in the AA configuration.
     show_contours : bool, default `True`
         If True, a multivariate Gaussian distribution is fit per archetype, and a contour line for one confidence level is shown.
-    contours_confidence_level: float, default `0.95`
-        Which confidence should be used to create the contour line
+    contours_confidence_level : float, default `0.95`
+        Confidence level for the contour line (0.0 to 1.0).
     alpha : float, default `1.0`
         Opacity of the points in the scatter plot (0.0 to 1.0).
     size : float | None, default `None`
         Size of the points in the scatter plot. If None, uses the default size of the plotting library.
+    result_filters : Mapping[str, Any] | None, default `None`
+        Filters applied to ``ArchetypeConfig`` entries to select the optimization configuration whose bootstrap
+        runs are visualized. If unspecified, there must be only one configuration stored.
 
     Returns
     -------
     pn.ggplot
         A 2D scatter plot visualizing the bootstrap results for the archetypes.
     """
-    n_archetypes_str = str(n_archetypes)
-    # Validation input
-    if "AA_bootstrap" not in adata.uns:
-        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
-
-    if n_archetypes_str not in adata.uns["AA_bootstrap"].keys():
-        raise ValueError(
-            f"n_archetypes {n_archetypes_str} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
-        )
     _validate_aa_config(adata=adata)
 
-    obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    if not (0 < contours_confidence_level < 1):
+        raise ValueError("contours_confidence_level must be in the interval (0, 1)")
+
+    bootstrap_store = adata.uns.get("AA_bootstrap")
+    if not isinstance(bootstrap_store, Mapping) or not bootstrap_store:
+        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+
+    filters = dict(result_filters or {})
+
+    candidate_configs = [cfg for cfg in bootstrap_store.keys() if isinstance(cfg, ArchetypeConfig)]
+    if not candidate_configs:
+        raise ValueError("No ArchetypeConfig entries found in `adata.uns['AA_bootstrap']`.")
+
+    if filters:
+        filtered_configs = [cfg for cfg in candidate_configs if _matches(cfg, filters)]
+        if not filtered_configs:
+            raise ValueError(
+                "No bootstrap entries match the provided filters. "
+                "Ensure bootstrap_variance was computed for a configuration matching result_filters."
+            )
+    else:
+        filtered_configs = candidate_configs
+
+    if len(filtered_configs) != 1:
+        raise ValueError("plot_bootstrap_2D requires filters that uniquely identify a bootstrap configuration.")
+
+    cfg = filtered_configs[0]
+    df = bootstrap_store.get(cfg)
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError(f"Bootstrap entry for {cfg} is not a pandas DataFrame.")
+    bootstrap_df = df.copy()
+
+    obsm_key = cfg.obsm_key
+    cfg_dims = tuple(cfg.n_dimensions)
 
     if dimensions is None:
-        dimensions = n_dimensions[:2]
+        if len(cfg_dims) < 2:
+            raise ValueError("Need at least two dimensions available to plot in 2D.")
+        plot_dims = list(cfg_dims[:2])
+    else:
+        if len(dimensions) != 2:
+            raise ValueError("dimensions must contain exactly 2 dimensions for 2D plotting")
+        plot_dims = list(dimensions)
 
-    if len(dimensions) != 2:
-        raise ValueError("dimensions must contain exactly 2 dimensions for 2D plotting")
+    for dim in plot_dims:
+        if dim not in cfg_dims:
+            raise ValueError(f"Dimension {dim} not available in archetype result. Available: {cfg_dims}")
 
-    bootstrap_df = adata.uns["AA_bootstrap"][n_archetypes_str].copy()
+    x_col = f"{obsm_key}_{plot_dims[0]}"
+    y_col = f"{obsm_key}_{plot_dims[1]}"
 
+    contour_df = None
     if show_contours:
         contour_df = _compute_contour_df_2D(
             bootstrap_df=bootstrap_df,
-            col_1=f"{obsm_key}_{dimensions[0]}",
-            col_2=f"{obsm_key}_{dimensions[1]}",
+            col_1=x_col,
+            col_2=y_col,
             confidence_level=contours_confidence_level,
         )
 
@@ -314,62 +347,48 @@ def plot_bootstrap_2D(
     p = (
         pn.ggplot(bootstrap_df)
         + pn.geom_point(
-            pn.aes(
-                x=f"{obsm_key}_{dimensions[0]}",
-                y=f"{obsm_key}_{dimensions[1]}",
-                color="archetype",
-                shape="reference",
-            ),
-            **point_args,  # type: ignore[arg-type]
+            pn.aes(x=x_col, y=y_col, color="archetype", shape="reference"),
+            **point_args,
         )
         + pn.coord_equal()
         + pn.labs(color="Archetype\nIndex", shape="Reference\nArchetype")
     )
 
-    if show_contours:
+    if show_contours and contour_df is not None:
         p += pn.geom_path(
-            pn.aes(
-                x=f"{obsm_key}_{dimensions[0]}",
-                y=f"{obsm_key}_{dimensions[1]}",
-                color="archetype",
-            ),
+            pn.aes(x=x_col, y=y_col, color="archetype"),
             data=contour_df,
             linetype="solid",
             size=contours_size,
             alpha=contours_alpha,
         )
 
-    # use default archetype colors if number of archetypes is below 8
-    if int(n_archetypes_str) < len(DEFAULT_ARCHETYPE_COLORS):
+    if cfg.n_archetypes < len(DEFAULT_ARCHETYPE_COLORS):
         p += pn.scale_color_manual(values=DEFAULT_ARCHETYPE_COLORS)
 
     return p
 
 
+@docs.dedent
 def plot_bootstrap_3D(
     adata: anndata.AnnData,
-    n_archetypes: int,
     dimensions: list[int] | None = None,
     show_contours: bool = True,
     contours_confidence_level: float = 0.95,
     contours_alpha: float = 0.3,
     size: float = 6,
     alpha: float = 0.5,
+    result_filters: Mapping[str, Any] | None = None,
 ) -> go.Figure:
     """
     Interactive 3D visualization of archetypes from bootstrap samples to assess their variability.
 
-    Create an interactive 3D scatter plot showing the positions of archetypes
-    computed from bootstrap samples, stored in `adata.uns["AA_bootstrap"]`.
-
     Parameters
     ----------
     adata : anndata.AnnData
-        Annotated data object containing the archetype bootstrap data in `adata.uns["AA_bootstrap"]`.
-    n_archetypes : int
-        The number of archetypes used in the bootstrap analysis to visualize. This should match the a number in adata.uns["AA_bootstrap"] keys.
+        Annotated data object containing the archetype bootstrap data in ``adata.uns["AA_bootstrap"]``.
     dimensions : list[int] | None, default `None`
-        List of 3 dimension indices to plot. If None, uses first 3 dimensions.
+        Three dimension indices to plot. If None, uses the first three dimensions specified in the AA configuration.
     show_contours : bool, default `True`
         Whether to show confidence ellipsoids for each archetype.
     contours_confidence_level : float, default `0.95`
@@ -378,42 +397,76 @@ def plot_bootstrap_3D(
         Size of the points in the scatter plot.
     alpha : float, default `0.5`
         Opacity of the points in the scatter plot (0.0 to 1.0).
+    result_filters : Mapping[str, Any] | None, default `None`
+        Filters applied to ``ArchetypeConfig`` entries to select the optimization configuration whose bootstrap
+        runs are visualized. If unspecified, there must be only one configuration stored.
 
     Returns
     -------
     go.Figure
         A 3D scatter plot visualizing the bootstrap results for the archetypes.
     """
-    n_archetypes_str = str(n_archetypes)
-    # Validation input
-    if "AA_bootstrap" not in adata.uns:
-        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
-
-    if n_archetypes_str not in adata.uns["AA_bootstrap"].keys():
-        raise ValueError(
-            f"n_archetypes {n_archetypes_str} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
-        )
-    if (contours_confidence_level >= 1) or (contours_confidence_level <= 0):
+    if not (0 < contours_confidence_level < 1):
         raise ValueError("contours_confidence_level must be in the interval (0, 1)")
+
     _validate_aa_config(adata=adata)
 
-    obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    bootstrap_store = adata.uns.get("AA_bootstrap")
+    if not isinstance(bootstrap_store, Mapping) or not bootstrap_store:
+        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+
+    filters = dict(result_filters or {})
+
+    candidate_configs = [cfg for cfg in bootstrap_store.keys() if isinstance(cfg, ArchetypeConfig)]
+    if not candidate_configs:
+        raise ValueError("No ArchetypeConfig entries found in `adata.uns['AA_bootstrap']`.")
+
+    if filters:
+        filtered_configs = [cfg for cfg in candidate_configs if _matches(cfg, filters)]
+        if not filtered_configs:
+            raise ValueError(
+                "No bootstrap entries match the provided filters. "
+                "Ensure bootstrap_variance was computed for a configuration matching result_filters."
+            )
+    else:
+        filtered_configs = candidate_configs
+
+    if len(filtered_configs) != 1:
+        raise ValueError("plot_bootstrap_3D requires filters that uniquely identify a bootstrap configuration.")
+
+    cfg = filtered_configs[0]
+    df = bootstrap_store.get(cfg)
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError(f"Bootstrap entry for {cfg} is not a pandas DataFrame.")
+    bootstrap_df = df.copy()
+
+    obsm_key = cfg.obsm_key
+    cfg_dims = tuple(cfg.n_dimensions)
 
     if dimensions is None:
-        dimensions = n_dimensions[:3]
+        if len(cfg_dims) < 3:
+            raise ValueError("Need at least three dimensions available to plot in 3D.")
+        plot_dims = list(cfg_dims[:3])
+    else:
+        if len(dimensions) != 3:
+            raise ValueError("dimensions must contain exactly 3 indices for 3D plotting")
+        plot_dims = list(dimensions)
 
-    if len(dimensions) != 3:
-        raise ValueError("dimensions must contain exactly 3 dimensions for 3D plotting")
+    for dim in plot_dims:
+        if dim not in cfg_dims:
+            raise ValueError(f"Dimension {dim} not available in archetype result. Available: {cfg_dims}")
 
-    bootstrap_df = adata.uns["AA_bootstrap"][n_archetypes_str].copy()
+    x_col = f"{obsm_key}_{plot_dims[0]}"
+    y_col = f"{obsm_key}_{plot_dims[1]}"
+    z_col = f"{obsm_key}_{plot_dims[2]}"
 
+    contour_df = None
     if show_contours:
         contour_df = _compute_contour_df_3D(
             bootstrap_df=bootstrap_df,
-            col_1=f"{obsm_key}_{dimensions[0]}",
-            col_2=f"{obsm_key}_{dimensions[1]}",
-            col_3=f"{obsm_key}_{dimensions[2]}",
+            col_1=x_col,
+            col_2=y_col,
+            col_3=z_col,
             confidence_level=contours_confidence_level,
         )
 
@@ -426,9 +479,9 @@ def plot_bootstrap_3D(
 
     fig = px.scatter_3d(
         bootstrap_df,
-        x=f"{obsm_key}_{dimensions[0]}",
-        y=f"{obsm_key}_{dimensions[1]}",
-        z=f"{obsm_key}_{dimensions[2]}",
+        x=x_col,
+        y=y_col,
+        z=z_col,
         color="archetype",
         symbol="reference",
         title="Archetypes on bootstrapped data",
@@ -438,21 +491,20 @@ def plot_bootstrap_3D(
     )
     fig.update_traces(marker={"size": size})
 
-    if show_contours:
-        # create mesh surface for each archetype
+    if show_contours and contour_df is not None:
         for arch_idx in contour_df["archetype"].unique():
             arch_contour = contour_df[contour_df["archetype"] == arch_idx]
 
             fig.add_trace(
                 go.Mesh3d(
-                    x=arch_contour[f"{obsm_key}_{dimensions[0]}"],
-                    y=arch_contour[f"{obsm_key}_{dimensions[1]}"],
-                    z=arch_contour[f"{obsm_key}_{dimensions[2]}"],
+                    x=arch_contour[x_col],
+                    y=arch_contour[y_col],
+                    z=arch_contour[z_col],
                     opacity=contours_alpha,
                     color=color_discrete_map[arch_idx],
                     name=f"Contour {arch_idx}",
                     showlegend=True,
-                    alphahull=0,  # creates convex hull
+                    alphahull=0,
                     hoverinfo="skip",
                 )
             )
@@ -460,281 +512,13 @@ def plot_bootstrap_3D(
     fig.update_layout(
         template="plotly_white",
         scene={
-            "xaxis_title": f"{obsm_key}_{dimensions[0]}",
-            "yaxis_title": f"{obsm_key}_{dimensions[1]}",
-            "zaxis_title": f"{obsm_key}_{dimensions[2]}",
+            "xaxis_title": x_col,
+            "yaxis_title": y_col,
+            "zaxis_title": z_col,
         },
     )
 
     return fig
-
-
-def plot_bootstrap_variance(adata: anndata.AnnData, summary_method: str = "median") -> pn.ggplot:
-    """
-    Visualize archetype stability as a function of the number of archetypes.
-
-    This function generates a plot summarizing the stability of archetypes across different
-    numbers of archetypes (`k`), based on bootstrap variance metrics. It displays individual
-    archetype variances as points, along with summary statistics (median and maximum variance)
-    as lines.
-
-    Parameters
-    ----------
-    adata : anndata.AnnData
-        Annotated data object containing the results from `bootstrap_aa` in
-        `adata.uns["AA_boostrap"]`.
-
-    Returns
-    -------
-    pn.ggplot
-        A ggplot object displaying:
-        - Scatter points for individual archetype variances (`variance_per_archetype`) as a function of `n_archetypes`.
-        - Lines and points for the median and maximum variance across archetypes at each `n_archetypes`.
-    """
-    if summary_method not in ["median", "max", "mean"]:
-        raise ValueError('summary_method must be either of ["median", "max", "mean"]')
-    if "AA_bootstrap" not in adata.uns:
-        raise ValueError(
-            "bootstrap_aa_multiple_k not found in adata.uns. Please run bootstrap_aa_multiple_k() to compute"
-        )
-    df_list = []
-    df_dict = adata.uns["AA_bootstrap"]
-    for n_archetypes, df in df_dict.items():
-        # Add 'n_archetypes' column
-        df = df.copy()
-        df["n_archetypes"] = int(n_archetypes)
-
-        # Drop duplicates
-        df = df[["archetype", "variance_per_archetype", "n_archetypes"]].drop_duplicates()
-
-        df_list.append(df)
-
-    # Combine all into one DataFrame
-    full_df = pd.concat(df_list, axis=0, ignore_index=True)
-
-    # Group and summarize
-    df_summary = full_df.groupby("n_archetypes")["variance_per_archetype"].agg(["median", "max", "mean"]).reset_index()
-
-    p = (
-        pn.ggplot()
-        + pn.geom_line(
-            data=df_summary,
-            mapping=pn.aes(x="n_archetypes", y=summary_method),
-            linetype="dotted",
-            size=1.5,
-            alpha=0.5,
-            color="grey",
-        )
-        + pn.geom_point(data=full_df, mapping=pn.aes(x="n_archetypes", y="variance_per_archetype"), alpha=0.5, size=3)
-        + pn.labs(x="Number of Archetypes", y="Variance per Archetype", linetype="Variance\nSummary")
-        + pn.scale_x_continuous(breaks=list(range(2, max([int(k) for k in adata.uns["AA_bootstrap"].keys()]) + 1)))
-        + pn.theme_matplotlib()
-        + pn.theme(panel_grid_major=pn.element_line(color="gray", size=0.5, alpha=0.5), figure_size=(6, 3))
-    )
-
-    return p
-
-
-@docs.dedent
-def plot_archetypes_2D(
-    adata: anndata.AnnData,
-    dimensions: list[int] | None = None,
-    show_contours: bool = False,
-    contours_confidence_level: float = 0.95,
-    contours_size: float = 2.0,
-    contours_alpha: float = 0.75,
-    color: str | None = None,
-    alpha: float = 0.5,
-    size: float | None = None,
-) -> pn.ggplot:
-    """
-    Generate a static 2D scatter plot showing data points, archetypes and the polytope they span.
-
-    This function visualizes the archetypes computed via Archetypal Analysis (AA)
-    in PCA space, along with the data points. An optional color vector can be used
-    to annotate the data points.
-
-    Parameters
-    ----------
-    adata : anndata.AnnData
-        Annotated data object containing the archetypes in `adata.uns["AA_results"]["Z"]`
-        and PCA-reduced data in `adata.obsm["X_pca"]`.
-    dimensions : list[int] | None, default `None`
-        List of two integers specifying the dimensions to plot. If None, uses the first two dimensions.
-    show_contours : bool, default `True`
-        If True, a multivariate Gaussian distribution is fit per archetype, and a contour line for one confidence level is shown.
-    color : str | None, default `None`
-        Column name in `adata.obs` to use for coloring the data points. If None, no coloring is applied.
-    alpha : float, default `1.0`
-        Opacity of the points in the scatter plot (0.0 to 1.0).
-    size : float | None, default `None`
-        Size of the points in the scatter plot. If None, uses the default size of the plotting library.
-
-    Returns
-    -------
-    pn.ggplot
-        A static 2D scatter plot showing the data and archetypes.
-    """
-    _validate_aa_config(adata)
-    _validate_aa_results(adata)
-
-    if (contours_confidence_level >= 1) or (contours_confidence_level <= 0):
-        raise ValueError("contours_confidence_level must be in the interval (0, 1)")
-
-    obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
-
-    if dimensions is None:
-        dimensions = n_dimensions[:2]
-
-    if len(dimensions) != 2:
-        raise ValueError("dimensions must contain exactly 2 dimensions for 2D plotting")
-
-    if show_contours:
-        n_archetypes_str = str(adata.uns["AA_results"]["Z"].shape[0])
-
-        if "AA_bootstrap" not in adata.uns:
-            raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
-
-        if n_archetypes_str not in adata.uns["AA_bootstrap"].keys():
-            raise ValueError(
-                f"n_archetypes {n_archetypes_str} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
-            )
-        bootstrap_df = adata.uns["AA_bootstrap"][n_archetypes_str].copy()
-        contour_df = _compute_contour_df_2D(
-            bootstrap_df=bootstrap_df,
-            col_1=f"{obsm_key}_{dimensions[0]}",
-            col_2=f"{obsm_key}_{dimensions[1]}",
-            confidence_level=contours_confidence_level,
-        )
-
-    data_df = pd.DataFrame(
-        {
-            f"{obsm_key}_{dimensions[0]}": adata.obsm[obsm_key][:, dimensions[0]],
-            f"{obsm_key}_{dimensions[1]}": adata.obsm[obsm_key][:, dimensions[1]],
-        }
-    )
-    if color is not None:
-        color_vec = sc.get.obs_df(adata, color).values.flatten()
-        data_df[color] = np.array(color_vec)
-
-    arch_df = pd.DataFrame(
-        {
-            f"{obsm_key}_{dimensions[0]}": adata.uns["AA_results"]["Z"][:, dimensions[0]],
-            f"{obsm_key}_{dimensions[1]}": adata.uns["AA_results"]["Z"][:, dimensions[1]],
-            "archetype": np.arange(adata.uns["AA_results"]["Z"].shape[0]),
-        }
-    )
-    arch_df["archetype"] = pd.Categorical(arch_df["archetype"])
-    # reorder such that the polygon can be drawn
-    Z = adata.uns["AA_results"]["Z"][:, dimensions].copy()
-    order = np.argsort(np.arctan2(Z[:, 1] - np.mean(Z[:, 1]), Z[:, 0] - np.mean(Z[:, 0])))
-    arch_df = arch_df.iloc[order].reset_index(drop=True)
-
-    point_args = {"alpha": alpha}
-    if size is not None:
-        point_args["size"] = size
-
-    p = pn.ggplot() + pn.coord_equal()
-
-    # if we have more than 2 archetypes add the polygon
-    if adata.uns["AA_results"]["Z"].shape[0] > 2:
-        p += pn.geom_polygon(
-            data=arch_df,
-            mapping=pn.aes(
-                x=f"{obsm_key}_{dimensions[0]}",
-                y=f"{obsm_key}_{dimensions[1]}",
-            ),
-            color="#000080",
-            size=1,
-            alpha=0.05,
-        )
-
-    if color:
-        p += pn.geom_point(
-            data=data_df,
-            mapping=pn.aes(
-                x=f"{obsm_key}_{dimensions[0]}",
-                y=f"{obsm_key}_{dimensions[1]}",
-                color=color,
-            ),
-            **point_args,  # type: ignore[arg-type]
-        )
-
-        if show_contours:
-            p += pn.geom_path(
-                data=contour_df,
-                mapping=pn.aes(
-                    x=f"{obsm_key}_{dimensions[0]}",
-                    y=f"{obsm_key}_{dimensions[1]}",
-                    linetype="archetype",
-                ),
-                color="#000080",
-                size=contours_size,
-                alpha=contours_alpha,
-            )
-            p += pn.scale_linetype_manual(values=dict.fromkeys(contour_df["archetype"].unique(), "solid"))
-
-            p += pn.scale_size_manual(values=dict.fromkeys(contour_df["archetype"].unique(), 1))
-
-        p += pn.geom_point(
-            data=arch_df,
-            mapping=pn.aes(x=f"{obsm_key}_{dimensions[0]}", y=f"{obsm_key}_{dimensions[1]}", size="archetype"),
-        )
-
-        p += pn.geom_label(
-            data=arch_df,
-            mapping=pn.aes(x=f"{obsm_key}_{dimensions[0]}", y=f"{obsm_key}_{dimensions[1]}", label="archetype"),
-            size=12,
-        )
-        p += pn.guides(size=False, linetype=False)
-
-    else:
-        p += pn.geom_point(
-            data=data_df,
-            mapping=pn.aes(
-                x=f"{obsm_key}_{dimensions[0]}",
-                y=f"{obsm_key}_{dimensions[1]}",
-            ),
-            **point_args,  # type: ignore[arg-type]
-        )
-
-        if show_contours:
-            p += pn.geom_path(
-                data=contour_df,
-                mapping=pn.aes(
-                    x=f"{obsm_key}_{dimensions[0]}",
-                    y=f"{obsm_key}_{dimensions[1]}",
-                    color="archetype",
-                ),
-                linetype="solid",
-                size=contours_size,
-                alpha=contours_alpha,
-            )
-
-        p += pn.geom_point(
-            data=arch_df,
-            mapping=pn.aes(
-                x=f"{obsm_key}_{dimensions[0]}",
-                y=f"{obsm_key}_{dimensions[1]}",
-                color="archetype",
-            ),
-            size=1,
-        )
-        p += pn.geom_label(
-            data=arch_df,
-            mapping=pn.aes(
-                x=f"{obsm_key}_{dimensions[0]}", y=f"{obsm_key}_{dimensions[1]}", label="archetype", color="archetype"
-            ),
-            size=12,
-        )
-
-        if adata.uns["AA_results"]["Z"].shape[0] < len(DEFAULT_ARCHETYPE_COLORS):
-            p += pn.scale_color_manual(values=DEFAULT_ARCHETYPE_COLORS)
-
-        p += pn.guides(color=False)
-
-    return p
 
 
 def plot_2D(
@@ -835,6 +619,346 @@ def plot_2D(
     return plot
 
 
+def plot_bootstrap_variance(
+    adata: anndata.AnnData,
+    summary_method: str = "median",
+    result_filters: Mapping[str, Any] | None = None,
+) -> pn.ggplot:
+    """
+    Visualize archetype stability as a function of the number of archetypes using cached bootstrap results.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        Annotated data object containing bootstrap results in ``adata.uns["AA_bootstrap"]``.
+    summary_method : {"median", "max", "mean"}, default "median"
+        Summary statistic to display as a dotted line across archetype counts.
+    result_filters : Mapping[str, Any] | None, default `None`
+        Filters forwarded to ``_resolve_aa_result`` to select the AA configuration for which bootstrap
+        results are summarized. If ``None``, a configuration with matching bootstrap data must exist uniquely.
+
+    Returns
+    -------
+    pn.ggplot
+        A plot of per-archetype variance alongside the selected summary statistic across archetype counts.
+    """
+    if summary_method not in {"median", "max", "mean"}:
+        raise ValueError("summary_method must be one of {'median', 'max', 'mean'}")
+
+    bootstrap_store = adata.uns.get("AA_bootstrap")
+    if not isinstance(bootstrap_store, Mapping) or not bootstrap_store:
+        raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+
+    filters = dict(result_filters or {})
+
+    def _core_signature(cfg: ArchetypeConfig) -> tuple:
+        return (
+            cfg.obsm_key,
+            cfg.n_dimensions,
+            cfg.init,
+            cfg.optim,
+            cfg.weight,
+            cfg.max_iter,
+            cfg.rel_tol,
+            cfg.early_stopping,
+            cfg.coreset_algorithm,
+            cfg.coreset_fraction,
+            cfg.coreset_size,
+            cfg.delta,
+            cfg.seed,
+            cfg.optim_kwargs,
+        )
+
+    matching_items: list[tuple[ArchetypeConfig, pd.DataFrame]] = []
+    for cfg, df in bootstrap_store.items():
+        if not isinstance(cfg, ArchetypeConfig):
+            continue
+        if filters and not _matches(cfg, filters):
+            continue
+        matching_items.append((cfg, df))
+
+    if not matching_items:
+        raise ValueError(
+            "No bootstrap entries match the provided filters. "
+            "Ensure bootstrap_variance was computed for a configuration matching result_filters."
+        )
+
+    signatures = {_core_signature(cfg) for cfg, _ in matching_items}
+    if len(signatures) > 1:
+        raise ValueError(
+            "Multiple optimization configurations match the provided filters. "
+            "Please supply more specific result_filters (e.g., init, optim, weight)."
+        )
+
+    df_list = []
+    for cfg, df in matching_items:
+        if not isinstance(df, pd.DataFrame):
+            continue
+        copy_df = df.copy()
+        copy_df["n_archetypes"] = cfg.n_archetypes
+        df_list.append(copy_df[["archetype", "variance_per_archetype", "n_archetypes"]])
+
+    if not df_list:
+        raise ValueError(
+            "Bootstrap entries found but no variance data available. "
+            "Ensure bootstrap_variance results include 'variance_per_archetype'."
+        )
+
+    full_df = pd.concat(df_list, axis=0, ignore_index=True)
+    full_df = full_df.dropna(subset=["variance_per_archetype"])  # defensive
+
+    df_summary = full_df.groupby("n_archetypes")["variance_per_archetype"].agg(summary_method).reset_index()
+
+    p = (
+        pn.ggplot()
+        + pn.geom_line(
+            data=df_summary,
+            mapping=pn.aes(x="n_archetypes", y="variance_per_archetype"),
+            linetype="dotted",
+            size=1.5,
+            alpha=0.5,
+            color="grey",
+        )
+        + pn.geom_point(
+            data=full_df,
+            mapping=pn.aes(x="n_archetypes", y="variance_per_archetype"),
+            alpha=0.5,
+            size=3,
+        )
+        + pn.labs(x="Number of Archetypes", y="Variance per Archetype", linetype="Variance Summary")
+        + pn.scale_x_continuous(breaks=sorted(full_df["n_archetypes"].unique()))
+        + pn.theme_matplotlib()
+        + pn.theme(panel_grid_major=pn.element_line(color="gray", size=0.5, alpha=0.5), figure_size=(6, 3))
+    )
+
+    return p
+
+
+def plot_archetypes_2D(
+    adata: anndata.AnnData,
+    dimensions: list[int] | None = None,
+    show_contours: bool = False,
+    contours_confidence_level: float = 0.95,
+    contours_size: float = 2.0,
+    contours_alpha: float = 0.75,
+    color: str | None = None,
+    alpha: float = 0.5,
+    size: float | None = None,
+    result_filters: Mapping[str, Any] | None = None,
+) -> pn.ggplot:
+    """
+    Generate a static 2D scatter plot showing data points, archetypes and the polytope they span.
+
+    This function visualizes the archetypes computed via Archetypal Analysis (AA)
+    in PCA space, along with the data points. An optional color vector can be used
+    to annotate the data points.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        Annotated data object containing archetypal analysis results in `adata.uns["AA_results"]`
+        and PCA-reduced data in `adata.obsm[obsm_key]`.
+    dimensions : list[int] | None, default `None`
+        List of two integers specifying the dimensions to plot. If None, uses the first two dimensions.
+    show_contours : bool, default `True`
+        If True, a multivariate Gaussian distribution is fit per archetype, and a contour line for one confidence level is shown.
+    color : str | None, default `None`
+        Column name in `adata.obs` to use for coloring the data points. If None, no coloring is applied.
+    alpha : float, default `1.0`
+        Opacity of the points in the scatter plot (0.0 to 1.0).
+    size : float | None, default `None`
+        Size of the points in the scatter plot. If None, uses the default size of the plotting library.
+    result_filters : Mapping[str, Any] | None, default `None`
+        Filters forwarded to ``_resolve_aa_result`` to select a specific cached AA configuration.
+
+    Returns
+    -------
+    pn.ggplot
+        A static 2D scatter plot showing the data and archetypes.
+    """
+    _validate_aa_config(adata)
+    _validate_aa_results(adata)
+
+    if not (0 < contours_confidence_level < 1):
+        raise ValueError("contours_confidence_level must be in the interval (0, 1)")
+
+    filters = dict(result_filters or {})
+    cfg, payload = _resolve_aa_result(adata, result_filters=filters)
+
+    obsm_key = cfg.obsm_key
+    cfg_dims = tuple(cfg.n_dimensions)
+    dim_to_idx = {dim: idx for idx, dim in enumerate(cfg_dims)}
+
+    Z_full = payload.get("Z")
+    if Z_full is None:
+        raise ValueError("Matched AA payload does not contain 'Z'.")
+
+    if dimensions is None:
+        if len(cfg_dims) < 3:
+            raise ValueError("Need at least three dimensions available to plot in 3D.")
+        plot_dims = list(cfg_dims[:3])
+    else:
+        if len(dimensions) != 3:
+            raise ValueError("dimensions must contain exactly 3 dimensions for 3D plotting")
+        plot_dims = list(dimensions)
+
+    for dim in plot_dims:
+        if dim not in dim_to_idx:
+            raise ValueError(f"Dimension {dim} not available in archetype result. Available: {cfg_dims}")
+
+    Z = np.column_stack([Z_full[:, dim_to_idx[dim]] for dim in plot_dims])
+
+    contour_df = None
+    if show_contours:
+        bootstrap_store = adata.uns.get("AA_bootstrap")
+        if not isinstance(bootstrap_store, Mapping):
+            raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+        if cfg not in bootstrap_store:
+            raise ValueError(
+                f"{cfg} not found in adata.uns['AA_bootstrap']. Available keys: {list(bootstrap_store.keys())}"
+            )
+        bootstrap_df = bootstrap_store[cfg].copy()
+        contour_df = _compute_contour_df_2D(
+            bootstrap_df=bootstrap_df,
+            col_1=f"{obsm_key}_{plot_dims[0]}",
+            col_2=f"{obsm_key}_{plot_dims[1]}",
+            confidence_level=contours_confidence_level,
+        )
+
+    data_df = pd.DataFrame(
+        {
+            f"{obsm_key}_{plot_dims[0]}": adata.obsm[obsm_key][:, plot_dims[0]],
+            f"{obsm_key}_{plot_dims[1]}": adata.obsm[obsm_key][:, plot_dims[1]],
+        }
+    )
+    if color is not None:
+        color_vec = sc.get.obs_df(adata, keys=[color])[color].values
+        data_df[color] = np.array(color_vec)
+
+    arch_df = pd.DataFrame(
+        {
+            f"{obsm_key}_{plot_dims[0]}": Z_full[:, dim_to_idx[plot_dims[0]]],
+            f"{obsm_key}_{plot_dims[1]}": Z_full[:, dim_to_idx[plot_dims[1]]],
+            "archetype": np.arange(Z_full.shape[0]),
+        }
+    )
+    arch_df["archetype"] = pd.Categorical(arch_df["archetype"])
+    x_col = f"{obsm_key}_{plot_dims[0]}"
+    y_col = f"{obsm_key}_{plot_dims[1]}"
+    # reorder such that the polygon can be drawn
+    Z = np.column_stack([Z_full[:, dim_to_idx[dim]] for dim in plot_dims])
+    order = np.argsort(np.arctan2(Z[:, 1] - np.mean(Z[:, 1]), Z[:, 0] - np.mean(Z[:, 0])))
+    arch_df = arch_df.iloc[order].reset_index(drop=True)
+
+    point_args = {"alpha": alpha}
+    if size is not None:
+        point_args["size"] = size
+
+    p = pn.ggplot() + pn.coord_equal()
+
+    # if we have more than 2 archetypes add the polygon
+    if Z_full.shape[0] > 2:
+        p += pn.geom_polygon(
+            data=arch_df,
+            mapping=pn.aes(
+                x=x_col,
+                y=y_col,
+            ),
+            color="#000080",
+            size=1,
+            alpha=0.05,
+        )
+
+    if color:
+        p += pn.geom_point(
+            data=data_df,
+            mapping=pn.aes(
+                x=x_col,
+                y=y_col,
+                color=color,
+            ),
+            **point_args,  # type: ignore[arg-type]
+        )
+
+        if show_contours:
+            p += pn.geom_path(
+                data=contour_df,
+                mapping=pn.aes(
+                    x=x_col,
+                    y=y_col,
+                    linetype="archetype",
+                ),
+                color="#000080",
+                size=contours_size,
+                alpha=contours_alpha,
+            )
+            p += pn.scale_linetype_manual(values=dict.fromkeys(contour_df["archetype"].unique(), "solid"))
+
+            p += pn.scale_size_manual(values=dict.fromkeys(contour_df["archetype"].unique(), 1))
+
+        p += pn.geom_point(
+            data=arch_df,
+            mapping=pn.aes(x=x_col, y=y_col, size="archetype"),
+        )
+
+        p += pn.geom_label(
+            data=arch_df,
+            mapping=pn.aes(x=x_col, y=y_col, label="archetype"),
+            size=12,
+        )
+        p += pn.guides(size=False, linetype=False)
+
+    else:
+        p += pn.geom_point(
+            data=data_df,
+            mapping=pn.aes(
+                x=x_col,
+                y=y_col,
+            ),
+            **point_args,  # type: ignore[arg-type]
+        )
+
+        if show_contours:
+            p += pn.geom_path(
+                data=contour_df,
+                mapping=pn.aes(
+                    x=x_col,
+                    y=y_col,
+                    color="archetype",
+                ),
+                linetype="solid",
+                size=contours_size,
+                alpha=contours_alpha,
+            )
+
+        p += pn.geom_point(
+            data=arch_df,
+            mapping=pn.aes(
+                x=x_col,
+                y=y_col,
+                color="archetype",
+            ),
+            size=1,
+        )
+        p += pn.geom_label(
+            data=arch_df,
+            mapping=pn.aes(
+                x=x_col,
+                y=y_col,
+                label="archetype",
+                color="archetype",
+            ),
+            size=12,
+        )
+
+        if Z_full.shape[0] < len(DEFAULT_ARCHETYPE_COLORS):
+            p += pn.scale_color_manual(values=DEFAULT_ARCHETYPE_COLORS)
+
+        p += pn.guides(color=False)
+
+    return p
+
+
 def plot_archetypes_3D(
     adata: anndata.AnnData,
     dimensions: list[int] | None = None,
@@ -845,95 +969,86 @@ def plot_archetypes_3D(
     size: float = 2.0,
     alpha: float = 0.2,
     alpha_hull: float = 0.2,
-) -> pn.ggplot:
+    result_filters: Mapping[str, Any] | None = None,
+) -> go.Figure:
     """
     Create an interactive 3D scatter plot showing data points, archetypes and the polytope they span.
 
-    This function uses the first three principal components from `adata.obsm["X_pca"]`
-    and visualizes the archetypes stored in `adata.uns["AA_results"]["Z"]`.
-    If a color key is provided, it colors data points by the corresponding values from `adata.obs`.
-
-    Parameters
-    ----------
-    adata : anndata.AnnData
-        Annotated data object containing the PCA-reduced data in `obsm["X_pca"]` and
-        archetypes in `uns["AA_results"]["Z"]`.
-    color : str, default `None`
-        Name of a column in `adata.obs` to color the data points by.
-    size : int, default `2`
-        The size of the markers for the data points in `X`.
-    alpha : float, default `0.2`
-        Opacity of the points in the scatter plot (0.0 to 1.0).
-    alpha_hull : float, default `0.2`
-        Opacity of the polytope spanned by the archetypes (0.0 to 1.0).
-
-    Returns
-    -------
-    go.Figure
-        A Plotly figure object showing a 3D scatter plot of the data and archetypes.
+    This function uses the principal components defined in the selected AA configuration and visualizes the
+    archetypes stored in `adata.uns["AA_results"]`. If a color key is provided, it colors data points by the
+    corresponding values from `adata.obs`.
     """
     color_polyhedron = "#000080"
     color_points = "#000000"
 
     _validate_aa_config(adata)
     _validate_aa_results(adata)
-    Z = adata.uns["AA_results"]["Z"].copy()
 
-    if (contours_confidence_level >= 1) or (contours_confidence_level <= 0):
+    if not (0 < contours_confidence_level < 1):
         raise ValueError("contours_confidence_level must be in the interval (0, 1)")
 
-    obsm_key = adata.uns["AA_config"]["obsm_key"]
-    n_dimensions = adata.uns["AA_config"]["n_dimensions"]
+    filters = dict(result_filters or {})
+    cfg, payload = _resolve_aa_result(adata, result_filters=filters)
+
+    obsm_key = cfg.obsm_key
+    cfg_dims = tuple(cfg.n_dimensions)
+    dim_to_idx = {dim: idx for idx, dim in enumerate(cfg_dims)}
+
+    Z_full = payload.get("Z")
+    if Z_full is None:
+        raise ValueError("Matched AA payload does not contain 'Z'.")
 
     if dimensions is None:
-        dimensions = n_dimensions[:3]
+        if len(cfg_dims) < 3:
+            raise ValueError("Need at least three dimensions available to plot in 3D.")
+        plot_dims = list(cfg_dims[:3])
+    else:
+        if len(dimensions) != 3:
+            raise ValueError("dimensions must contain exactly 3 dimensions for 3D plotting")
+        plot_dims = list(dimensions)
 
-    if len(dimensions) != 3:
-        raise ValueError("dimensions must contain exactly 3 dimensions for 3D plotting")
+    for dim in plot_dims:
+        if dim not in dim_to_idx:
+            raise ValueError(f"Dimension {dim} not available in archetype result. Available: {cfg_dims}")
 
+    Z = np.column_stack([Z_full[:, dim_to_idx[dim]] for dim in plot_dims])
+
+    contour_df = None
     if show_contours:
-        n_archetypes_str = str(adata.uns["AA_results"]["Z"].shape[0])
-
-        if "AA_bootstrap" not in adata.uns:
-            raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute")
-
-        if n_archetypes_str not in adata.uns["AA_bootstrap"].keys():
+        bootstrap_store = adata.uns.get("AA_bootstrap")
+        if not isinstance(bootstrap_store, Mapping):
+            raise ValueError("AA_bootstrap not found in adata.uns. Please run bootstrap_aa() to compute.")
+        if cfg not in bootstrap_store:
             raise ValueError(
-                f"n_archetypes {n_archetypes_str} not found in adata.uns['AA_bootstrap']. Available keys: {list(adata.uns['AA_bootstrap'].keys())}"
+                f"{cfg} not found in adata.uns['AA_bootstrap']. Available keys: {list(bootstrap_store.keys())}"
             )
-        bootstrap_df = adata.uns["AA_bootstrap"][n_archetypes_str].copy()
+        bootstrap_df = bootstrap_store[cfg].copy()
         contour_df = _compute_contour_df_3D(
             bootstrap_df=bootstrap_df,
-            col_1=f"{obsm_key}_{dimensions[0]}",
-            col_2=f"{obsm_key}_{dimensions[1]}",
-            col_3=f"{obsm_key}_{dimensions[2]}",
+            col_1=f"{obsm_key}_{plot_dims[0]}",
+            col_2=f"{obsm_key}_{plot_dims[1]}",
+            col_3=f"{obsm_key}_{plot_dims[2]}",
             confidence_level=contours_confidence_level,
         )
 
-    data_df = pd.DataFrame(
-        {
-            f"{obsm_key}_{dimensions[0]}": adata.obsm[obsm_key][:, dimensions[0]],
-            f"{obsm_key}_{dimensions[1]}": adata.obsm[obsm_key][:, dimensions[1]],
-            f"{obsm_key}_{dimensions[2]}": adata.obsm[obsm_key][:, dimensions[2]],
-        }
-    )
+    X = adata.obsm[obsm_key]
+    data_df = pd.DataFrame({f"{obsm_key}_{dim}": X[:, dim] for dim in plot_dims})
     if color is not None:
-        color_vec = sc.get.obs_df(adata, color).values.flatten() if color else None
-        data_df["color"] = np.array(color_vec)
+        color_vec = sc.get.obs_df(adata, keys=[color])[color].values
+        data_df["color"] = np.asarray(color_vec)
     else:
-        data_df["color"] = "uniform_color"
+        data_df["color"] = color_points
 
     arch_df = pd.DataFrame(
         {
-            f"{obsm_key}_{dimensions[0]}": adata.uns["AA_results"]["Z"][:, dimensions[0]],
-            f"{obsm_key}_{dimensions[1]}": adata.uns["AA_results"]["Z"][:, dimensions[1]],
-            f"{obsm_key}_{dimensions[2]}": adata.uns["AA_results"]["Z"][:, dimensions[2]],
-            "archetype": np.arange(adata.uns["AA_results"]["Z"].shape[0]),
+            f"{obsm_key}_{plot_dims[0]}": Z[:, 0],
+            f"{obsm_key}_{plot_dims[1]}": Z[:, 1],
+            f"{obsm_key}_{plot_dims[2]}": Z[:, 2],
+            "archetype": np.arange(Z.shape[0]),
         }
     )
     arch_df["archetype"] = pd.Categorical(arch_df["archetype"])
 
-    # take care of the colors
     unique_archetypes = sorted(arch_df["archetype"].unique())
     if len(unique_archetypes) <= len(DEFAULT_ARCHETYPE_COLORS):
         color_discrete_map = DEFAULT_ARCHETYPE_COLORS
@@ -941,32 +1056,25 @@ def plot_archetypes_3D(
         palette = generate_distinct_colors(len(unique_archetypes))
         color_discrete_map = {arch: palette[i] for i, arch in enumerate(unique_archetypes)}
 
-    # Create the 3D scatter plot
+    scatter_kwargs = dict(  # noqa
+        x=f"{obsm_key}_{plot_dims[0]}",
+        y=f"{obsm_key}_{plot_dims[1]}",
+        z=f"{obsm_key}_{plot_dims[2]}",
+        title="",
+        opacity=alpha,
+    )
     if color is not None:
-        fig = px.scatter_3d(
-            data_df,
-            x=f"{obsm_key}_{dimensions[0]}",
-            y=f"{obsm_key}_{dimensions[1]}",
-            z=f"{obsm_key}_{dimensions[2]}",
-            title="",
-            color="color",
-            opacity=alpha,
-        )
+        fig = px.scatter_3d(data_df, color="color", **scatter_kwargs)
     else:
         fig = px.scatter_3d(
             data_df,
-            x=f"{obsm_key}_{dimensions[0]}",
-            y=f"{obsm_key}_{dimensions[1]}",
-            z=f"{obsm_key}_{dimensions[2]}",
-            title="",
-            opacity=alpha,
             color="color",
             color_discrete_sequence=[color_points],
+            **scatter_kwargs,
         )
 
     fig.update_traces(marker={"size": size})
 
-    # Add archetypes to the plot
     archetype_labels = [f"Archetype {i}" for i in range(Z.shape[0])]
     archetype_colors = [color_discrete_map.get(i, color_polyhedron) for i in range(Z.shape[0])]
     fig.add_trace(
@@ -982,8 +1090,7 @@ def plot_archetypes_3D(
         )
     )
 
-    # Add the polytope (convex hull) if we have enough archetypes
-    if Z.shape[0] > Z.shape[1]:
+    if alpha_hull > 0 and Z.shape[0] > Z.shape[1]:
         try:
             hull = ConvexHull(Z)
             fig.add_trace(
@@ -999,10 +1106,9 @@ def plot_archetypes_3D(
                     name="Polytope",
                 )
             )
-        except QhullError as e:
-            print(f"Warning: Could not create convex hull: {e}")
+        except (QhullError, ValueError):
+            pass
 
-    # Add edges connecting archetypes (optional - you might want to make this configurable)
     for i in range(Z.shape[0]):
         for j in range(i + 1, Z.shape[0]):
             fig.add_trace(
@@ -1017,21 +1123,19 @@ def plot_archetypes_3D(
                 )
             )
 
-    if show_contours:
-        # create mesh surface for each archetype
+    if show_contours and contour_df is not None:
         for arch_idx in contour_df["archetype"].unique():
             arch_contour = contour_df[contour_df["archetype"] == arch_idx]
-
             fig.add_trace(
                 go.Mesh3d(
-                    x=arch_contour[f"{obsm_key}_{dimensions[0]}"],
-                    y=arch_contour[f"{obsm_key}_{dimensions[1]}"],
-                    z=arch_contour[f"{obsm_key}_{dimensions[2]}"],
+                    x=arch_contour[f"{obsm_key}_{plot_dims[0]}"],
+                    y=arch_contour[f"{obsm_key}_{plot_dims[1]}"],
+                    z=arch_contour[f"{obsm_key}_{plot_dims[2]}"],
                     opacity=contours_alpha,
-                    color=color_discrete_map[arch_idx],
+                    color=color_discrete_map.get(arch_idx, "#1f78b4"),
                     name=f"Contour {arch_idx}",
                     showlegend=True,
-                    alphahull=0,  # Creates convex hull
+                    alphahull=0,
                     hoverinfo="skip",
                 )
             )
@@ -1039,9 +1143,9 @@ def plot_archetypes_3D(
     fig.update_layout(
         template="plotly_white",
         scene={
-            "xaxis_title": f"{obsm_key}_{dimensions[0]}",
-            "yaxis_title": f"{obsm_key}_{dimensions[1]}",
-            "zaxis_title": f"{obsm_key}_{dimensions[2]}",
+            "xaxis_title": f"{obsm_key}_{plot_dims[0]}",
+            "yaxis_title": f"{obsm_key}_{plot_dims[1]}",
+            "zaxis_title": f"{obsm_key}_{plot_dims[2]}",
         },
     )
 

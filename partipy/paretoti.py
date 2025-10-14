@@ -1,4 +1,8 @@
-import inspect
+from __future__ import annotations
+
+import warnings
+from collections.abc import Mapping
+from typing import Any
 
 import anndata
 import numpy as np
@@ -11,7 +15,7 @@ from tqdm import tqdm
 
 from ._docs import docs
 from .arch import AA
-from .const import DEFAULT_INIT, DEFAULT_OPTIM
+from .schema import DEFAULT_INIT, DEFAULT_MAX_ITER, DEFAULT_OPTIM, DEFAULT_REL_TOL, DEFAULT_WEIGHT, ArchetypeConfig
 from .selection import compute_IC
 
 
@@ -61,6 +65,27 @@ def set_obsm(adata: anndata.AnnData, obsm_key: str, n_dimensions: int | list[int
         "obsm_key": obsm_key,
         "n_dimensions": n_dimensions,
     }
+
+
+def _validate_aa_results(adata: anndata.AnnData) -> None:
+    """
+    Validates that the result from Archetypal Analysis is present in the AnnData object.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        Annotated data matrix.
+
+    Raises
+    ------
+    ValueError
+        If the archetypal analysis result is not found in `adata.uns["AA_results"]`.
+    """
+    if "AA_results" not in adata.uns:
+        raise ValueError(
+            "Result from Archetypal Analysis not found in `adata.uns['AA_results']`. "
+            "Please run the AA() function first."
+        )
 
 
 def _validate_aa_config(adata: anndata.AnnData) -> None:
@@ -113,110 +138,280 @@ def _validate_aa_config(adata: anndata.AnnData) -> None:
         )
 
 
-def _validate_aa_results(adata: anndata.AnnData) -> None:
+def _validate_n_archetype_list(
+    *,
+    min_k: int | None,
+    max_k: int | None,
+    n_archetypes_list: int | list[int] | None,
+    default_range: range,
+) -> list[int]:
+    deprecated_bounds_used = min_k is not None or max_k is not None
+
+    if n_archetypes_list is not None:
+        if deprecated_bounds_used:
+            warnings.warn(
+                "`min_k` and `max_k` are deprecated and ignored when `n_archetypes_list` is provided.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+        values = [n_archetypes_list] if isinstance(n_archetypes_list, int) else list(n_archetypes_list)
+    else:
+        if deprecated_bounds_used:
+            warnings.warn(
+                "`min_k` and `max_k` are deprecated. Use `n_archetypes_list` instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            if min_k is None or max_k is None:
+                raise ValueError("Both `min_k` and `max_k` must be provided when using the deprecated arguments.")
+            if min_k < 2:
+                raise ValueError("`min_k` must be at least 2.")
+            if max_k < min_k:
+                raise ValueError("`max_k` must be greater than or equal to `min_k`.")
+            values = list(range(min_k, max_k + 1))
+        else:
+            values = list(default_range)
+
+    if not values:
+        raise ValueError("`n_archetypes_list` must contain at least one archetype count.")
+
+    seen: set[int] = set()
+    unique_values: list[int] = []
+    for k_val in values:
+        if k_val in seen:
+            continue
+        if k_val < 2:
+            raise ValueError("All entries in `n_archetypes_list` must be >= 2.")
+        seen.add(int(k_val))
+        unique_values.append(int(k_val))
+
+    return unique_values
+
+
+def compute_selection_metrics(
+    adata: anndata.AnnData,
+    min_k: int | None = None,
+    max_k: int | None = None,
+    n_archetypes_list: int | list[int] | None = None,
+    n_restarts: int = 5,
+    init: str | None = None,
+    optim: str | None = None,
+    weight: None | str = None,
+    max_iter: int | None = None,
+    early_stopping: bool = True,
+    rel_tol: float | None = None,
+    coreset_algorithm: None | str = None,
+    coreset_fraction: float = 0.1,
+    coreset_size: None | int = None,
+    delta: float = 0.0,
+    seed: int = 42,
+    save_to_anndata: bool = True,
+    return_result: bool = False,
+    verbose: bool = False,
+    force_recompute: bool = False,
+    **optim_kwargs,
+) -> None | pd.DataFrame:
     """
-    Validates that the result from Archetypal Analysis is present in the AnnData object.
+    Compute selection diagnostics for Archetypal Analysis (AA) across different archetype counts.
+
+    This function fits AA models for each value in `n_archetypes_list`, optionally across multiple restarts,
+    and records variance explained, information criterion, and residual sum of squares. Results are cached in
+    `adata.uns["AA_selection_metrics"]` keyed by the AA optimization configuration, mirrored as a combined table in
+    `adata.uns["AA_metrics_df"]`, and the corresponding AA fits are stored in `adata.uns["AA_results"]` via
+    :func:`compute_archetypes`.
 
     Parameters
     ----------
     adata : anndata.AnnData
-        Annotated data matrix.
-
-    Raises
-    ------
-    ValueError
-        If the archetypal analysis result is not found in `adata.uns["AA_results"]`.
-    """
-    if "AA_results" not in adata.uns:
-        raise ValueError(
-            "Result from Archetypal Analysis not found in `adata.uns['AA_results']`. "
-            "Please run the AA() function first."
-        )
-
-
-@docs.dedent
-def compute_selection_metrics(
-    adata: anndata.AnnData,
-    min_k: int = 2,
-    max_k: int = 10,
-    n_restarts: int = 5,
-    optim: str = DEFAULT_OPTIM,
-    init: str = DEFAULT_INIT,
-    n_jobs: int = -1,
-    seed: int = 42,
-    **kwargs,
-) -> None:
-    """
-    Compute the variance explained by Archetypal Analysis (AA) for a range of archetypes.
-
-    This function performs Archetypal Analysis (AA) across a range of archetype counts (`min_k` to `max_k`)
-    on the PCA representation stored in `adata.obsm[obsm_key]`. It stores the explained variance and other
-    diagnostics in `adata.uns["AA_metrics"]`.
-
-    Parameters
-    ----------
-    adata: anndata.AnnData
-        AnnData object containing adata.obsm["obsm_key"].
-    min_k : int, default `2`
-        Minimum number of archetypes to test.
-    max_k : int, default `10`
-        Maximum number of archetypes to test.
-    %(optim)s
+        AnnData object containing the matrix configured through `set_obsm`.
+    min_k : int | None, optional
+        Deprecated. Minimum number of archetypes to test. Use `n_archetypes_list` instead.
+    max_k : int | None, optional
+        Deprecated. Maximum number of archetypes to test. Use `n_archetypes_list` instead.
+    n_archetypes_list : int | list[int] | None, optional
+        Number(s) of archetypes to evaluate. Defaults to `range(2, 11)` when not provided.
+    n_restarts : int, default `5`
+        Number of random restarts per archetype count.
     %(init)s
+    %(optim)s
+    %(weight)s
+    %(max_iter)s
+    %(early_stopping)s
+    %(rel_tol)s
+    %(coreset_algorithm)s
+    %(coreset_fraction)s
+    %(coreset_size)s
+    %(delta)s
     %(seed)s
-    n_jobs : int, default `-1`
-        Number of jobs for parallel computation. `-1` uses all available cores.
-    **kwargs:
-        Additional keyword arguments passed to `AA` class.
+    save_to_anndata : bool, default `True`
+        Whether to cache the results in the AnnData object.
+    return_result : bool, default `False`
+        If True, return the aggregated results DataFrame.
+    verbose : bool, default `False`
+        Whether to run AA in verbose mode.
+    force_recompute : bool, default `False`
+        Recompute metrics even if cached results for the configuration exist.
+    **optim_kwargs :
+        Additional keyword arguments forwarded to the `AA` class.
 
     Returns
     -------
-    None
-        The results are stored in `adata.uns["AA_metrics"]` as a DataFrame with the following columns:
-        - `k`: The number of archetypes.
-        - `varexpl`: Variance explained by the AA model with `k` archetypes.
+    None | pandas.DataFrame
+        Returns None unless `return_result` is True, in which case the aggregated DataFrame is returned.
     """
-    # input validation
     _validate_aa_config(adata=adata)
-    if min_k < 2:
-        raise ValueError("`min_k` must be at least 2.")
-    if max_k < min_k:
-        raise ValueError("`max_k` must be greater than or equal to `min_k`.")
+
+    if n_restarts < 1:
+        raise ValueError("`n_restarts` must be at least 1.")
+
+    n_archetypes_seq = _validate_n_archetype_list(
+        min_k=min_k,
+        max_k=max_k,
+        n_archetypes_list=n_archetypes_list,
+        default_range=range(2, 11),
+    )
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
     n_dimensions = adata.uns["AA_config"]["n_dimensions"]
-    X = adata.obsm[obsm_key][:, n_dimensions]
+    X = adata.obsm[obsm_key][:, n_dimensions].astype(np.float32)
 
-    k_arr = np.arange(min_k, max_k + 1)
+    init = init if init is not None else DEFAULT_INIT
+    optim = optim if optim is not None else DEFAULT_OPTIM
+    weight = weight if weight is not None else DEFAULT_WEIGHT
+    max_iter = max_iter if max_iter is not None else DEFAULT_MAX_ITER
+    rel_tol = rel_tol if rel_tol is not None else DEFAULT_REL_TOL
 
-    rng = np.random.default_rng(seed)
-    seeds = rng.choice(a=int(1e9), size=n_restarts, replace=False)
+    cache = adata.uns.get("AA_selection_metrics")
+    if cache is not None and not isinstance(cache, dict):
+        raise ValueError("`adata.uns['AA_selection_metrics']` must be a dictionary if present.")
 
-    # Parallel computation of AA
-    def _compute_archetypes(k, seed):
-        aa_model = AA(n_archetypes=k, seed=seed, optim=optim, init=init, **kwargs).fit(X)
-        A = aa_model.A
-        Z = aa_model.Z
-        RSS = aa_model.RSS
-        varexpl = aa_model.varexpl
-        return {"k": k, "Z": Z, "A": A, "RSS": RSS, "varexpl": varexpl, "seed": seed}
+    metrics_frames: list[pd.DataFrame] = []
 
-    if n_jobs == 1:
-        results_list = [_compute_archetypes(k=k, seed=seed) for k in k_arr for seed in seeds]
-    else:
-        results_list = Parallel(n_jobs=n_jobs)(
-            delayed(_compute_archetypes)(k=k, seed=seed) for k in k_arr for seed in seeds
+    base_compute_kwargs = {
+        "init": init,
+        "optim": optim,
+        "weight": weight,
+        "max_iter": max_iter,
+        "early_stopping": early_stopping,
+        "rel_tol": rel_tol,
+        "coreset_algorithm": coreset_algorithm,
+        "coreset_fraction": coreset_fraction,
+        "coreset_size": coreset_size,
+        "delta": delta,
+        "verbose": verbose,
+    }
+
+    def _compute_best_result(
+        n_archetypes: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[float] | np.ndarray, float]:
+        if save_to_anndata:
+            payload = compute_archetypes(
+                adata=adata,
+                n_archetypes=n_archetypes,
+                n_restarts=n_restarts,
+                seed=seed,
+                save_to_anndata=True,
+                return_result=True,
+                archetypes_only=False,
+                force_recompute=force_recompute,
+                **base_compute_kwargs,
+                **optim_kwargs,
+            )
+
+        else:
+            payload = compute_archetypes(
+                adata=adata,
+                n_archetypes=n_archetypes,
+                n_restarts=n_restarts,
+                seed=seed,
+                save_to_anndata=False,
+                return_result=True,
+                archetypes_only=False,
+                force_recompute=force_recompute,
+                **base_compute_kwargs,
+                **optim_kwargs,
+            )
+
+        if payload is None:
+            raise RuntimeError("Failed to retrieve archetypal analysis results for selection metrics.")
+
+        return payload
+
+    for n_archetypes in n_archetypes_seq:
+        archetype_config = ArchetypeConfig(
+            n_archetypes=n_archetypes,
+            init=init,
+            optim=optim,
+            weight=weight,
+            max_iter=max_iter,
+            rel_tol=rel_tol,
+            early_stopping=early_stopping,
+            coreset_algorithm=coreset_algorithm,
+            coreset_fraction=coreset_fraction,
+            coreset_size=coreset_size,
+            delta=delta,
+            seed=seed,
+            optim_kwargs=optim_kwargs,
+            obsm_key=obsm_key,
+            n_dimensions=tuple(n_dimensions),
         )
 
-    for result_dict in results_list:
-        X_tilde = result_dict["A"] @ result_dict["Z"]
-        result_dict["IC"] = compute_IC(X=X, X_tilde=X_tilde, n_archetypes=result_dict["k"])
+        cached_df: pd.DataFrame | None = None
+        if cache is not None and archetype_config in cache and not force_recompute:
+            candidate = cache[archetype_config]
+            if not isinstance(candidate, pd.DataFrame):
+                raise ValueError(
+                    "`adata.uns['AA_selection_metrics']` must contain pandas DataFrames for each configuration."
+                )
+            if candidate.empty:
+                cached_df = None
+            elif ("n_restarts" in candidate.columns and candidate["n_restarts"].iloc[0] != n_restarts) or (
+                "seed" in candidate.columns and candidate["seed"].iloc[0] != seed
+            ):
+                cached_df = None
+            else:
+                cached_df = candidate
 
-    result_df = pd.DataFrame(
-        [{"k": d["k"], "seed": d["seed"], "varexpl": d["varexpl"], "IC": d["IC"]} for d in results_list]
-    )
-    result_df["seed"] = pd.Categorical(result_df["seed"], categories=seeds)
-    adata.uns["AA_metrics"] = result_df
+        if cached_df is None:
+            A, _B, Z, rss_trace, varexpl = _compute_best_result(n_archetypes=n_archetypes)
+            rss_arr = np.asarray(rss_trace, dtype=np.float64)
+            rss_full = float(rss_arr[-1]) if rss_arr.size else float(rss_trace)
+            X_tilde = A @ Z
+            ic = float(compute_IC(X=X, X_tilde=X_tilde, n_archetypes=n_archetypes))
+
+            record = {
+                "k": n_archetypes,
+                "n_archetypes": n_archetypes,
+                "n_restarts": n_restarts,
+                "seed": seed,
+                "varexpl": float(varexpl),
+                "IC": ic,
+                "RSS": rss_full,
+            }
+
+            df = pd.DataFrame([record])
+            df["seed"] = pd.Categorical(df["seed"])
+
+            if save_to_anndata:
+                if cache is None:
+                    cache = adata.uns["AA_selection_metrics"] = {}
+                cache[archetype_config] = df.copy()
+
+            cached_df = df
+        else:
+            cached_df = cached_df.copy()
+
+        metrics_frames.append(cached_df)
+
+    result_df = pd.concat(metrics_frames, axis=0, ignore_index=True)
+
+    if save_to_anndata:
+        adata.uns["AA_metrics_df"] = result_df
+
+    if return_result:
+        return result_df
+
+    return None
 
 
 @docs.dedent
@@ -224,12 +419,22 @@ def compute_bootstrap_variance(
     adata: anndata.AnnData,
     n_bootstrap: int,
     n_archetypes_list: int | list[int] | None = None,
-    optim: str = DEFAULT_OPTIM,
-    init: str = DEFAULT_INIT,
+    init: str | None = None,
+    optim: str | None = None,
+    weight: None | str = None,
+    max_iter: int | None = None,
+    early_stopping: bool = True,
+    rel_tol: float | None = None,
+    coreset_algorithm: None | str = None,
+    coreset_fraction: float = 0.1,
+    coreset_size: None | int = None,
+    delta: float = 0.0,
     seed: int = 42,
     save_to_anndata: bool = True,
+    return_result: bool = False,
     n_jobs: int = -1,
     verbose: bool = False,
+    force_recompute: bool = False,
     **optim_kwargs,
 ) -> None | dict[str, pd.DataFrame]:
     """
@@ -257,6 +462,8 @@ def compute_bootstrap_variance(
         The number of jobs to run in parallel. `-1` uses all available cores.
     verbose : bool, default `False`
         Whether to print the progress
+    force_recompute : bool, default `False`
+        Recompute bootstrap samples even if cached results for the given configuration already exist.
     **optim_kwargs:
         TODO: Additional keyword arguments passed to `AA` class.
 
@@ -274,10 +481,12 @@ def compute_bootstrap_variance(
     # input validation
     _validate_aa_config(adata=adata)
 
-    if n_archetypes_list is None:
-        n_archetypes_list = list(range(2, 8))
-    elif isinstance(n_archetypes_list, int):
-        n_archetypes_list = [n_archetypes_list]
+    n_archetypes_list = _validate_n_archetype_list(
+        min_k=None,
+        max_k=None,
+        n_archetypes_list=n_archetypes_list,
+        default_range=range(2, 8),
+    )
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
     n_dimensions = adata.uns["AA_config"]["n_dimensions"]
@@ -286,58 +495,131 @@ def compute_bootstrap_variance(
     n_samples, n_features = X.shape
     rng = np.random.default_rng(seed)
 
-    df_dict = {}
-    for k in n_archetypes_list:
-        # Reference archetypes
-        ref_Z = compute_archetypes(
-            adata=adata,
-            n_archetypes=k,
-            optim=optim,
+    if save_to_anndata:
+        if "AA_bootstrap" not in adata.uns.keys():
+            adata.uns["AA_bootstrap"] = {}
+
+    if return_result:
+        df_dict = {}
+
+    # Use the provided values or fall back to the defaults
+    init = init if init is not None else DEFAULT_INIT
+    optim = optim if optim is not None else DEFAULT_OPTIM
+    weight = weight if weight is not None else DEFAULT_WEIGHT
+    max_iter = max_iter if max_iter is not None else DEFAULT_MAX_ITER
+    rel_tol = rel_tol if rel_tol is not None else DEFAULT_REL_TOL
+    verbose = verbose if verbose is not None else False
+
+    for n_archetypes in n_archetypes_list:
+        archetype_config = ArchetypeConfig(
+            n_archetypes=n_archetypes,
             init=init,
+            optim=optim,
+            weight=weight,
+            max_iter=max_iter,
+            rel_tol=rel_tol,
+            early_stopping=early_stopping,
+            coreset_algorithm=coreset_algorithm,
+            coreset_fraction=coreset_fraction,
+            coreset_size=coreset_size,
+            delta=delta,
             seed=seed,
-            save_to_anndata=False,
-            archetypes_only=True,
+            optim_kwargs=optim_kwargs,
+            obsm_key=obsm_key,
+            n_dimensions=tuple(n_dimensions),
+        )
+
+        cached_df = None
+        if save_to_anndata:
+            bootstrap_store = adata.uns.get("AA_bootstrap")
+            if bootstrap_store is None:
+                bootstrap_store = adata.uns["AA_bootstrap"] = {}
+            if not isinstance(bootstrap_store, dict):
+                raise ValueError("`adata.uns['AA_bootstrap']` must be a dictionary if present.")
+
+            if archetype_config in bootstrap_store and not force_recompute:
+                candidate = bootstrap_store[archetype_config]
+                if isinstance(candidate, pd.DataFrame) and not candidate.empty:
+                    if "iter" in candidate.columns and candidate["iter"].max() == n_bootstrap:
+                        cached_df = candidate
+
+        if cached_df is not None:
+            if return_result:
+                df_dict[str(n_archetypes)] = cached_df.copy()
+            continue
+
+        # Reference archetypes
+        _A, _B, ref_Z, _RSS, _varexpl = compute_archetypes(
+            adata=adata,
+            n_archetypes=n_archetypes,
+            init=init,
+            optim=optim,
+            weight=weight,
+            max_iter=max_iter,
+            early_stopping=early_stopping,
+            rel_tol=rel_tol,
+            coreset_algorithm=coreset_algorithm,
+            coreset_fraction=coreset_fraction,
+            coreset_size=coreset_size,
+            delta=delta,
+            seed=seed,
+            save_to_anndata=save_to_anndata,
+            return_result=True,
+            archetypes_only=False,
+            force_recompute=force_recompute,
             **optim_kwargs,
         )
 
-        # Generate bootstrap samples
         idx_bootstrap = rng.choice(n_samples, size=(n_bootstrap, n_samples), replace=True)
 
-        # Define function for parallel computation
-        def compute_bootstrap_z(idx, k=k):
-            return AA(n_archetypes=k, optim=optim, init=init, **optim_kwargs).fit(X[idx, :]).Z
+        def compute_bootstrap_z(idx, n_archetypes=n_archetypes):
+            return (
+                AA(
+                    n_archetypes=n_archetypes,
+                    optim=optim,
+                    init=init,
+                    weight=weight,
+                    max_iter=max_iter,
+                    early_stopping=early_stopping,
+                    rel_tol=rel_tol,
+                    coreset_algorithm=coreset_algorithm,
+                    coreset_fraction=coreset_fraction,
+                    coreset_size=coreset_size,
+                    delta=delta,
+                    seed=seed,
+                    **optim_kwargs,
+                )
+                .fit(X[idx, :])
+                .Z
+            )
 
-        # Parallel computation of AA on bootstrap samples
         if verbose:
             Z_list = Parallel(n_jobs=n_jobs)(
                 delayed(compute_bootstrap_z)(idx)
-                for idx in tqdm(idx_bootstrap, total=n_bootstrap, desc=f"Testing {k} Archetypes")
+                for idx in tqdm(idx_bootstrap, total=n_bootstrap, desc=f"Testing {n_archetypes} Archetypes")
             )
         else:
             Z_list = Parallel(n_jobs=n_jobs)(delayed(compute_bootstrap_z)(idx) for idx in idx_bootstrap)
 
-        # Align archetypes
-        Z_list = [_align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]  # type: ignore[union-attr]
+        Z_list = [_align_archetypes(ref_arch=ref_Z.copy(), query_arch=query_Z.copy()) for query_Z in Z_list]
 
-        # Compute variance per archetype
         Z_stack = np.stack(Z_list)
-        assert Z_stack.shape == (n_bootstrap, k, n_features)
+        assert Z_stack.shape == (n_bootstrap, n_archetypes, n_features)
 
         var_per_archetype_per_coordinate = Z_stack.var(axis=0)
         var_per_archetype = var_per_archetype_per_coordinate.mean(axis=1)
         var_mean = var_per_archetype.mean()
 
-        # Create result dataframe
         bootstrap_data = [
             pd.DataFrame(Z, columns=[f"{obsm_key}_{dim}" for dim in n_dimensions]).assign(
-                archetype=np.arange(k), iter=i + 1
+                archetype=np.arange(n_archetypes), iter=i + 1
             )
             for i, Z in enumerate(Z_list)
         ]
         bootstrap_df = pd.concat(bootstrap_data)
 
         df = pd.DataFrame(ref_Z, columns=[f"{obsm_key}_{dim}" for dim in n_dimensions])
-        df["archetype"] = np.arange(k)
+        df["archetype"] = np.arange(n_archetypes)
         df["iter"] = 0
 
         bootstrap_df = pd.concat((bootstrap_df, df), axis=0)
@@ -346,15 +628,16 @@ def compute_bootstrap_variance(
 
         bootstrap_df["mean_variance"] = var_mean
 
-        archetype_variance_map = dict(zip(np.arange(k), var_per_archetype, strict=False))
+        archetype_variance_map = dict(zip(np.arange(n_archetypes), var_per_archetype, strict=False))
         bootstrap_df["variance_per_archetype"] = bootstrap_df["archetype"].astype(int).map(archetype_variance_map)
 
-        df_dict[str(k)] = bootstrap_df
+        if save_to_anndata:
+            bootstrap_store[archetype_config] = bootstrap_df
 
-    if save_to_anndata:
-        adata.uns["AA_bootstrap"] = df_dict
-        return None
-    else:
+        if return_result:
+            df_dict[str(n_archetypes)] = bootstrap_df.copy()
+
+    if return_result:
         return df_dict
 
 
@@ -426,45 +709,91 @@ def _compute_t_ratio(X: np.ndarray, Z: np.ndarray) -> float:  # pragma: no cover
     return polytope_volume / convhull_volume
 
 
-def compute_t_ratio(adata) -> None:  # pragma: no cover
-    """
-    Compute the t-ratio from an AnnData object that contains archetypes, i.e has `adata.uns["AA_results"]["Z"]`.
+def _resolve_aa_result(
+    adata: anndata.AnnData, result_filters: Mapping[str, Any] | None = None
+) -> tuple[ArchetypeConfig, Mapping[str, Any]]:
+    if "AA_results" not in adata.uns:
+        raise ValueError("Missing archetypal analysis results in `adata.uns['AA_results']`.")
 
+    results = adata.uns["AA_results"]
+
+    if not isinstance(results, Mapping) or not results:
+        raise ValueError("`adata.uns['AA_results']` must be a non-empty mapping keyed by `ArchetypeConfig`.")
+
+    first_key = next(iter(results))
+    if not isinstance(first_key, ArchetypeConfig):
+        raise TypeError("`adata.uns['AA_results']` must be keyed by `ArchetypeConfig` instances.")
+
+    config, payload = get_aa_result(adata, return_config=True, **(result_filters or {}))
+    if "Z" not in payload:
+        raise ValueError("Selected AA result does not contain archetypes ('Z').")
+    return config, payload
+
+
+def compute_t_ratio(
+    adata: anndata.AnnData,
+    /,
+    *,
+    result_filters: Mapping[str, Any] | None = None,
+    save_to_anndata: bool = True,
+    return_result: bool = False,
+) -> float | None:  # pragma: no cover
+    """
+    Compute the t-ratio from an AnnData object that contains archetypes.
 
     Parameters
     ----------
     adata : anndata.AnnData
-        If AnnData: must contain `obsm[obsm_key]` and `uns["AA_results"]["Z"]`.
+        AnnData object with AA configuration and stored archetypes.
+    result_filters : Mapping[str, Any] | None, optional
+        Filters passed to :func:`get_aa_result` to disambiguate which AA result to use when multiple
+        configurations are cached. Ignored when `adata.uns["AA_results"]` uses the legacy format.
+    save_to_anndata : bool, default `True`
+        Whether to store the computed t-ratio in `adata.uns["t_ratio"]`.
+    return_result : bool, default `False`
+        If True, return the t-ratio value.
 
     Returns
     -------
     Optional[float]
-        - If input is AnnData, result is stored in `X.uns["t_ratio"]`.
-        - If input is ndarray, result is returned as float.
+        The computed t-ratio when `return_result` is True or `save_to_anndata` is False. Otherwise, None.
     """
     # input validation
     _validate_aa_config(adata=adata)
-    if "AA_results" not in adata.uns or "Z" not in adata.uns["AA_results"]:
-        raise ValueError("Missing archetypes in `adata.uns['AA_results']['Z']`.")
+
+    config, payload = _resolve_aa_result(adata, result_filters=result_filters)
 
     obsm_key = adata.uns["AA_config"]["obsm_key"]
     n_dimensions = adata.uns["AA_config"]["n_dimensions"]
     X = adata.obsm[obsm_key][:, n_dimensions]
-    Z = adata.uns["AA_results"]["Z"]
+
+    Z = payload["Z"]
     if Z.shape[0] <= 2:
         raise ValueError("Number of archetypes must be greater than 2")
     t_ratio = _compute_t_ratio(X, Z)
-    adata.uns["t_ratio"] = t_ratio
+
+    if save_to_anndata:
+        store = adata.uns.get("t_ratio")
+        if not isinstance(store, dict):
+            store = {}
+            adata.uns["t_ratio"] = store
+        store[config] = t_ratio
+
+    if return_result or not save_to_anndata:
+        return t_ratio
+
     return None
 
 
 @docs.dedent
 def t_ratio_significance(
-    adata,
-    n_iter=100,
-    seed=42,
-    n_jobs=-1,
+    adata: anndata.AnnData,
+    *,
+    n_iter: int = 100,
+    seed: int = 42,
+    n_jobs: int = -1,
     save_permutation_results: bool = False,
+    result_filters: Mapping[str, Any] | None = None,
     **optim_kwargs,
 ):  # pragma: no cover
     """
@@ -473,12 +802,16 @@ def t_ratio_significance(
     Parameters
     ----------
     adata : anndata.AnnData
-        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimensions"]`, optionally `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesnt exist it is called and computed.
+        An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimensions"]`, optionally
+        `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesn't exist it is computed.
     n_iter : int, default `100`
         Number of randomized datasets to generate.
     %(seed)s
     n_jobs : int, default `-1`
         Number of jobs for parallelization. Use -1 to use all available cores.
+    result_filters : Mapping[str, Any] | None, optional
+        Filters forwarded to :func:`get_aa_result` to select which cached AA result is evaluated when multiple
+        configurations are present.
 
     Returns
     -------
@@ -488,16 +821,26 @@ def t_ratio_significance(
     # input validation
     _validate_aa_config(adata=adata)
 
-    compute_t_ratio(adata)
+    t_ratio = compute_t_ratio(
+        adata,
+        result_filters=result_filters,
+        save_to_anndata=True,
+        return_result=True,
+    )
 
+    config, payload = _resolve_aa_result(adata, result_filters=result_filters)
     obsm_key = adata.uns["AA_config"]["obsm_key"]
     n_dimensions = adata.uns["AA_config"]["n_dimensions"]
     X = adata.obsm[obsm_key][:, n_dimensions]
 
-    t_ratio = adata.uns["t_ratio"]
-    rss = adata.uns["AA_results"]["RSS"][-1]
+    rss_trace = payload.get("RSS")
+    if rss_trace is None:
+        raise ValueError("Selected AA result does not contain 'RSS' trace.")
+    rss_arr = np.asarray(rss_trace, dtype=np.float64)
+    rss = float(rss_arr[-1]) if rss_arr.size else float(rss_trace)
+
     n_samples, n_features = X.shape
-    n_archetypes = adata.uns["AA_results"]["Z"].shape[0]
+    n_archetypes = payload["Z"].shape[0]
 
     rng_master = np.random.default_rng(seed)
     rng_list = [np.random.default_rng(rng_master.integers(int(1e9))) for _ in range(n_iter)]
@@ -519,7 +862,18 @@ def t_ratio_significance(
     t_ratios_perm, rss_perm = map(np.array, zip(*results, strict=False))
 
     if save_permutation_results:
-        adata.uns["AA_permutation"] = {"t_ratio": t_ratios_perm, "rss": rss_perm}
+        if isinstance(config, ArchetypeConfig):
+            store = adata.uns.get("AA_permutation")
+            if not isinstance(store, dict):
+                store = {}
+                adata.uns["AA_permutation"] = store
+            store[config] = {"t_ratio": t_ratios_perm, "rss": rss_perm}
+        else:
+            store = adata.uns.get("AA_permutation")
+            if not isinstance(store, dict):
+                store = {}
+                adata.uns["AA_permutation"] = store
+            store[config] = {"t_ratio": t_ratios_perm, "rss": rss_perm}
 
     # Calculate the p-value
     t_ratio_p_value = 1 - np.mean(np.abs(1 - t_ratio) < np.abs(1 - t_ratios_perm))
@@ -552,7 +906,7 @@ def _align_archetypes(ref_arch: np.ndarray, query_arch: np.ndarray) -> np.ndarra
     euclidean_d = cdist(ref_arch, query_arch.copy(), metric="euclidean")
 
     # Find the optimal assignment using the Hungarian algorithm
-    ref_idx, query_idx = linear_sum_assignment(euclidean_d)
+    _ref_idx, query_idx = linear_sum_assignment(euclidean_d)
 
     return query_arch[query_idx, :]
 
@@ -566,12 +920,19 @@ def compute_archetypes(
     optim: str | None = None,
     weight: None | str = None,
     max_iter: int | None = None,
+    early_stopping: bool = True,
     rel_tol: float | None = None,
+    coreset_algorithm: None | str = None,
+    coreset_fraction: float = 0.1,
+    coreset_size: None | int = None,
+    delta: float = 0.0,
     verbose: bool | None = None,
     seed: int = 42,
     n_jobs: int = -1,
     save_to_anndata: bool = True,
-    archetypes_only: bool = True,
+    return_result: bool = False,
+    archetypes_only: bool = False,
+    force_recompute: bool = False,
     **optim_kwargs,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, list[float] | np.ndarray, float] | None:
     """
@@ -594,7 +955,12 @@ def compute_archetypes(
     %(optim)s
     %(weight)s
     %(max_iter)s
+    %(early_stopping)s
     %(rel_tol)s
+    %(coreset_algorithm)s
+    %(coreset_fraction)s
+    %(coreset_size)s
+    %(delta)s
     %(verbose)s
     %(seed)s
     n_jobs : int, default `-1`
@@ -605,6 +971,7 @@ def compute_archetypes(
     archetypes_only : bool, default `True`
         Whether to save/return only the archetypes matrix `Z` (if det to True) or also the full outputs, including
         the matrices `A`, `B`, `RSS`, and variance explained `varexpl`.
+
     optim_kwargs : dict | None, default `None`
         Additional arguments that are passed to `partipy.arch.AA`
 
@@ -637,29 +1004,19 @@ def compute_archetypes(
             The results described above are returned.
 
     """
-    # input validation
+    # Input validation
     _validate_aa_config(adata=adata)
-
-    # Get the signature of AA.__init__
-    signature = inspect.signature(AA.__init__)
-
-    # Create a dictionary of parameter names and their default values
-    defaults = {
-        param: signature.parameters[param].default
-        for param in signature.parameters
-        if param != "self" and param != "n_archetypes"
-    }
 
     rng = np.random.default_rng(seed)
     seeds = rng.choice(a=int(1e9), size=n_restarts, replace=False)
 
     # Use the provided values or fall back to the defaults
-    init = init if init is not None else defaults["init"]
-    optim = optim if optim is not None else defaults["optim"]
-    weight = weight if weight is not None else defaults["weight"]
-    max_iter = max_iter if max_iter is not None else defaults["max_iter"]
-    rel_tol = rel_tol if rel_tol is not None else defaults["rel_tol"]
-    verbose = verbose if verbose is not None else defaults["verbose"]
+    init = init if init is not None else DEFAULT_INIT
+    optim = optim if optim is not None else DEFAULT_OPTIM
+    weight = weight if weight is not None else DEFAULT_WEIGHT
+    max_iter = max_iter if max_iter is not None else DEFAULT_MAX_ITER
+    rel_tol = rel_tol if rel_tol is not None else DEFAULT_REL_TOL
+    verbose = verbose if verbose is not None else False
 
     # Extract the data matrix used to fit the archetypes
     obsm_key = adata.uns["AA_config"]["obsm_key"]
@@ -667,8 +1024,53 @@ def compute_archetypes(
     X = adata.obsm[obsm_key][:, n_dimensions]
     X = X.astype(np.float32)
 
-    # Parallel computation of AA
-    def _compute_archeptyes(seed):
+    # Generate hash for the optimization and data parameters
+    archetype_config = ArchetypeConfig(
+        n_archetypes=n_archetypes,
+        init=init,
+        optim=optim,
+        weight=weight,
+        max_iter=max_iter,
+        rel_tol=rel_tol,
+        early_stopping=early_stopping,
+        coreset_algorithm=coreset_algorithm,
+        coreset_fraction=coreset_fraction,
+        coreset_size=coreset_size,
+        delta=delta,
+        seed=seed,
+        optim_kwargs=optim_kwargs,
+        obsm_key=obsm_key,
+        n_dimensions=tuple(n_dimensions),
+    )
+
+    # ------------------ cache short-circuit ------------------
+    # Create the container if absent
+    if "AA_results" not in adata.uns:
+        adata.uns["AA_results"] = {}
+
+    if archetype_config in adata.uns["AA_results"] and not force_recompute:
+        if verbose:
+            print("Using cached AA result from `adata.uns['AA_results']`.")
+
+        # Return from cache according to caller's request
+        cached = adata.uns["AA_results"][archetype_config]
+        if archetypes_only:
+            if "Z" not in cached:
+                raise ValueError(
+                    "Cached AA entry exists but does not contain 'Z'. This should not happen; try recomputing."
+                )
+            return cached["Z"]
+        else:
+            needed = {"A", "B", "Z", "RSS", "varexpl"}
+            if not needed.issubset(cached.keys()):
+                raise ValueError(
+                    "AA result already cached only with 'Z', but full outputs were requested "
+                    "(A, B, Z, RSS, varexpl). Recompute with `archetypes_only=False` to cache full results."
+                )
+            return cached["A"], cached["B"], cached["Z"], cached["RSS"], cached["varexpl"]
+
+    # ------------------ compute (cache miss or forced) ------------------
+    def _compute_archetypes_single(seed_val: int):
         model = AA(
             n_archetypes=n_archetypes,
             init=init,
@@ -676,8 +1078,13 @@ def compute_archetypes(
             weight=weight,
             max_iter=max_iter,
             rel_tol=rel_tol,
+            early_stopping=early_stopping,
+            coreset_algorithm=coreset_algorithm,
+            coreset_fraction=coreset_fraction,
+            coreset_size=coreset_size,
+            delta=delta,
             verbose=verbose,
-            seed=seed,
+            seed=seed_val,
             **optim_kwargs,
         )
         model.fit(X)
@@ -688,34 +1095,165 @@ def compute_archetypes(
             "RSS": model.RSS_trace,
             "RSS_full": model.RSS,
             "varexpl": model.varexpl,
-            "seed": seed,
+            "seed": seed_val,
         }
 
     if n_jobs == 1:
-        results_list = [_compute_archeptyes(seed=seed) for seed in seeds]
+        results_list = [_compute_archetypes_single(seed_val=s) for s in seeds]
     else:
-        results_list = Parallel(n_jobs=n_jobs)(delayed(_compute_archeptyes)(seed=seed) for seed in seeds)
+        results_list = Parallel(n_jobs=n_jobs)(delayed(_compute_archetypes_single)(seed_val=s) for s in seeds)
 
-    argmax = np.argmax(np.array([r["varexpl"] for r in results_list]))
+    # Select the run with maximal variance explained
+    argmax = int(np.argmax([r["varexpl"] for r in results_list]))
+    best = results_list[argmax]
 
-    result_dict = results_list[argmax]
-
-    # Save the results to the AnnData object if specified
+    # ------------------ persist or return ------------------
     if save_to_anndata:
         if archetypes_only:
-            adata.uns["AA_results"] = {"Z": result_dict["Z"]}
+            adata.uns["AA_results"][archetype_config] = {"Z": best["Z"]}
         else:
-            adata.uns["AA_results"] = {
-                "A": result_dict["A"],
-                "B": result_dict["B"],
-                "Z": result_dict["Z"],
-                "RSS": result_dict["RSS"],
-                "RSS_full": result_dict["RSS_full"],
-                "varexpl": result_dict["varexpl"],
+            adata.uns["AA_results"][archetype_config] = {
+                "A": best["A"],
+                "B": best["B"],
+                "Z": best["Z"],
+                "RSS": best["RSS"],
+                "RSS_full": best["RSS_full"],
+                "varexpl": best["varexpl"],
             }
-        return None
-    else:
+
+    if return_result:
         if archetypes_only:
-            return result_dict["Z"]
+            return best["Z"]
         else:
-            return result_dict["A"], result_dict["B"], result_dict["Z"], result_dict["RSS"], result_dict["varexpl"]
+            return best["A"], best["B"], best["Z"], best["RSS"], best["varexpl"]
+
+
+def _ensure_results_dict(adata) -> dict:
+    try:
+        d = adata.uns["AA_results"]
+    except KeyError as kerr:
+        raise KeyError("No AA_results found in `adata.uns`.") from kerr
+    if not isinstance(d, dict) or len(d) == 0:
+        raise ValueError("`adata.uns['AA_results']` is empty or not a dict.")
+    return d
+
+
+def _normalize_query_kv(k: str, v: Any) -> Any:
+    # Normalize query values to match ArchetypeConfig’s field types
+    if k == "n_dimensions":
+        # Accept list[int] in query; stored key uses tuple[int,...]
+        if isinstance(v, list):
+            return tuple(v)
+        return v
+    if k == "optim_kwargs":
+        # Accept dict-like and normalize to subset-dict for matching
+        if isinstance(v, Mapping):
+            return dict(v)
+        raise TypeError("optim_kwargs filter must be a mapping (e.g., dict).")
+    return v
+
+
+def _matches(config, query: dict[str, Any]) -> bool:
+    for k, v in query.items():
+        v = _normalize_query_kv(k, v)
+        if not hasattr(config, k):
+            raise KeyError(f"Unknown field in query: {k!r}")
+        cfg_val = getattr(config, k)
+
+        if k == "optim_kwargs":
+            # config.optim_kwargs is already frozen+sorted; convert to dict for subset check
+            cfg_ok = dict(cfg_val) if isinstance(cfg_val, tuple | list) else dict(cfg_val.items())
+            for kk, vv in v.items():
+                if kk not in cfg_ok or cfg_ok[kk] != vv:
+                    return False
+            continue
+
+        # Plain equality for all other fields
+        if cfg_val != v:
+            return False
+    return True
+
+
+def get_aa_result(adata, /, *, return_config: bool = False, **filters):
+    """
+    Fuzzy-get: with no filters require exactly one result; with filters require exactly one match.
+    Filters may be any ArchetypeConfig field (e.g., delta=0.5, init="plus_plus", n_dimensions=[0,1,2]).
+    For optim_kwargs, subset matching is used (e.g., optim_kwargs={"lr": 1e-2}).
+    """
+    results = _ensure_results_dict(adata)
+
+    if not filters:
+        if len(results) == 1:
+            ((cfg, payload),) = results.items()
+            return (cfg, payload) if return_config else payload
+        else:
+            raise ValueError(
+                f"Multiple AA results present ({len(results)}). "
+                "Specify filters (e.g., delta=..., init=..., n_archetypes=...)."
+            )
+
+    # Apply filters
+    matches = [(cfg, payload) for cfg, payload in results.items() if _matches(cfg, filters)]
+
+    if len(matches) == 0:
+        raise ValueError(f"No AA result matches filters: {filters!r}")
+    if len(matches) > 1:
+        # Provide a short disambiguation hint (list a few distinguishing fields)
+        examples = [
+            {
+                "n_archetypes": m[0].n_archetypes,
+                "init": m[0].init,
+                "optim": m[0].optim,
+                "weight": m[0].weight,
+                "delta": m[0].delta,
+                "seed": m[0].seed,
+            }
+            for m in matches[:5]
+        ]
+        raise ValueError(
+            f"{len(matches)} AA results match filters {filters!r}. "
+            f"Please add more filters. First few matches: {examples}"
+        )
+
+    cfg, payload = matches[0]
+    return (cfg, payload) if return_config else payload
+
+
+def delete_aa_result(adata, /, **filters):
+    """
+    Fuzzy-delete: same matching rules as get_aa_result.
+    Deletes the uniquely identified entry from adata.uns['AA_results'] and returns its payload.
+    """
+    results = _ensure_results_dict(adata)
+
+    # Reuse the matching logic to locate exactly one item
+    # but do not rely on get_aa_result's return since we need the key to pop
+    if not filters and len(results) == 1:
+        ((cfg, payload),) = results.items()
+        results.pop(cfg)
+        return payload
+
+    matches = [(cfg, payload) for cfg, payload in results.items() if _matches(cfg, filters)]
+
+    if len(matches) == 0:
+        raise ValueError(f"No AA result matches filters: {filters!r}")
+    if len(matches) > 1:
+        examples = [
+            {
+                "n_archetypes": m[0].n_archetypes,
+                "init": m[0].init,
+                "optim": m[0].optim,
+                "weight": m[0].weight,
+                "delta": m[0].delta,
+                "seed": m[0].seed,
+            }
+            for m in matches[:5]
+        ]
+        raise ValueError(
+            f"{len(matches)} AA results match filters {filters!r}. "
+            f"Please add more filters. First few matches: {examples}"
+        )
+
+    cfg, payload = matches[0]
+    results.pop(cfg)
+    return payload

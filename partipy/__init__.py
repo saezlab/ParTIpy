@@ -17,6 +17,8 @@ from .paretoti import (
     compute_bootstrap_variance,
     compute_selection_metrics,
     compute_t_ratio,
+    delete_aa_result,
+    get_aa_result,
     set_obsm,
     t_ratio_significance,
 )

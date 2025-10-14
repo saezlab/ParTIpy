@@ -1,6 +1,6 @@
 from docrep import DocstringProcessor
 
-from .const import (
+from .schema import (
     CORESET_ALGS,
     DEFAULT_INIT,
     DEFAULT_MAX_ITER,
@@ -30,7 +30,7 @@ optim : {{{", ".join(f'`"{alg}"`' for alg in OPTIM_ALGS)}}}, default `"{DEFAULT_
     - `"frank_wolfe"`: Frank-Wolfe algorithm :cite:`bauckhageArchetypalAnalysisAutoencoder2015`.
     - `"regularized_nnls"`: Regularized non-negative least squares :cite:`Cutler1994`.
 
-    See `partipy.const.OPTIM_ALGS` for all available options.
+    See `partipy.schema.OPTIM_ALGS` for all available options.
 """
 
 _init = f"""\
@@ -41,7 +41,7 @@ init : {{{", ".join(f'`"{alg}"`' for alg in INIT_ALGS)}}}, default `"{DEFAULT_IN
     - `"furthest_sum"`: Utilizes the furthest sum algorithm :cite:`morupArchetypalAnalysisMachine2012`.
     - `"uniform"`: Random initialization.
 
-    See `partipy.const.INIT_ALGS` for all available options.
+    See `partipy.schema.INIT_ALGS` for all available options.
 """
 
 _weight = f"""\
@@ -52,7 +52,7 @@ weight : {{{", ".join(f'`"{alg}"`' if alg is not None else "`None`" for alg in W
     - `"bisquare"`: Bisquare weighting for robust estimation.
     - `"huber"`: Huber weighting for robust estimation.
 
-    See `partipy.const.WEIGHT_ALGS` for all available options.
+    See `partipy.schema.WEIGHT_ALGS` for all available options.
 """
 
 _coreset_algorithm = f"""\
@@ -64,7 +64,17 @@ coreset_algorithm : {{{", ".join(f'`"{alg}"`' for alg in CORESET_ALGS)}}}, defau
     - `"lightweight_kmeans"`: Lightweight coreset for k-means clustering :cite:`lucicStrongCoresetsHard2016`.
     - `"uniform"`: Coreset based on uniform sampling.
 
-    See `partipy.const.CORESET_ALGS` for all available options.
+    See `partipy.schema.CORESET_ALGS` for all available options.
+"""
+
+_coreset_fraction = """\
+coreset_fraction : float, default `0.1`
+    Fraction of the data to use for the coreset. Only used if `coreset_algorithm` is not `None` and coreset_size is `None`.
+"""
+
+_coreset_size = """\
+coreset_size : int, default: `None`
+    If None, it is set to `n_samples * coreset_fraction`. Otherwise overwrites the coreset_fraction argument.
 """
 
 _delta = """\
@@ -82,6 +92,11 @@ _obsm_key = f"""\
 obsm_key : str, default `"{DEFAULT_OBSM_KEY}"`
     Key in `adata.obsm` containing the data matrix to use for archetypal analysis."""
 
+_early_stopping = """\
+early_stopping : bool, default `True`
+    Whether to stop the optimization early if the relative change in RSS is below a certain threshold.
+"""
+
 # Computational parameters
 _max_iter = f"""\
 max_iter : int, default `{DEFAULT_MAX_ITER}`
@@ -98,9 +113,12 @@ docs = DocstringProcessor(
     optim=_optim,
     weight=_weight,
     coreset_algorithm=_coreset_algorithm,
+    coreset_fraction=_coreset_fraction,
+    coreset_size=_coreset_size,
     delta=_delta,
     obsm_key=_obsm_key,
     max_iter=_max_iter,
+    early_stopping=_early_stopping,
     rel_tol=_rel_tol,
     seed=_seed,
     verbose=_verbose,

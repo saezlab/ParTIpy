@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from partipy.arch import AA
-from partipy.const import OPTIM_ALGS, WEIGHT_ALGS
+from partipy.schema import OPTIM_ALGS, WEIGHT_ALGS
 from partipy.simulate import simulate_archetypes
 from partipy.utils import align_archetypes, compute_relative_rowwise_l2_distance
 

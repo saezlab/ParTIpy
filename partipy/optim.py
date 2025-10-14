@@ -22,7 +22,7 @@ import numpy as np
 from numba import jit, prange
 from scipy.optimize import nnls
 
-from .const import LAMBDA
+from .schema import LAMBDA
 
 
 def _inspect_array(arr: np.ndarray) -> dict:

@@ -333,4 +333,4 @@ def test_model_selection_metrics_aa_on_simulated_data():
     sim_adata = _simulate_adata(n_samples=1000, n_dimensions=50, n_archetypes=5, n_pcs=6)
     compute_selection_metrics(sim_adata, min_k=2, max_k=10)
 
-    assert sim_adata.uns["AA_metrics"].sort_values("IC").iloc[0]["k"] == 5, "Expected lowest IC at 5 archetypes"
+    assert sim_adata.uns["AA_metrics_df"].sort_values("IC").iloc[0]["k"] == 5, "Expected lowest IC at 5 archetypes"

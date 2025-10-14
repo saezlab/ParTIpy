@@ -98,7 +98,7 @@ def test_plot_archetypes_3D(mock_adata=mock_adata):
 
 @pytest.mark.github_actions
 def test_plot_bootstrap_2D(mock_adata=mock_adata):
-    p = plot_bootstrap_2D(mock_adata, n_archetypes=3)
+    p = plot_bootstrap_2D(mock_adata, result_filters={"n_archetypes": 3})
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
 
 
@@ -109,7 +109,7 @@ def test_plot_bootstrap_2D(mock_adata=mock_adata):
 def test_plot_bootstrap_3D(mock_adata=mock_adata):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        p = plot_bootstrap_3D(mock_adata, n_archetypes=3)
+        p = plot_bootstrap_3D(mock_adata, result_filters={"n_archetypes": 3})
         assert isinstance(p, go.Figure), "Expected a plotly graph_objects Figure"
 
 
