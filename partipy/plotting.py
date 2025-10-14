@@ -17,7 +17,7 @@ from scipy.stats import chi2
 
 from ._docs import docs
 from .paretoti import _matches, _resolve_aa_result, _validate_aa_config, _validate_aa_results, compute_selection_metrics
-from .schema import ArchetypeConfig
+from .schema import ArchetypeConfig, query_configs_by_signature
 
 DEFAULT_ARCHETYPE_COLORS = {
     0: "#4e79a7",  # muted blue
@@ -300,13 +300,30 @@ def plot_bootstrap_2D(
                 "No bootstrap entries match the provided filters. "
                 "Ensure bootstrap_variance was computed for a configuration matching result_filters."
             )
+        reference_cfg = filtered_configs[0]
+        matched_configs = query_configs_by_signature(
+            candidate_configs,
+            reference_cfg,
+            ignore_fields=("n_archetypes",),
+        )
+        if any(cfg not in matched_configs for cfg in filtered_configs):
+            raise ValueError(
+                "Filters correspond to multiple optimization configurations. "
+                "Please provide more specific result_filters (e.g., init, optim, weight)."
+            )
     else:
-        filtered_configs = candidate_configs
+        reference_cfg = candidate_configs[0]
+        matched_configs = query_configs_by_signature(
+            candidate_configs,
+            reference_cfg,
+            ignore_fields=("n_archetypes",),
+        )
+        if len(matched_configs) != len(candidate_configs):
+            raise ValueError(
+                "Multiple optimization configurations present. Please provide result_filters to select one."
+            )
 
-    if len(filtered_configs) != 1:
-        raise ValueError("plot_bootstrap_2D requires filters that uniquely identify a bootstrap configuration.")
-
-    cfg = filtered_configs[0]
+    cfg = reference_cfg
     df = bootstrap_store.get(cfg)
     if not isinstance(df, pd.DataFrame):
         raise ValueError(f"Bootstrap entry for {cfg} is not a pandas DataFrame.")
@@ -428,13 +445,31 @@ def plot_bootstrap_3D(
                 "No bootstrap entries match the provided filters. "
                 "Ensure bootstrap_variance was computed for a configuration matching result_filters."
             )
+        reference_cfg = filtered_configs[0]
+        matched_configs = query_configs_by_signature(
+            candidate_configs,
+            reference_cfg,
+            ignore_fields=("n_archetypes",),
+        )
+        if any(cfg not in matched_configs for cfg in filtered_configs):
+            raise ValueError(
+                "Filters correspond to multiple optimization configurations. "
+                "Please provide more specific result_filters (e.g., init, optim, weight)."
+            )
     else:
-        filtered_configs = candidate_configs
+        reference_cfg = candidate_configs[0]
+        matched_configs = query_configs_by_signature(
+            candidate_configs,
+            reference_cfg,
+            ignore_fields=("n_archetypes",),
+        )
+        if len(matched_configs) != len(candidate_configs):
+            raise ValueError(
+                "Multiple optimization configurations present. "
+                "Please provide result_filters to select one."
+            )
 
-    if len(filtered_configs) != 1:
-        raise ValueError("plot_bootstrap_3D requires filters that uniquely identify a bootstrap configuration.")
-
-    cfg = filtered_configs[0]
+    cfg = reference_cfg
     df = bootstrap_store.get(cfg)
     if not isinstance(df, pd.DataFrame):
         raise ValueError(f"Bootstrap entry for {cfg} is not a pandas DataFrame.")

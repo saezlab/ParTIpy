@@ -794,7 +794,6 @@ def t_ratio_significance(
     n_jobs: int = -1,
     save_permutation_results: bool = False,
     result_filters: Mapping[str, Any] | None = None,
-    **optim_kwargs,
 ):  # pragma: no cover
     """
     Assesses the significance of the polytope spanned by the archetypes by comparing the t-ratio of the original data to t-ratios computed from randomized datasets.
@@ -839,15 +838,33 @@ def t_ratio_significance(
     rss_arr = np.asarray(rss_trace, dtype=np.float64)
     rss = float(rss_arr[-1]) if rss_arr.size else float(rss_trace)
 
-    n_samples, n_features = X.shape
-    n_archetypes = payload["Z"].shape[0]
+    _n_samples, n_features = X.shape
+
+    aa_kwargs = {
+        "n_archetypes": config.n_archetypes,
+        "init": config.init,
+        "optim": config.optim,
+        "weight": config.weight,
+        "max_iter": config.max_iter,
+        "early_stopping": config.early_stopping,
+        "rel_tol": config.rel_tol,
+        "coreset_algorithm": config.coreset_algorithm,
+        "coreset_fraction": config.coreset_fraction,
+        "coreset_size": config.coreset_size,
+        "delta": config.delta,
+        "seed": config.seed,
+    }
+    print(aa_kwargs)
+
+    config_optim_kwargs = dict(config.optim_kwargs)
+    aa_kwargs.update(config_optim_kwargs)
 
     rng_master = np.random.default_rng(seed)
     rng_list = [np.random.default_rng(rng_master.integers(int(1e9))) for _ in range(n_iter)]
 
     def compute_randomized_metrics(rng_inner):
         X_perm = np.column_stack([rng_inner.permutation(X[:, col_idx]) for col_idx in range(n_features)])
-        AA_perm = AA(n_archetypes=n_archetypes, **optim_kwargs)
+        AA_perm = AA(**aa_kwargs)
         AA_perm.fit(X_perm)
         Z_perm = AA_perm.Z
         rss_perm = AA_perm.RSS
