@@ -10,15 +10,15 @@ from partipy.enrichment import (
     extract_enriched_processes,
     extract_specific_processes,
 )
-from partipy.simulate import simulate_archetypes
 from partipy.schema import (
-    ArchetypeConfig,
     DEFAULT_INIT,
     DEFAULT_MAX_ITER,
     DEFAULT_OPTIM,
     DEFAULT_REL_TOL,
     DEFAULT_WEIGHT,
+    ArchetypeConfig,
 )
+from partipy.simulate import simulate_archetypes
 from scipy.spatial.distance import cdist
 
 np.random.seed(42)
