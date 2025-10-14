@@ -171,7 +171,7 @@ def plot_var_explained(
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
     Cached selection metrics are summarized on demand. Selection metrics must be computed beforehand via
-    :func:`compute_selection_metrics`.
+    :func:`~partipy.compute_selection_metrics`.
 
     Parameters
     ----------
@@ -239,7 +239,7 @@ def plot_IC(adata: anndata.AnnData, result_filters: Mapping[str, Any] | None = N
 
     This function creates a plot showing the variance explained by AA models with different numbers of archetypes.
     Cached selection metrics are summarized on demand. Selection metrics must be computed beforehand via
-    :func:`compute_selection_metrics`.
+    :func:`~partipy.compute_selection_metrics`.
 
     Parameters
     ----------
@@ -695,7 +695,7 @@ def plot_bootstrap_variance(
     summary_method : str, default ``"median"``
         Summary statistic to display as a dotted line across archetype counts. Must be one of ``{"median", "max", "mean"}``.
     result_filters : Mapping[str, Any] | None, default `None`
-        Filters forwarded to :func:`~partipy.paretoti._resolve_aa_result` to select the AA configuration for which
+        Filters forwarded to ``_resolve_aa_result`` to select the AA configuration for which
         bootstrap results are summarized. If ``None``, a configuration with matching bootstrap data must exist uniquely.
 
     Returns

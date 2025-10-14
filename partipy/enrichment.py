@@ -36,8 +36,7 @@ def compute_archetype_weights(
         If `True`, the weights are saved to `adata.uns["AA_cell_weights"]` under the resolved AA configuration. If `False`,
         the weights are returned as a NumPy array.
     result_filters : Mapping[str, Any] | None, default `None`
-        Filters forwarded to :func:`~partipy.paretoti._resolve_aa_result` to select the AA configuration for which
-        weights are computed.
+        Filters forwarded to ``_resolve_aa_result`` to select the AA configuration for which weights are computed.
 
     Returns
     -------
