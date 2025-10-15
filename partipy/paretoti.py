@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from ._docs import docs
 from .arch import AA
+from .io import ensure_archetype_config_keys
 from .schema import (
     DEFAULT_INIT,
     DEFAULT_MAX_ITER,
@@ -289,6 +290,7 @@ def compute_selection_metrics(
     max_iter = max_iter if max_iter is not None else DEFAULT_MAX_ITER
     rel_tol = rel_tol if rel_tol is not None else DEFAULT_REL_TOL
 
+    ensure_archetype_config_keys(adata, uns_keys=("AA_selection_metrics",))
     cache = adata.uns.get("AA_selection_metrics")
     if cache is not None and not isinstance(cache, dict):
         raise ValueError("`adata.uns['AA_selection_metrics']` must be a dictionary if present.")
@@ -569,6 +571,7 @@ def compute_bootstrap_variance(
     rng = np.random.default_rng(seed)
 
     if save_to_anndata:
+        ensure_archetype_config_keys(adata, uns_keys=("AA_bootstrap",))
         if "AA_bootstrap" not in adata.uns.keys():
             adata.uns["AA_bootstrap"] = {}
 
@@ -790,6 +793,8 @@ def _resolve_aa_result(
     if "AA_results" not in adata.uns:
         raise ValueError("Missing archetypal analysis results in `adata.uns['AA_results']`.")
 
+    ensure_archetype_config_keys(adata, uns_keys=("AA_results",))
+
     results = adata.uns["AA_results"]
 
     if not isinstance(results, Mapping) or not results:
@@ -824,7 +829,7 @@ def compute_t_ratio(
         Filters passed to :func:`~partipy.get_aa_result` to disambiguate which AA result to use when multiple
         configurations are cached. Ignored when `adata.uns["AA_results"]` uses the legacy format.
     save_to_anndata : bool, default `True`
-        Whether to store the computed t-ratio in `adata.uns["t_ratio"]`.
+        Whether to store the computed t-ratio in `adata.uns["AA_t_ratio"]`.
     return_result : bool, default `False`
         If True, return the t-ratio value.
 
@@ -848,10 +853,11 @@ def compute_t_ratio(
     t_ratio = _compute_t_ratio(X, Z)
 
     if save_to_anndata:
-        store = adata.uns.get("t_ratio")
+        ensure_archetype_config_keys(adata, uns_keys=("AA_t_ratio",))
+        store = adata.uns.get("AA_t_ratio")
         if not isinstance(store, dict):
             store = {}
-            adata.uns["t_ratio"] = store
+            adata.uns["AA_t_ratio"] = store
         store[config] = t_ratio
 
     if return_result or not save_to_anndata:
@@ -877,7 +883,7 @@ def t_ratio_significance(
     ----------
     adata : anndata.AnnData
         An AnnData object containing `adata.obsm["X_pca"]` and `adata.uns["AA_config"]["n_dimensions"]`, optionally
-        `adata.uns["t_ratio"]`. If `adata.uns["t_ratio"]` doesn't exist it is computed.
+        `adata.uns["AA_t_ratio"]`. If `adata.uns["AA_t_ratio"]` doesn't exist it is computed.
     n_iter : int, default `100`
         Number of randomized datasets to generate.
     %(seed)s
@@ -954,18 +960,12 @@ def t_ratio_significance(
     t_ratios_perm, rss_perm = map(np.array, zip(*results, strict=False))
 
     if save_permutation_results:
-        if isinstance(config, ArchetypeConfig):
-            store = adata.uns.get("AA_permutation")
-            if not isinstance(store, dict):
-                store = {}
-                adata.uns["AA_permutation"] = store
-            store[config] = {"t_ratio": t_ratios_perm, "rss": rss_perm}
-        else:
-            store = adata.uns.get("AA_permutation")
-            if not isinstance(store, dict):
-                store = {}
-                adata.uns["AA_permutation"] = store
-            store[config] = {"t_ratio": t_ratios_perm, "rss": rss_perm}
+        ensure_archetype_config_keys(adata, uns_keys=("AA_permutation",))
+        store = adata.uns.get("AA_permutation")
+        if not isinstance(store, dict):
+            store = {}
+            adata.uns["AA_permutation"] = store
+        store[config] = {"AA_t_ratio": t_ratios_perm, "rss": rss_perm}
 
     # Calculate the p-value
     t_ratio_p_value = 1 - np.mean(np.abs(1 - t_ratio) < np.abs(1 - t_ratios_perm))
@@ -1136,6 +1136,7 @@ def compute_archetypes(
     )
 
     # ------------------ cache short-circuit ------------------
+    ensure_archetype_config_keys(adata, uns_keys=("AA_results",))
     # Create the container if absent
     if "AA_results" not in adata.uns:
         adata.uns["AA_results"] = {}
@@ -1227,12 +1228,16 @@ def compute_archetypes(
 
 
 def _ensure_results_dict(adata) -> dict:
+    ensure_archetype_config_keys(adata, uns_keys=("AA_results",))
     try:
         d = adata.uns["AA_results"]
     except KeyError as kerr:
         raise KeyError("No AA_results found in `adata.uns`.") from kerr
     if not isinstance(d, dict) or len(d) == 0:
         raise ValueError("`adata.uns['AA_results']` is empty or not a dict.")
+    first_key = next(iter(d))
+    if not isinstance(first_key, ArchetypeConfig):
+        raise TypeError("`adata.uns['AA_results']` must be keyed by `ArchetypeConfig` instances.")
     return d
 
 
@@ -1358,6 +1363,7 @@ def delete_aa_result(adata, /, **filters):
 
 
 def _ensure_cell_weights_dict(adata) -> dict:
+    ensure_archetype_config_keys(adata, uns_keys=("AA_cell_weights",))
     weights = adata.uns.get("AA_cell_weights")
     if weights is None:
         raise ValueError(
@@ -1369,6 +1375,7 @@ def _ensure_cell_weights_dict(adata) -> dict:
 
 
 def _ensure_metrics_dict(adata) -> dict:
+    ensure_archetype_config_keys(adata, uns_keys=("AA_selection_metrics",))
     metrics = adata.uns.get("AA_selection_metrics")
     if metrics is None:
         raise ValueError(
@@ -1381,6 +1388,7 @@ def _ensure_metrics_dict(adata) -> dict:
 
 
 def _ensure_bootstrap_dict(adata) -> dict:
+    ensure_archetype_config_keys(adata, uns_keys=("AA_bootstrap",))
     bootstrap = adata.uns.get("AA_bootstrap")
     if bootstrap is None:
         raise ValueError(

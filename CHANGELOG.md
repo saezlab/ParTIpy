@@ -8,9 +8,11 @@ and this project adheres to [Semantic Versioning][].
 [keep a changelog]: https://keepachangelog.com/en/1.0.0/
 [semantic versioning]: https://semver.org/spec/v2.0.0.html
 
-## 0.0.4
+## 0.0.6
 
-First release alpha version of `partipy`
+### Added
+- `partipy.write_h5ad` and `partipy.read_h5ad` helpers that make the `AnnData.uns` caches HDF5-compatible by serializing and restoring `ArchetypeConfig` keys.
+- Automatic restoration of cached dictionaries keyed by `ArchetypeConfig` when using the public accessors, enabling use of `.h5ad` files saved with the helper utilities.
 
 ## 0.0.5
 
@@ -25,3 +27,7 @@ First release alpha version of `partipy`
 - Updated plotting APIs (`plot_var_explained`, `plot_IC`, `plot_bootstrap_*`, `plot_archetypes_*`) to require precomputed caches and use the new result filters.
 - Streamlined schema defaults and test fixtures after the accessor refactor.
 - Multiple unit-test adjustments to align with the new caching workflow.
+
+## 0.0.4
+
+First release alpha version of `partipy`

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import cdist
 
+from .io import ensure_archetype_config_keys
 from .paretoti import _resolve_aa_result, _validate_aa_config, _validate_aa_results, get_aa_cell_weights
 
 
@@ -75,6 +76,7 @@ def compute_archetype_weights(
     weights = weights.astype(np.float32)
 
     if save_to_anndata:
+        ensure_archetype_config_keys(adata, uns_keys=("AA_cell_weights",))
         weights_store = adata.uns.get("AA_cell_weights")
         if weights_store is None or not isinstance(weights_store, Mapping):
             adata.uns["AA_cell_weights"] = {config: weights}

@@ -12,6 +12,7 @@ from .enrichment import (
     extract_enriched_processes,
     extract_specific_processes,
 )
+from .io import ensure_archetype_config_keys, read_h5ad, write_h5ad
 from .paretoti import (
     compute_archetypes,
     compute_bootstrap_variance,
