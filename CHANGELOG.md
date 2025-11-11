@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning][].
 [keep a changelog]: https://keepachangelog.com/en/1.0.0/
 [semantic versioning]: https://semver.org/spec/v2.0.0.html
 
+## Unreleased
+
+### Added
+- Added optimizer aliases (`"PCHA"` for `"projected_gradients"` and `"FW"` for `"frank_wolfe"`) across the public API, including caching filters and documentation, plus regression tests to ensure both names yield identical results.
+
 ## 0.0.6
 
 ### Added

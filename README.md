@@ -35,7 +35,7 @@ There are several alternative options to install `partipy`:
 pip install partipy
 ```
 
-2. Install the latest stable full release from [PyPI](https://pypi.org/project/partipy/) with extra dependencies:
+2. Install the latest stable full release from [PyPI](https://pypi.org/project/partipy/) with the extra dependencies (e.g., `pybiomart`, `squidpy`, `liana`) that are required to run every tutorial:
 
 ```
 pip install partipy[extra]

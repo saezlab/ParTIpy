@@ -68,10 +68,8 @@ optional-dependencies.doc = [
   "docutils>=0.8,!=0.18.*,!=0.19.*",
   "ipykernel",
   "jupyter",
-  "squidpy", # used in two vignettes
   "ipython",
   "myst-nb>=1.1",
-  "pandas",
   # Until pybtex >0.24.0 releases: https://bitbucket.org/pybtex-devs/pybtex/issues/169/
   "setuptools",
   "sphinx>=4",

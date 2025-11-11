@@ -25,6 +25,7 @@ from .schema import (
     MIN_ITERATIONS,
     OPTIM_ALGS,
     WEIGHT_ALGS,
+    canonicalize_optim,
 )
 from .weights import compute_bisquare_weights, compute_huber_weights
 
@@ -93,9 +94,11 @@ class AA:
         seed: int = 42,
         **optim_kwargs,
     ):
+        normalized_optim = canonicalize_optim(optim)
+
         self.n_archetypes = n_archetypes
         self.init = init
-        self.optim = optim
+        self.optim = normalized_optim
         self.weight = weight
         self.max_iter = max_iter
         self.rel_tol = rel_tol

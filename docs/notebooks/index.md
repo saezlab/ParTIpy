@@ -2,11 +2,10 @@
 ```{toctree}
 :maxdepth: 1
 
+archetypal_analysis
 quickstart
-data_access
 cross_condition_lupus
 spatial
 crosstalk
-archetypal_analysis
-simulate
+data_access
 ```

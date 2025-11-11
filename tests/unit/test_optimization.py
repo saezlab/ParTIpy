@@ -371,3 +371,44 @@ def test_that_relaxation_leads_to_lower_RSS_fast_algos(
     RSS_delta = AA_object.RSS
 
     assert RSS_delta < RSS_no_delta
+
+
+@pytest.mark.parametrize(
+    ("alias", "canonical"),
+    [
+        ("PCHA", "projected_gradients"),
+        ("FW", "frank_wolfe"),
+    ],
+)
+def test_optimizer_aliases_match_canonical_results(alias: str, canonical: str) -> None:
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(40, 5)).astype(np.float32)
+    n_archetypes = 3
+    init = "plus_plus"
+    seed_value = 7
+    max_iter = 8
+    rel_tol = 1e-6
+    early_stopping = False
+
+    def _build_model(optim_name: str) -> AA:
+        return AA(
+            n_archetypes=n_archetypes,
+            init=init,
+            seed=seed_value,
+            max_iter=max_iter,
+            rel_tol=rel_tol,
+            early_stopping=early_stopping,
+            optim=optim_name,
+        )
+
+    alias_model = _build_model(alias)
+    alias_model.fit(X)
+
+    canonical_model = _build_model(canonical)
+    canonical_model.fit(X)
+
+    np.testing.assert_allclose(alias_model.Z, canonical_model.Z)
+    np.testing.assert_allclose(alias_model.A, canonical_model.A)
+    np.testing.assert_allclose(alias_model.B, canonical_model.B)
+    assert alias_model.optim == canonical_model.optim == canonical
+    assert alias_model.RSS == pytest.approx(canonical_model.RSS)

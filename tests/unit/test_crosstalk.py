@@ -63,14 +63,14 @@ def specificity_expected(toy_expr_df: pd.DataFrame) -> dict[int, pd.DataFrame]:
     """
     # Convert to legacy orientation (genes rows; archetypes cols) to reuse a simple formula.
     expr_genes_rows = toy_expr_df.T  # genes rows; archetypes cols
-    gene_ids = expr_genes_rows.index.to_list()
-    archetype_ids = expr_genes_rows.columns.to_list()
+    gene_ids = [str(gene) for gene in expr_genes_rows.index.to_list()]
+    archetype_ids = [int(idx) for idx in expr_genes_rows.columns.to_list()]
 
     expected_dict: dict[int, pd.DataFrame] = {}
     for arch_idx in archetype_ids:
         other_arch_ids = [other for other in archetype_ids if other != arch_idx]
-        z_this_arch = expr_genes_rows[arch_idx].values
-        z_other_arches = expr_genes_rows[other_arch_ids].values
+        z_this_arch = expr_genes_rows[arch_idx].to_numpy(dtype=float)
+        z_other_arches = expr_genes_rows[other_arch_ids].to_numpy(dtype=float)
         max_other = np.nanmax(z_other_arches, axis=1)
         # broadcast diff: (n_genes, n_others) -> min across others
         spec = np.nanmin((z_this_arch[:, None] - z_other_arches), axis=1)

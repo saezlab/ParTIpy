@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any, Literal, get_args
+from typing import Any, Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -17,6 +17,31 @@ INIT_ALGS = get_args(INIT_ALG_TYPES)
 OPTIM_ALGS = get_args(OPTIM_ALGS_TYPES)
 WEIGHT_ALGS = get_args(WEIGHT_ALGS_TYPES)
 CORESET_ALGS = get_args(CORESET_ALGS_TYPES)
+
+_OPTIM_ALIAS_MAP: dict[str, OPTIM_ALGS_TYPES] = {name: name for name in OPTIM_ALGS}
+_OPTIM_ALIAS_MAP.update(
+    {
+        "pcha": "projected_gradients",
+        "projectedgradients": "projected_gradients",
+        "fw": "frank_wolfe",
+        "frankwolfe": "frank_wolfe",
+    }
+)
+
+
+def canonicalize_optim(value: str) -> OPTIM_ALGS_TYPES:
+    """Normalize optimizer identifiers (case/spacing insensitive) to canonical schema literals."""
+    if not isinstance(value, str):
+        raise TypeError("Optimization algorithm must be provided as a string.")
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized == "":
+        raise ValueError("Optimization algorithm must be a non-empty string.")
+    canonical = _OPTIM_ALIAS_MAP.get(normalized)
+    if canonical is None:
+        allowed = ", ".join(sorted(_OPTIM_ALIAS_MAP))
+        raise ValueError(f"Optimization algorithm '{value}' is not supported. Allowed names include: {allowed}.")
+    return cast(OPTIM_ALGS_TYPES, canonical)
+
 
 # -----------------------------
 # Defaults / constants
@@ -92,6 +117,11 @@ class ArchetypeConfig(BaseModel):
 
     # free-form optimizer kwargs (validated + frozen)
     optim_kwargs: Mapping[str, Any] = Field(default_factory=dict)
+
+    @field_validator("optim", mode="before")
+    @classmethod
+    def _normalize_optim(cls, value: str) -> OPTIM_ALGS_TYPES:
+        return canonicalize_optim(value)
 
     @field_validator("optim_kwargs")
     @classmethod

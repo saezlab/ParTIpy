@@ -24,10 +24,10 @@ seed : int, default `{DEFAULT_SEED}`
 
 _optim = f"""\
 optim : {{{", ".join(f'`"{alg}"`' for alg in OPTIM_ALGS)}}}, default `"{DEFAULT_OPTIM}"`
-    Optimization algorithm to use. Options are:
+    Optimization algorithm to use (aliases `"PCHA"` → `"projected_gradients"` and `"FW"` → `"frank_wolfe"` are also accepted). Options are:
 
-    - `"projected_gradients"`: Projected gradient descent (PCHA) :cite:`morupArchetypalAnalysisMachine2012`.
-    - `"frank_wolfe"`: Frank-Wolfe algorithm :cite:`bauckhageArchetypalAnalysisAutoencoder2015`.
+    - `"projected_gradients"`: Projected gradient descent (also known as PCHA) :cite:`morupArchetypalAnalysisMachine2012`.
+    - `"frank_wolfe"`: Frank-Wolfe algorithm (often abbreviated FW) :cite:`bauckhageArchetypalAnalysisAutoencoder2015`.
     - `"regularized_nnls"`: Regularized non-negative least squares :cite:`Cutler1994`.
 
     See `partipy.schema.OPTIM_ALGS` for all available options.

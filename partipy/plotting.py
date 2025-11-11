@@ -388,16 +388,21 @@ def plot_bootstrap_2D(
             confidence_level=contours_confidence_level,
         )
 
-    point_args = {"alpha": alpha}
-    if size is not None:
-        point_args["size"] = size
+    if size is None:
+        point_layer = pn.geom_point(
+            pn.aes(x=x_col, y=y_col, color="archetype", shape="reference"),
+            alpha=alpha,
+        )
+    else:
+        point_layer = pn.geom_point(
+            pn.aes(x=x_col, y=y_col, color="archetype", shape="reference"),
+            alpha=alpha,
+            size=size,
+        )
 
     p = (
         pn.ggplot(bootstrap_df)
-        + pn.geom_point(
-            pn.aes(x=x_col, y=y_col, color="archetype", shape="reference"),
-            **point_args,
-        )
+        + point_layer
         + pn.coord_equal()
         + pn.labs(color="Archetype\nIndex", shape="Reference\nArchetype")
     )

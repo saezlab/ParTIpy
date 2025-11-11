@@ -81,8 +81,8 @@ def compute_shuffled_pca(
     seeds = rng.choice(a=int(1e9), size=n_shuffle, replace=False)
 
     pbar = tqdm(iterable=enumerate(seeds), total=n_shuffle)
-    for shuffle_iter, seed in pbar:
-        rng_inner = np.random.default_rng(seed=seed)
+    for shuffle_iter, seed_value in pbar:
+        rng_inner = np.random.default_rng(seed=int(seed_value))
         X_perm = np.column_stack([rng_inner.permutation(X[:, col_idx]) for col_idx in range(n_features)])
         pca_shuffled = PCA(n_components=n_components, **pca_kwargs).fit(X_perm.copy())
         variance_shuffled[shuffle_iter, :] = pca_shuffled.explained_variance_

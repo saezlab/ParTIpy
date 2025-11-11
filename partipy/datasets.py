@@ -1,5 +1,6 @@
 import hashlib
 import os
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -7,13 +8,13 @@ from pathlib import Path
 import anndata
 import numpy as np
 import pandas as pd
-import requests
 import scanpy as sc
 from pybiomart import Dataset
 from sklearn.mixture import GaussianMixture
 
 EXPECTED_CHECKSUMS = {
-    "hepatocyte_meta.txt": "55aa992aa0473e3ee5598e6da18902d7a11e084f0cd3520668af61469c9067b1",
+    # "hepatocyte_meta.txt": "55aa992aa0473e3ee5598e6da18902d7a11e084f0cd3520668af61469c9067b1",
+    "hepatocyte_meta.txt": "2f7b10aff72632f4cb565180ff23746b4eef04e6a095e7e849176f97840bd013",
     "hepatocyte_counts.txt": "20e50fbb9cc81d1a724f437ae6d335518cf6422d4fc0e667386c7a51837f1147",
     "GSE84498%5Fexperimental%5Fdesign.txt.gz": "ca94fce31b850e5fdbf896abd6e9605548f2ac919cca5dc9e0309feeed597ee9",
     "GSE84498%5Fumitab.txt.gz": "3787f1ad635afed6a4169757b71c8c45b7eaa54c69ae2c88ba9d972507b953d8",
@@ -47,6 +48,56 @@ def _file_needs_download(file_path: Path, expected_hash: str) -> bool:  # pragma
         print(f"Checksum mismatch for {file_path.name}: expected {expected_hash}, got {actual_hash}")
         return True
     return False
+
+
+def _download_file_with_retries(  # pragma: no cover
+    url: str,
+    destination: Path,
+    *,
+    verbose: bool = False,
+    chunk_size: int = 1024 * 1024,
+    max_retries: int = 5,
+    backoff_factor: float = 1.5,
+    timeout: int = 60,
+) -> None:
+    """Download a file using urllib with simple exponential backoff retries."""
+    tmp_path = destination.with_name(destination.name + ".part")
+    headers = {"User-Agent": "ParTIpy/1.0 (https://github.com/partipy/partipy)"}
+    last_exc: Exception | None = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            tmp_path.unlink(missing_ok=True)
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as response, open(tmp_path, "wb") as f:
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            tmp_path.replace(destination)
+            return
+        except urllib.error.URLError as exc:
+            last_exc = exc
+            tmp_path.unlink(missing_ok=True)
+            if verbose:
+                if isinstance(exc, urllib.error.HTTPError):
+                    printable_error = f"HTTP {exc.code} {exc.reason}"
+                else:
+                    printable_reason = getattr(exc, "reason", None)
+                    printable_error = printable_reason if isinstance(printable_reason, str) else str(exc)
+                print(f"Attempt {attempt}/{max_retries} failed for {url}: {printable_error}")
+            if attempt == max_retries:
+                break
+            sleep_for = backoff_factor * (2 ** (attempt - 1))
+            if verbose:
+                print(f"Retrying in {sleep_for:.1f}s...")
+            time.sleep(sleep_for)
+
+    if verbose and last_exc is not None:
+        print(f"Failed to download {url} after {max_retries} attempts.")
+    if last_exc is not None:
+        raise last_exc
 
 
 def load_hepatocyte_data(
@@ -92,13 +143,13 @@ def load_hepatocyte_data(
         if _file_needs_download(filepath, EXPECTED_CHECKSUMS[file_dict["filename"]]) or not use_cache:
             if verbose:
                 print(f"Downloading {url} to {filepath}...")
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            with open(filepath, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            if verbose:
-                print(f"Downloaded: {filepath}")
+            try:
+                _download_file_with_retries(url, filepath, verbose=verbose)
+                if verbose:
+                    print(f"Downloaded: {filepath}")
+            except urllib.error.URLError as e:
+                print(f"Error downloading {url}: {e}")
+                raise
         else:
             if verbose:
                 print(f"File already exists, skipping: {filepath}")
@@ -173,21 +224,9 @@ def load_hepatocyte_data_2(use_cache=True, data_dir=Path(".") / DATA_PATH, verbo
                 print(f"Downloading {url} to {filepath}...")
 
             try:
-                # NOTE: we use urllib.request instead of request library to bypass the requests-cache
-                # because we the data we donwload exceed the default limit of the cache size
-                # urllib instead has no automatic caching
-                with urllib.request.urlopen(url) as response:
-                    with open(filepath, "wb") as f:
-                        # Download in chunks to handle large files
-                        while True:
-                            chunk = response.read(8192)
-                            if not chunk:
-                                break
-                            f.write(chunk)
-
+                _download_file_with_retries(url, filepath, verbose=verbose)
                 if verbose:
                     print(f"Downloaded: {filepath}")
-
             except urllib.error.URLError as e:
                 print(f"Error downloading {url}: {e}")
                 raise
@@ -259,13 +298,13 @@ def load_fibroblast_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose
         if _file_needs_download(filepath, EXPECTED_CHECKSUMS[file_dict["filename"]]) or not use_cache:
             if verbose:
                 print(f"Downloading {url} to {filepath}...")
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            with open(filepath, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            if verbose:
-                print(f"Downloaded: {filepath}")
+            try:
+                _download_file_with_retries(url, filepath, verbose=verbose)
+                if verbose:
+                    print(f"Downloaded: {filepath}")
+            except urllib.error.URLError as e:
+                print(f"Error downloading {url}: {e}")
+                raise
         else:
             if verbose:
                 print(f"File already exists, skipping: {filepath}")
@@ -360,15 +399,13 @@ def load_ncM_lupus_data(use_cache=True, data_dir=Path(".") / DATA_PATH, verbose:
     if not filename.exists() or not use_cache:
         if verbose:
             print(f"Downloading {url} to {filename}...")
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-
-        with open(filename, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-
-        if verbose:
-            print(f"Downloaded: {filename}")
+        try:
+            _download_file_with_retries(url, filename, verbose=verbose)
+            if verbose:
+                print(f"Downloaded: {filename}")
+        except urllib.error.URLError as e:
+            print(f"Error downloading {url}: {e}")
+            raise
     else:
         if verbose:
             print(f"File already exists, skipping: {filename}")

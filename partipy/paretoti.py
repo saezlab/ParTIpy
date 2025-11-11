@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 import anndata
 import numpy as np
@@ -17,12 +17,20 @@ from ._docs import docs
 from .arch import AA
 from .io import ensure_archetype_config_keys
 from .schema import (
+    CORESET_ALGS,
+    CORESET_ALGS_TYPES,
     DEFAULT_INIT,
     DEFAULT_MAX_ITER,
     DEFAULT_OPTIM,
     DEFAULT_REL_TOL,
     DEFAULT_WEIGHT,
+    INIT_ALG_TYPES,
+    INIT_ALGS,
+    OPTIM_ALGS_TYPES,
+    WEIGHT_ALGS,
+    WEIGHT_ALGS_TYPES,
     ArchetypeConfig,
+    canonicalize_optim,
     query_configs_by_signature,
 )
 from .selection import compute_IC
@@ -197,6 +205,33 @@ def _validate_n_archetype_list(
     return unique_values
 
 
+def _normalize_init_literal(init_value: str | None) -> INIT_ALG_TYPES:
+    resolved = init_value if init_value is not None else DEFAULT_INIT
+    if resolved not in INIT_ALGS:
+        raise ValueError(f"Initialization method '{resolved}' is not supported. Must be one of {INIT_ALGS}.")
+    return cast(INIT_ALG_TYPES, resolved)
+
+
+def _normalize_weight_literal(weight_value: str | None) -> WEIGHT_ALGS_TYPES:
+    resolved = weight_value if weight_value is not None else DEFAULT_WEIGHT
+    if resolved not in WEIGHT_ALGS:
+        raise ValueError(f"Weighting method '{resolved}' is not supported. Must be one of {WEIGHT_ALGS}.")
+    return cast(WEIGHT_ALGS_TYPES, resolved)
+
+
+def _normalize_coreset_literal(coreset_value: str | None) -> CORESET_ALGS_TYPES:
+    if coreset_value is None:
+        return None
+    if coreset_value not in CORESET_ALGS:
+        raise ValueError(f"Coreset algorithm '{coreset_value}' is not supported. Must be one of {CORESET_ALGS}.")
+    return cast(CORESET_ALGS_TYPES, coreset_value)
+
+
+def _normalize_optim_literal(optim_value: str | None) -> OPTIM_ALGS_TYPES:
+    resolved = optim_value if optim_value is not None else DEFAULT_OPTIM
+    return canonicalize_optim(resolved)
+
+
 def compute_selection_metrics(
     adata: anndata.AnnData,
     min_k: int | None = None,
@@ -284,9 +319,10 @@ def compute_selection_metrics(
     n_dimensions = adata.uns["AA_config"]["n_dimensions"]
     X = adata.obsm[obsm_key][:, n_dimensions].astype(np.float32)
 
-    init = init if init is not None else DEFAULT_INIT
-    optim = optim if optim is not None else DEFAULT_OPTIM
-    weight = weight if weight is not None else DEFAULT_WEIGHT
+    init = _normalize_init_literal(init)
+    optim = _normalize_optim_literal(optim)
+    weight = _normalize_weight_literal(weight)
+    coreset_algorithm = _normalize_coreset_literal(coreset_algorithm)
     max_iter = max_iter if max_iter is not None else DEFAULT_MAX_ITER
     rel_tol = rel_tol if rel_tol is not None else DEFAULT_REL_TOL
 
@@ -579,11 +615,12 @@ def compute_bootstrap_variance(
         df_dict = {}
 
     # Use the provided values or fall back to the defaults
-    init = init if init is not None else DEFAULT_INIT
-    optim = optim if optim is not None else DEFAULT_OPTIM
-    weight = weight if weight is not None else DEFAULT_WEIGHT
+    init = _normalize_init_literal(init)
+    optim = _normalize_optim_literal(optim)
+    weight = _normalize_weight_literal(weight)
     max_iter = max_iter if max_iter is not None else DEFAULT_MAX_ITER
     rel_tol = rel_tol if rel_tol is not None else DEFAULT_REL_TOL
+    coreset_algorithm = _normalize_coreset_literal(coreset_algorithm)
     verbose = verbose if verbose is not None else False
 
     for n_archetypes in n_archetypes_list:
@@ -1103,11 +1140,12 @@ def compute_archetypes(
     seeds = rng.choice(a=int(1e9), size=n_restarts, replace=False)
 
     # Use the provided values or fall back to the defaults
-    init = init if init is not None else DEFAULT_INIT
-    optim = optim if optim is not None else DEFAULT_OPTIM
-    weight = weight if weight is not None else DEFAULT_WEIGHT
+    init = _normalize_init_literal(init)
+    optim = _normalize_optim_literal(optim)
+    weight = _normalize_weight_literal(weight)
     max_iter = max_iter if max_iter is not None else DEFAULT_MAX_ITER
     rel_tol = rel_tol if rel_tol is not None else DEFAULT_REL_TOL
+    coreset_algorithm = _normalize_coreset_literal(coreset_algorithm)
     verbose = verbose if verbose is not None else False
 
     # Extract the data matrix used to fit the archetypes
@@ -1248,6 +1286,8 @@ def _normalize_query_kv(k: str, v: Any) -> Any:
         if isinstance(v, list):
             return tuple(v)
         return v
+    if k == "optim":
+        return canonicalize_optim(v)
     if k == "optim_kwargs":
         # Accept dict-like and normalize to subset-dict for matching
         if isinstance(v, Mapping):
