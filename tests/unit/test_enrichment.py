@@ -67,12 +67,15 @@ def _extract_weights(adata: anndata.AnnData, *, result_filters: dict | None = No
     return np.asarray(weights_store)
 
 
-def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, seed: int = 42):
+def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, seed: int = 42, compute_pca: bool = True):
     X, A, Z = simulate_archetypes(
         n_samples=n_samples, n_archetypes=n_archetypes, n_dimensions=n_dimensions, noise_std=0.0, seed=seed
     )
     adata = anndata.AnnData(X)
-    adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
+    if compute_pca:
+        adata.obsm["X_pca"] = sc.pp.pca(X, n_comps=n_pcs)
+    else:
+        adata.obsm["X_pca"] = X
     dims = tuple(range(n_pcs))
     adata.uns["AA_config"] = {
         "obsm_key": "X_pca",
@@ -766,17 +769,47 @@ def test_compute_meta_enrichment_continuous_data(seed: int):
     Verifies:
     - Correct calculation of continuous data enrichment
     """
-    adata = _simulate_adata(n_samples=500, n_dimensions=3, n_archetypes=3, n_pcs=2, seed=seed)
-
-    # Assign random ages initially
+    adata = _simulate_adata(n_samples=500, n_dimensions=2, n_archetypes=3, n_pcs=2, seed=seed, compute_pca=False)
     adata.obs["age"] = np.random.randint(10, 50, len(adata.obs))
 
     # Force age bias
     weights = _extract_weights(adata, result_filters={"n_archetypes": 3})
-    selected_cells = adata.obs_names[weights[:, 0] >= 0.03]
-    adata.obs.loc[selected_cells, "age"] = 100
-    selected_cells = adata.obs_names[weights[:, 1] >= 0.03]
-    adata.obs.loc[selected_cells, "age"] = 5
 
-    res = compute_meta_enrichment(adata, "age", datatype="continuous", result_filters={"n_archetypes": 3})
+    X = adata.X
+    Z = next(iter(adata.uns["AA_results"].values()))["Z"]
+
+    # Track used indices so we avoid overlap
+    used = set()
+
+    # --- Archetype 0 ---
+    dists0 = cdist(X, Z[0:1, :])[:, 0]
+    idx0_sorted = np.argsort(dists0)
+
+    # take the first 100 
+    idx0 = [i for i in idx0_sorted if i not in used][:100]
+    used.update(idx0)
+
+    selected_cells_0 = adata.obs_names[idx0]
+    adata.obs.loc[selected_cells_0, "age"] = 100
+
+
+    # --- Archetype 1 ---
+    dists1 = cdist(X, Z[1:2, :])[:, 0]
+    idx1_sorted = np.argsort(dists1)
+
+    # Take first 100 not already used
+    idx1 = [i for i in idx1_sorted if i not in used][:100]
+    used.update(idx1)
+
+    selected_cells_1 = adata.obs_names[idx1]
+    adata.obs.loc[selected_cells_1, "age"] = 5
+
+    # Continue normally
+    res = compute_meta_enrichment(
+        adata,
+        "age",
+        datatype="continuous",
+        result_filters={"n_archetypes": 3},
+    )
     assert res.iloc[0].item() > res.iloc[2].item() > res.iloc[1].item()
+    assert res.iloc[0].item() <= 100
