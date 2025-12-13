@@ -772,9 +772,6 @@ def test_compute_meta_enrichment_continuous_data(seed: int):
     adata = _simulate_adata(n_samples=500, n_dimensions=2, n_archetypes=3, n_pcs=2, seed=seed, compute_pca=False)
     adata.obs["age"] = np.random.randint(10, 50, len(adata.obs))
 
-    # Force age bias
-    weights = _extract_weights(adata, result_filters={"n_archetypes": 3})
-
     X = adata.X
     Z = next(iter(adata.uns["AA_results"].values()))["Z"]
 
@@ -785,13 +782,13 @@ def test_compute_meta_enrichment_continuous_data(seed: int):
     dists0 = cdist(X, Z[0:1, :])[:, 0]
     idx0_sorted = np.argsort(dists0)
 
-    # take the first 100 
+    # take the first 100
     idx0 = [i for i in idx0_sorted if i not in used][:100]
     used.update(idx0)
 
+    # Force age bias
     selected_cells_0 = adata.obs_names[idx0]
     adata.obs.loc[selected_cells_0, "age"] = 100
-
 
     # --- Archetype 1 ---
     dists1 = cdist(X, Z[1:2, :])[:, 0]
@@ -801,6 +798,7 @@ def test_compute_meta_enrichment_continuous_data(seed: int):
     idx1 = [i for i in idx1_sorted if i not in used][:100]
     used.update(idx1)
 
+    # Force age bias
     selected_cells_1 = adata.obs_names[idx1]
     adata.obs.loc[selected_cells_1, "age"] = 5
 

@@ -318,7 +318,7 @@ def compute_meta_enrichment(
         raise ValueError("Metadata column does not exist")
     metadata = adata.obs[meta_col]
     _, weights = get_aa_cell_weights(adata, return_config=True, **dict(result_filters or {}))
-    weights = weights.T 
+    weights = weights.T
 
     if datatype == "automatic":
         if pd.api.types.is_numeric_dtype(metadata):
@@ -348,7 +348,7 @@ def compute_meta_enrichment(
 
     elif mode == "continuous":
         metadata = np.asarray(metadata, dtype=float).reshape(-1, 1)
-        weights = weights / weights.sum(axis=1, keepdims=True) # ensure weights sum to 1 for the archetypes
+        weights = weights / weights.sum(axis=1, keepdims=True)  # ensure weights sum to 1 for the archetypes
 
         # Compute weighted enrichment
         weighted_meta = np.einsum("ij,jk->ik", weights, metadata)
