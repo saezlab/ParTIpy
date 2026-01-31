@@ -123,6 +123,7 @@ nitpick_ignore = [
     ("py:class", "type"),
     ("py:class", "plotnine.ggplot.ggplot"),
     ("py:class", "plotly.graph_objs._figure.Figure"),
+    ("py:class", "pandas.core.frame.DataFrame"),
     ("py:data", "partipy.schema.INIT_ALGS"),
     ("py:data", "partipy.schema.OPTIM_ALGS"),
     ("py:data", "partipy.schema.WEIGHT_ALGS"),
