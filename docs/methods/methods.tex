@@ -1219,6 +1219,29 @@ For every ordered pair $(k,k^\prime)$ with $\lvert \mathcal{D}_{k\to k^\prime} \
 
 The resulting weighted graph summarizes the potential signaling axes that may coordinate the division of labor among archetypes.
 
+\subsection{Quantile-Based Archetype Enrichment}
+
+This enrichment strategy follows the distance-ranking framework introduced in \autocite{10.1016/j.cels.2018.12.008,Korem2015,Hart2015} and is implemented following the ParTI MATLAB reference implementation (\href{https://github.com/AlonLabWIS/ParTI/blob/f51c5af896bbd12c8da0e1104d3ff7557bea0c30/ContinuousEnrichment.m}{\texttt{ContinuousEnrichment.m}}, \href{https://github.com/AlonLabWIS/ParTI/blob/f51c5af896bbd12c8da0e1104d3ff7557bea0c30/DiscreteEnrichment.m}{\texttt{DiscreteEnrichment.m}}; commit \href{https://github.com/AlonLabWIS/ParTI/tree/f51c5af896bbd12c8da0e1104d3ff7557bea0c30}{\texttt{f51c5af896bbd12c8da0e1104d3ff7557bea0c30}}), serving as a complementary approach to the enrichment method described above.
+
+For a fixed archetype $k$, we first compute the Euclidean distance between the archetype position $\mathbf{z}_k$ and the low-dimensional representation $\mathbf{x}_n$ of each cell $n$,
+\begin{equation}
+    d_{kn} = \lVert \mathbf{z}_k - \mathbf{x}_n \rVert_2 .
+\end{equation}
+Cells are then ordered by increasing distance to the archetype, and the resulting distances are transformed into ranks. This rank transformation ensures robustness to the absolute scale of distances.
+
+Next, the ranked cells are partitioned into disjoint quantile bins of approximately equal size. Each bin contains a fixed fraction of the cells (by default $10\%$), with the exact bin size depending on the total number of cells. Larger datasets permit finer stratification of distances, while maintaining sufficiently large bin sizes to control estimator variance and ensure statistical robustness.
+
+Enrichment is evaluated with respect to a distance-based contrast between subsets of quantile bins, which specifies the foreground (cells closest to the archetype) and a background (by default all remaining cells, but alternative contrasts such as closest versus furthest bins are also supported).
+
+\paragraph{Continuous features.}
+For continuous features such as gene expression, enrichment under the specified distance-based contrast is evaluated using summary statistics of expression across quantile bins. For each gene, summary statistics (default: median) are computed across all bins, and features are required to exhibit maximal expression in the bin closest to the archetype. Statistical significance of enrichment is then assessed by contrasting the foreground and background cell sets using a nonparametric rank-based test (Mann--Whitney U; default) \autocite{mannTestWhetherOne1947}, with the option to alternatively apply Welch's two-sample t-test \autocite{welchGeneralizationStudentsProblem1947}. Multiple testing across features and archetypes is controlled using the Benjamini-Hochberg procedure \autocite{10.1111/j.2517-6161.1995.tb02031.x}.
+
+\paragraph{Discrete features.}
+For discrete or categorical features (e.g.\ disease labels, sex), enrichment under the same distance-based contrast is assessed by analyzing the distribution of categories across distance-based quantile bins. For a feature with multiple categories, we treat each category level as a separate one-versus-rest indicator and test its over-representation near each archetype. For each archetype and category, we compute bin-wise category frequencies and an enrichment curve defined as the ratio between the category frequency within each bin and its global frequency across all cells. Categories are required to exhibit maximal enrichment in the bin closest to the archetype. Statistical significance of over-representation in the foreground relative to the background is evaluated using a hypergeometric test, and multiple testing across categories and archetypes is controlled using the Benjamini--Hochberg procedure.
+
+This quantile-based formulation provides a simple and interpretable framework for archetype-specific enrichment analysis that applies uniformly to both continuous and discrete features, directly linking feature specificity to distance from archetypal states while avoiding assumptions on the functional form of feature gradients.
+
+\clearpage
 \section{References}
 
 \printbibliography[heading=none]

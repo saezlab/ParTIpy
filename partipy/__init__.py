@@ -9,6 +9,9 @@ from .enrichment import (
     compute_archetype_expression,
     compute_archetype_weights,
     compute_meta_enrichment,
+    compute_quantile_based_categorical_enrichment,
+    compute_quantile_based_continuous_enrichment,
+    compute_quantile_based_gene_enrichment,
     extract_enriched_processes,
     extract_specific_processes,
 )

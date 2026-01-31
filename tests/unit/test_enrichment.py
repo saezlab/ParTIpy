@@ -7,6 +7,9 @@ from partipy.enrichment import (
     compute_archetype_expression,
     compute_archetype_weights,
     compute_meta_enrichment,
+    compute_quantile_based_categorical_enrichment,
+    compute_quantile_based_continuous_enrichment,
+    compute_quantile_based_gene_enrichment,
     extract_enriched_processes,
     extract_specific_processes,
 )
@@ -84,6 +87,22 @@ def _simulate_adata(n_samples, n_dimensions, n_archetypes, n_pcs, seed: int = 42
     config = _create_config(n_archetypes=n_archetypes, obsm_key="X_pca", n_dimensions=dims, seed=seed)
     adata.uns["AA_results"] = {config: {"Z": Z[:, :n_pcs]}}
     compute_archetype_weights(adata, result_filters={"n_archetypes": n_archetypes})
+    return adata
+
+
+def _make_quantile_enrichment_adata(n_cells: int = 200) -> anndata.AnnData:
+    x = np.linspace(0.0, 1.0, n_cells).reshape(-1, 1)
+    adata = anndata.AnnData(X=np.c_[1.0 - x.ravel(), x.ravel()])
+    adata.var.index = ["gene0", "gene1"]
+    adata.obsm["X_pca"] = x
+    adata.obs["score"] = 1.0 - x.ravel()
+    adata.obs["label"] = np.where(np.arange(n_cells) < n_cells // 2, "A", "B")
+    adata.obs["is_A"] = adata.obs["label"] == "A"
+
+    adata.uns["AA_config"] = {"obsm_key": "X_pca", "n_dimensions": [0]}
+    config = _create_config(n_archetypes=2, obsm_key="X_pca", n_dimensions=(0,), seed=42)
+    Z = np.array([[0.0], [1.0]])
+    adata.uns["AA_results"] = {config: {"Z": Z}}
     return adata
 
 
@@ -811,3 +830,116 @@ def test_compute_meta_enrichment_continuous_data(seed: int):
     )
     assert res.iloc[0].item() > res.iloc[2].item() > res.iloc[1].item()
     assert res.iloc[0].item() <= 100
+
+
+@pytest.mark.github_actions
+def test_quantile_based_gene_enrichment_basic():
+    adata = _make_quantile_enrichment_adata()
+    res = compute_quantile_based_gene_enrichment(adata, n_bins=10, result_filters={"n_archetypes": 2})
+    assert res.shape[0] == 4
+    assert set(res["gene"]) == {"gene0", "gene1"}
+
+    def _row(arch_idx: int, gene: str) -> pd.Series:
+        return res[(res["arch_idx"] == arch_idx) & (res["gene"] == gene)].iloc[0]
+
+    assert _row(0, "gene0")["enriched"]
+    assert _row(1, "gene1")["enriched"]
+    assert not _row(0, "gene1")["enriched"]
+    assert not _row(1, "gene0")["enriched"]
+
+
+@pytest.mark.github_actions
+def test_quantile_based_continuous_enrichment_basic():
+    adata = _make_quantile_enrichment_adata()
+    res = compute_quantile_based_continuous_enrichment(
+        adata, colnames="score", n_bins=10, result_filters={"n_archetypes": 2}
+    )
+    assert res.shape[0] == 2
+
+    def _row(arch_idx: int) -> pd.Series:
+        return res[(res["arch_idx"] == arch_idx) & (res["colname"] == "score")].iloc[0]
+
+    assert _row(0)["enriched"]
+    assert not _row(1)["enriched"]
+
+
+@pytest.mark.github_actions
+def test_quantile_based_continuous_enrichment_nan_handling():
+    adata = _make_quantile_enrichment_adata()
+    adata.obs.loc[adata.obs.index[0], "score"] = np.nan
+    with pytest.raises(ValueError):
+        compute_quantile_based_continuous_enrichment(adata, colnames="score", result_filters={"n_archetypes": 2})
+    res = compute_quantile_based_continuous_enrichment(
+        adata, colnames="score", ignore_nans=True, result_filters={"n_archetypes": 2}
+    )
+    assert res.shape[0] == 2
+
+
+@pytest.mark.github_actions
+def test_quantile_based_continuous_enrichment_type_validation():
+    adata = _make_quantile_enrichment_adata()
+    with pytest.raises(TypeError):
+        compute_quantile_based_continuous_enrichment(adata, colnames="label", result_filters={"n_archetypes": 2})
+
+
+@pytest.mark.github_actions
+def test_quantile_based_categorical_enrichment_basic():
+    adata = _make_quantile_enrichment_adata()
+    res = compute_quantile_based_categorical_enrichment(
+        adata,
+        colnames="label",
+        n_bins=10,
+        min_category_count=100,
+        result_filters={"n_archetypes": 2},
+    )
+    assert res.shape[0] == 4
+    assert set(res["category"]) == {"A", "B"}
+
+    def _row(arch_idx: int, category: str) -> pd.Series:
+        return res[(res["arch_idx"] == arch_idx) & (res["category"] == category)].iloc[0]
+
+    assert _row(0, "A")["enriched"]
+    assert _row(1, "B")["enriched"]
+    assert not _row(0, "B")["enriched"]
+    assert not _row(1, "A")["enriched"]
+
+
+@pytest.mark.github_actions
+def test_quantile_based_categorical_enrichment_min_category_count():
+    adata = _make_quantile_enrichment_adata()
+    with pytest.raises(ValueError):
+        compute_quantile_based_categorical_enrichment(
+            adata, colnames="label", min_category_count=101, result_filters={"n_archetypes": 2}
+        )
+
+
+@pytest.mark.github_actions
+def test_quantile_based_categorical_enrichment_nan_handling():
+    adata = _make_quantile_enrichment_adata()
+    adata.obs.loc[adata.obs.index[0], "label"] = np.nan
+    with pytest.raises(ValueError):
+        compute_quantile_based_categorical_enrichment(adata, colnames="label", result_filters={"n_archetypes": 2})
+    res = compute_quantile_based_categorical_enrichment(
+        adata, colnames="label", ignore_nans=True, min_category_count=1, result_filters={"n_archetypes": 2}
+    )
+    assert res.shape[0] == 4
+
+
+@pytest.mark.github_actions
+def test_quantile_based_categorical_enrichment_type_validation():
+    adata = _make_quantile_enrichment_adata()
+    with pytest.raises(TypeError):
+        compute_quantile_based_categorical_enrichment(adata, colnames="score", result_filters={"n_archetypes": 2})
+
+
+@pytest.mark.github_actions
+def test_quantile_based_categorical_enrichment_bool_column():
+    adata = _make_quantile_enrichment_adata()
+    res = compute_quantile_based_categorical_enrichment(
+        adata,
+        colnames="is_A",
+        n_bins=10,
+        min_category_count=100,
+        result_filters={"n_archetypes": 2},
+    )
+    assert res.shape[0] == 4

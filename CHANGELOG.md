@@ -8,10 +8,15 @@ and this project adheres to [Semantic Versioning][].
 [keep a changelog]: https://keepachangelog.com/en/1.0.0/
 [semantic versioning]: https://semver.org/spec/v2.0.0.html
 
-## Unreleased
+## 0.1.0
 
 ### Added
 - Added optimizer aliases (`"PCHA"` for `"projected_gradients"` and `"FW"` for `"frank_wolfe"`) across the public API, including caching filters and documentation, plus regression tests to ensure both names yield identical results.
+- Added quantile-based continuous enrichment for gene expression and numeric `adata.obs` columns with ParTI-style binning, max-in-bin0 criteria, and optional NaN ignoring for obs columns.
+- Added quantile-based categorical enrichment for `adata.obs` labels with ParTI-style binning, max-in-bin0 filtering, hypergeometric over-representation testing, configurable background contrast, and minimum category count filtering.
+
+### Changed
+- Quantile-based continuous and categorical enrichment now report raw p-values without FDR correction.
 
 ## 0.0.6
 
