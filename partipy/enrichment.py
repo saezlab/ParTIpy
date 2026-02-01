@@ -75,7 +75,8 @@ def compute_archetype_weights(
     # Weight calculation
     euclidean_dist = cdist(X, Z)
     weights = np.exp(-(euclidean_dist**2) / (2 * length_scale**2))  # type: ignore[operator]
-    weights /= weights.sum(axis=1, keepdims=True)
+    weights /= weights.sum(axis=1, keepdims=True)  # weights per cell sum to 1
+    weights /= weights.sum(axis=0, keepdims=True)  # weights per archetype sum to 1
     weights = weights.astype(np.float32)
 
     if save_to_anndata:
@@ -350,7 +351,7 @@ def compute_meta_enrichment(
 
     elif mode == "continuous":
         metadata = np.asarray(metadata, dtype=float).reshape(-1, 1)
-        weights = weights / weights.sum(axis=1, keepdims=True)  # ensure weights sum to 1 for the archetypes
+        weights /= weights.sum(axis=1, keepdims=True)  # ensure weights sum to 1 for the archetypes
 
         # Compute weighted enrichment
         weighted_meta = np.einsum("ij,jk->ik", weights, metadata)
@@ -442,10 +443,8 @@ def compute_quantile_based_gene_enrichment(
             else:
                 gene_vec = np.asarray(gene_vec).ravel()
 
-            x0 = gene_vec[mask0]
-            x1 = gene_vec[mask_rest]
+            x0, x1 = gene_vec[mask0], gene_vec[mask_rest]
 
-            # effect sizes
             mean0, mean1 = float(np.mean(x0)), float(np.mean(x1))
             median0, median1 = float(np.median(x0)), float(np.median(x1))
 
