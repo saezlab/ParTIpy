@@ -372,7 +372,8 @@ def compute_quantile_based_gene_enrichment(
     alternative: Literal["two-sided", "greater", "less"] = "two-sided",
     require_max_in_bin0: bool = True,
     require_positive_effect: bool = True,
-):
+    verbose: bool = False,
+) -> pd.DataFrame:
     """
     Quantile-based distance-bin enrichment for genes
 
@@ -386,6 +387,21 @@ def compute_quantile_based_gene_enrichment(
       - BH-FDR correction,
       - optional ParTI-like "maximal in closest bin" criterion computed from binned medians,
       - optional positive-effect constraint (median_diff > 0 by default).
+
+    Parameters
+    ----------
+    verbose : bool, default False
+        If True, print progress and a short result summary.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per ``(arch_idx, gene)`` pair with the following columns:
+        ``arch_idx``, ``gene``, ``stat``, ``pval``, ``pval_adj``, ``mean_diff``,
+        ``median_diff``, ``mean_bin0``, ``mean_rest``, ``median_bin0``,
+        ``median_rest``, ``max_in_bin0``, ``pos_effect``, ``signif``, ``enriched``.
+        ``enriched`` is the final call after combining significance with any enabled
+        constraints (``require_max_in_bin0`` and/or ``require_positive_effect``).
     """
     # --- input validation / config resolution (your project-specific helpers) ---
     _validate_aa_config(adata=adata)
@@ -414,8 +430,19 @@ def compute_quantile_based_gene_enrichment(
 
     n_cells = adata.n_obs
     gene_names = list(adata.var.index)
+    n_archetypes = Z.shape[0]
 
-    for archetype_index in range(Z.shape[0]):
+    if verbose:
+        print(
+            "Running quantile-based gene enrichment with "
+            f"n_cells={n_cells}, n_genes={len(gene_names)}, n_archetypes={n_archetypes}, "
+            f"n_bins={n_bins}, test='{test}', p_adjust_scope='{p_adjust_scope}'."
+        )
+
+    for archetype_index in range(n_archetypes):
+        if verbose:
+            print(f"Processing archetype {archetype_index + 1}/{n_archetypes}.")
+
         d_vec = euclidean_dist[:, archetype_index]
 
         # ranks 0..n_cells-1 (ties broken by sort order)
@@ -514,6 +541,9 @@ def compute_quantile_based_gene_enrichment(
     enrichment_df = pd.DataFrame(enrichment_rows)
 
     # --- multiple testing correction ---
+    if verbose:
+        print(f"Applying BH-FDR correction with scope '{p_adjust_scope}'.")
+
     if p_adjust_scope == "global":
         _, pval_adj, _, _ = multipletests(enrichment_df["pval"].values, alpha=alpha, method="fdr_bh")
         enrichment_df["pval_adj"] = pval_adj
@@ -542,6 +572,12 @@ def compute_quantile_based_gene_enrichment(
     else:
         enrichment_df["enriched"] = enrichment_df["signif"]
 
+    if verbose:
+        n_tests = len(enrichment_df)
+        n_signif = int(enrichment_df["signif"].sum())
+        n_enriched = int(enrichment_df["enriched"].sum())
+        print(f"Finished: tested {n_tests} archetype-gene pairs, significant={n_signif}, enriched={n_enriched}.")
+
     return enrichment_df
 
 
@@ -557,6 +593,7 @@ def compute_quantile_based_continuous_enrichment(
     require_max_in_bin0: bool = True,
     require_positive_effect: bool = True,
     ignore_nans: bool = False,
+    verbose: bool = False,
 ):
     """
     Quantile-based distance-bin enrichment for continuous obs columns.
@@ -587,6 +624,8 @@ def compute_quantile_based_continuous_enrichment(
         Require ``median_bin0 > median_rest``.
     ignore_nans : bool, default False
         If True, drop NaNs per column before binning; otherwise raise.
+    verbose : bool, default False
+        If True, print progress and a short result summary.
 
     Returns
     -------
@@ -633,8 +672,19 @@ def compute_quantile_based_continuous_enrichment(
     euclidean_dist = cdist(X, Z)
 
     enrichment_rows: list[dict[str, Any]] = []
+    n_archetypes = Z.shape[0]
 
-    for archetype_index in range(Z.shape[0]):
+    if verbose:
+        print(
+            "Running quantile-based continuous enrichment with "
+            f"n_archetypes={n_archetypes}, n_columns={len(col_list)}, n_bins={n_bins}, "
+            f"test='{test}', alpha={alpha:.3f}, alternative='{alternative}'."
+        )
+
+    for archetype_index in range(n_archetypes):
+        if verbose:
+            print(f"Processing archetype {archetype_index + 1}/{n_archetypes}.")
+
         d_vec_full = euclidean_dist[:, archetype_index]
 
         for col in col_list:
@@ -646,6 +696,9 @@ def compute_quantile_based_continuous_enrichment(
                 valid_mask = ~np.isnan(obs_vec_full)
                 d_vec = d_vec_full[valid_mask]
                 obs_vec = obs_vec_full[valid_mask]
+                if verbose:
+                    n_dropped = int((~valid_mask).sum())
+                    print(f"  Column '{col}': dropped {n_dropped} NaN cells; using {d_vec.shape[0]} cells for testing.")
             else:
                 d_vec = d_vec_full
                 obs_vec = obs_vec_full
@@ -745,7 +798,15 @@ def compute_quantile_based_continuous_enrichment(
                 }
             )
 
-    return pd.DataFrame(enrichment_rows)
+    enrichment_df = pd.DataFrame(enrichment_rows)
+
+    if verbose:
+        n_tests = len(enrichment_df)
+        n_signif = int(enrichment_df["signif"].sum())
+        n_enriched = int(enrichment_df["enriched"].sum())
+        print(f"Finished: tested {n_tests} archetype-column pairs, significant={n_signif}, enriched={n_enriched}.")
+
+    return enrichment_df
 
 
 def compute_quantile_based_categorical_enrichment(
@@ -760,6 +821,7 @@ def compute_quantile_based_categorical_enrichment(
     require_max_in_bin0: bool = True,
     min_category_count: int = 100,
     ignore_nans: bool = False,
+    verbose: bool = False,
 ):
     """
     Quantile-based distance-bin enrichment for categorical obs columns.
@@ -794,6 +856,8 @@ def compute_quantile_based_categorical_enrichment(
         Minimum global count required for a category to be tested.
     ignore_nans : bool, default False
         If True, drop NaNs per column before binning; otherwise raise.
+    verbose : bool, default False
+        If True, print progress and a short result summary.
 
     Returns
     -------
@@ -851,8 +915,19 @@ def compute_quantile_based_categorical_enrichment(
     euclidean_dist = cdist(X, Z)
 
     enrichment_rows: list[dict[str, Any]] = []
+    n_archetypes = Z.shape[0]
 
-    for archetype_index in range(Z.shape[0]):
+    if verbose:
+        print(
+            "Running quantile-based categorical enrichment with "
+            f"n_archetypes={n_archetypes}, n_columns={len(col_list)}, n_bins={n_bins}, "
+            f"contrast='{contrast}', min_category_count={min_category_count}."
+        )
+
+    for archetype_index in range(n_archetypes):
+        if verbose:
+            print(f"Processing archetype {archetype_index + 1}/{n_archetypes}.")
+
         d_vec_full = euclidean_dist[:, archetype_index]
 
         for col in col_list:
@@ -866,6 +941,9 @@ def compute_quantile_based_categorical_enrichment(
                 valid_mask = ~na_mask
                 d_vec = d_vec_full[valid_mask]
                 obs_vec = obs_vec_full[valid_mask]
+                if verbose:
+                    n_dropped = int((~valid_mask).sum())
+                    print(f"  Column '{col}': dropped {n_dropped} NaN cells; using {d_vec.shape[0]} cells for testing.")
             else:
                 d_vec = d_vec_full
                 obs_vec = obs_vec_full
@@ -902,6 +980,8 @@ def compute_quantile_based_categorical_enrichment(
             eligible_categories = [cat for cat in categories if global_counts.get(cat, 0) >= min_category_count]
             if not eligible_categories:
                 raise ValueError(f"No categories in {col} meet min_category_count={min_category_count}.")
+            if verbose:
+                print(f"  Column '{col}': testing {len(eligible_categories)} eligible categories.")
 
             for cat in eligible_categories:
                 k_total = int(global_counts.get(cat, 0))
@@ -961,4 +1041,14 @@ def compute_quantile_based_categorical_enrichment(
                     }
                 )
 
-    return pd.DataFrame(enrichment_rows)
+    enrichment_df = pd.DataFrame(enrichment_rows)
+
+    if verbose:
+        n_tests = len(enrichment_df)
+        n_signif = int(enrichment_df["signif"].sum())
+        n_enriched = int(enrichment_df["enriched"].sum())
+        print(
+            f"Finished: tested {n_tests} archetype-column-category rows, significant={n_signif}, enriched={n_enriched}."
+        )
+
+    return enrichment_df
