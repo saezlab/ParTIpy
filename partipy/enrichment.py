@@ -364,6 +364,7 @@ def compute_meta_enrichment(
 def compute_quantile_based_gene_enrichment(
     adata: anndata.AnnData,
     result_filters: Mapping[str, Any] | None = None,
+    layer: str = "X",
     n_bins: int = 10,
     test: Literal["ttest", "wilcox"] = "wilcox",
     *,
@@ -371,6 +372,7 @@ def compute_quantile_based_gene_enrichment(
     p_adjust_scope: Literal["global", "per_archetype"] = "per_archetype",
     alternative: Literal["two-sided", "greater", "less"] = "two-sided",
     require_max_in_bin0: bool = True,
+    max_in_bin0_stat: Literal["mean", "median"] = "mean",
     require_positive_effect: bool = True,
     verbose: bool = False,
 ) -> pd.DataFrame:
@@ -385,11 +387,15 @@ def compute_quantile_based_gene_enrichment(
     with:
       - per-gene Mann–Whitney U (Wilcoxon rank-sum) or Welch t-test,
       - BH-FDR correction,
-      - optional ParTI-like "maximal in closest bin" criterion computed from binned medians,
+      - optional ParTI-like "maximal in closest bin" criterion computed from binned mean/median,
       - optional positive-effect constraint (median_diff > 0 by default).
 
     Parameters
     ----------
+    layer : str, default "X"
+        Expression source. Use "X" for ``adata.X`` or provide a key from ``adata.layers``.
+    max_in_bin0_stat : {"mean", "median"}, default "mean"
+        Statistic used to determine whether bin 0 is the unique maximum.
     verbose : bool, default False
         If True, print progress and a short result summary.
 
@@ -413,6 +419,9 @@ def compute_quantile_based_gene_enrichment(
     if alternative not in ("two-sided", "greater", "less"):
         raise ValueError(f"Unsupported alternative: {alternative}")
 
+    if max_in_bin0_stat not in ("mean", "median"):
+        raise ValueError(f"Unsupported max_in_bin0_stat: {max_in_bin0_stat}")
+
     config, payload = _resolve_aa_result(adata, result_filters=result_filters)
 
     obsm_key = config.obsm_key
@@ -422,6 +431,13 @@ def compute_quantile_based_gene_enrichment(
     Z = payload.get("Z")
     if Z is None:
         raise ValueError("Matched AA payload does not contain 'Z'.")
+
+    if layer == "X":
+        expr = adata.X
+    elif layer in adata.layers:
+        expr = adata.layers[layer]
+    else:
+        raise ValueError(f"Invalid layer: {layer}")
 
     # distances: (n_cells, n_archetypes)
     euclidean_dist = cdist(X, Z)
@@ -436,7 +452,7 @@ def compute_quantile_based_gene_enrichment(
         print(
             "Running quantile-based gene enrichment with "
             f"n_cells={n_cells}, n_genes={len(gene_names)}, n_archetypes={n_archetypes}, "
-            f"n_bins={n_bins}, test='{test}', p_adjust_scope='{p_adjust_scope}'."
+            f"n_bins={n_bins}, test='{test}', p_adjust_scope='{p_adjust_scope}', layer='{layer}'."
         )
 
     for archetype_index in range(n_archetypes):
@@ -462,13 +478,12 @@ def compute_quantile_based_gene_enrichment(
                 f"n0={mask0.sum()}, n1={mask_rest.sum()}."
             )
 
-        for gene in gene_names:
+        for gene_idx, gene in enumerate(gene_names):
             # extract gene vector (n_cells,)
-            gene_vec = adata[:, gene].X
-            if sp.issparse(gene_vec):
-                gene_vec = np.asarray(gene_vec.todense()).ravel()
+            if sp.issparse(expr):
+                gene_vec = np.asarray(expr[:, gene_idx].todense()).ravel()
             else:
-                gene_vec = np.asarray(gene_vec).ravel()
+                gene_vec = np.asarray(expr[:, gene_idx]).ravel()
 
             x0, x1 = gene_vec[mask0], gene_vec[mask_rest]
 
@@ -478,17 +493,22 @@ def compute_quantile_based_gene_enrichment(
             mean_diff = mean0 - mean1
             median_diff = median0 - median1
 
-            # ParTI-like "maximal in closest bin" criterion based on binned medians
+            # ParTI-like "maximal in closest bin" criterion based on binned stats
             # (matches the spirit of ContinuousEnrichment.m)
             max_in_bin0 = True
             if require_max_in_bin0:
-                binned_medians = np.empty(n_bins, dtype=float)
+                binned_stats = np.empty(n_bins, dtype=float)
                 for b in range(n_bins):
                     xb = gene_vec[bin_id == b]
                     # with equal-size bins, xb should be non-empty; still be robust:
-                    binned_medians[b] = np.median(xb) if xb.size else -np.inf
-                # True iff the (first) maximum is at bin 0
-                max_in_bin0 = int(np.nanargmax(binned_medians) == 0) == 1
+                    if xb.size:
+                        binned_stats[b] = float(np.mean(xb)) if max_in_bin0_stat == "mean" else float(np.median(xb))
+                    else:
+                        binned_stats[b] = -np.inf
+                # True iff bin 0 is the unique maximum
+                max_val = np.nanmax(binned_stats)
+                is_max = binned_stats == max_val
+                max_in_bin0 = bool(is_max[0] and np.sum(is_max) == 1)
 
             # optional positive-effect constraint
             pos_effect = True
@@ -591,6 +611,7 @@ def compute_quantile_based_continuous_enrichment(
     alpha: float = 0.10,
     alternative: Literal["two-sided", "greater", "less"] = "two-sided",
     require_max_in_bin0: bool = True,
+    max_in_bin0_stat: Literal["mean", "median"] = "mean",
     require_positive_effect: bool = True,
     ignore_nans: bool = False,
     verbose: bool = False,
@@ -619,7 +640,9 @@ def compute_quantile_based_continuous_enrichment(
     alternative : {"two-sided", "greater", "less"}, default "two-sided"
         Alternative hypothesis for the selected test.
     require_max_in_bin0 : bool, default True
-        Require the bin-wise median to be maximal in the closest bin.
+        Require the bin-wise statistic to be maximal in the closest bin.
+    max_in_bin0_stat : {"mean", "median"}, default "mean"
+        Statistic used to determine whether bin 0 is the unique maximum.
     require_positive_effect : bool, default True
         Require ``median_bin0 > median_rest``.
     ignore_nans : bool, default False
@@ -644,6 +667,9 @@ def compute_quantile_based_continuous_enrichment(
 
     if alternative not in ("two-sided", "greater", "less"):
         raise ValueError(f"Unsupported alternative: {alternative}")
+
+    if max_in_bin0_stat not in ("mean", "median"):
+        raise ValueError(f"Unsupported max_in_bin0_stat: {max_in_bin0_stat}")
 
     if isinstance(colnames, str):
         col_list = [colnames]
@@ -735,14 +761,19 @@ def compute_quantile_based_continuous_enrichment(
             mean_diff = mean0 - mean1
             median_diff = median0 - median1
 
-            # ParTI-like "maximal in closest bin" criterion based on binned medians
+            # ParTI-like "maximal in closest bin" criterion based on binned stats
             max_in_bin0 = True
             if require_max_in_bin0:
-                binned_medians = np.empty(n_bins, dtype=float)
+                binned_stats = np.empty(n_bins, dtype=float)
                 for b in range(n_bins):
                     xb = obs_vec[bin_id == b]
-                    binned_medians[b] = np.median(xb) if xb.size else -np.inf
-                max_in_bin0 = int(np.nanargmax(binned_medians) == 0) == 1
+                    if xb.size:
+                        binned_stats[b] = float(np.mean(xb)) if max_in_bin0_stat == "mean" else float(np.median(xb))
+                    else:
+                        binned_stats[b] = -np.inf
+                max_val = np.nanmax(binned_stats)
+                is_max = binned_stats == max_val
+                max_in_bin0 = bool(is_max[0] and np.sum(is_max) == 1)
 
             # optional positive-effect constraint
             pos_effect = True
@@ -1000,7 +1031,9 @@ def compute_quantile_based_categorical_enrichment(
                         k_b = int((obs_vec[bmask] == cat).sum())
                         freq_b = k_b / n_b
                         binned_enrichment[b] = freq_b / global_freq if global_freq > 0 else -np.inf
-                    max_in_bin0 = int(np.nanargmax(binned_enrichment) == 0) == 1
+                    max_val = np.nanmax(binned_enrichment)
+                    is_max = binned_enrichment == max_val
+                    max_in_bin0 = bool(is_max[0] and np.sum(is_max) == 1)
 
                 k_bin0 = int((obs_vec[mask0] == cat).sum())
                 n_bin0 = int(mask0.sum())

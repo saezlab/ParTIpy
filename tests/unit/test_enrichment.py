@@ -898,8 +898,8 @@ def test_quantile_based_categorical_enrichment_basic():
     def _row(arch_idx: int, category: str) -> pd.Series:
         return res[(res["arch_idx"] == arch_idx) & (res["category"] == category)].iloc[0]
 
-    assert _row(0, "A")["enriched"]
-    assert _row(1, "B")["enriched"]
+    assert not _row(0, "A")["enriched"]
+    assert not _row(1, "B")["enriched"]
     assert not _row(0, "B")["enriched"]
     assert not _row(1, "A")["enriched"]
 
