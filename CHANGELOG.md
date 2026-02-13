@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning][].
 [keep a changelog]: https://keepachangelog.com/en/1.0.0/
 [semantic versioning]: https://semver.org/spec/v2.0.0.html
 
+## Unreleased
+
+### Added
+- ParTI-style quantile-based distance-ranking enrichment methods are now part of `partipy`, see for example `pt.compute_quantile_based_gene_enrichment`.
+
 ## 0.1.0
 
 ### Added
