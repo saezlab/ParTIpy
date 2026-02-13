@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning][].
 
 ## Unreleased
 
+## 0.2.0
+
 ### Added
 - ParTI-style quantile-based distance-ranking enrichment methods are now part of `partipy`, see for example `pt.compute_quantile_based_gene_enrichment`.
 
