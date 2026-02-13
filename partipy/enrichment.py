@@ -180,6 +180,8 @@ def extract_enriched_processes(
         Each DataFrame has the following columns:
         - "Process": Name of the biological process.
         - "{archetype indices}": Enrichment score for that process.
+        - "act_{archetype indices}": Duplicate enrichment score columns for future compatibility.
+        - "pval_{archetype indices}": P-values corresponding to each enrichment score.
         - "specificity": A score indicating how uniquely enriched the process is in the given archetype.
     """
     # Validate input
@@ -198,15 +200,22 @@ def extract_enriched_processes(
 
         # compute specificity score
         top_processes = est[significant_processes].T
-        arch_z_score = top_processes[[str(arch_idx)]].values
-        other_z_scores = top_processes[[c for c in top_processes.columns if c != str(arch_idx)]].values
+        top_processes_pval = pval[significant_processes].T
+        archetype_column = est.index[arch_idx]
+        archetype_columns = top_processes.columns.to_list()
+
+        arch_z_score = top_processes[[archetype_column]].values
+        other_z_scores = top_processes[[c for c in top_processes.columns if c != archetype_column]].values
         top_processes["specificity"] = (arch_z_score - other_z_scores).min(axis=1)
+        for col in archetype_columns:
+            top_processes[f"act_{col}"] = top_processes[col]
+            top_processes[f"pval_{col}"] = top_processes_pval[col]
 
         # filter
         if order == "desc":
-            top_processes = top_processes.nlargest(n=n, columns=f"{arch_idx}").reset_index(names="Process")
+            top_processes = top_processes.nlargest(n=n, columns=archetype_column).reset_index(names="Process")
         else:
-            top_processes = top_processes.nsmallest(n=n, columns=f"{arch_idx}").reset_index(names="Process")
+            top_processes = top_processes.nsmallest(n=n, columns=archetype_column).reset_index(names="Process")
 
         results[arch_idx] = top_processes
 
@@ -248,6 +257,8 @@ def extract_specific_processes(
         specific to that archetype. Each DataFrame includes:
         - "Process": Name of the biological process.
         - "{archetype indices}": Enrichment score in the given archetype.
+        - "act_{archetype indices}": Duplicate enrichment score columns for future compatibility.
+        - "pval_{archetype indices}": P-values corresponding to each enrichment score.
         - "specificity": Score indicating how uniquely enriched the process is compared to other archetypes.
     """
     # Validate input
@@ -263,9 +274,16 @@ def extract_specific_processes(
 
         # compute specificity score
         top_processes = est[significant_processes].T
-        arch_z_score = top_processes[[str(arch_idx)]].values
-        other_z_scores = top_processes[[c for c in top_processes.columns if c != str(arch_idx)]].values
+        top_processes_pval = pval[significant_processes].T
+        archetype_column = est.index[arch_idx]
+        archetype_columns = top_processes.columns.to_list()
+
+        arch_z_score = top_processes[[archetype_column]].values
+        other_z_scores = top_processes[[c for c in top_processes.columns if c != archetype_column]].values
         top_processes["specificity"] = (arch_z_score - other_z_scores).min(axis=1)
+        for col in archetype_columns:
+            top_processes[f"act_{col}"] = top_processes[col]
+            top_processes[f"pval_{col}"] = top_processes_pval[col]
         top_processes = top_processes.nlargest(n=n, columns="specificity").reset_index(names="Process")
 
         results[arch_idx] = top_processes.copy()

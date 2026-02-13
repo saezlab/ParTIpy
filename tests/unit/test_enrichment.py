@@ -299,7 +299,7 @@ def test_extract_enriched_processes_shape():
 
     Verifies:
     - Output is a dictionary with one DataFrame per archetype
-    - Each DataFrame has shape (n_process, n_archetypes+2)
+    - Each DataFrame has shape (n_process, 3*n_archetypes+2)
     """
     # Setup: 2 archetypes, 3 processes
     est = pd.DataFrame(
@@ -324,8 +324,10 @@ def test_extract_enriched_processes_shape():
     assert isinstance(result, dict), "Result should be a dictionary of DataFrames"
     assert len(result) == 2, "Expected one result per archetype (2 total)"
 
-    assert result[0].shape == (3, 4), "Did not return expected shape for A0"
-    assert result[1].shape == (3, 4), "Did not return expected shape for A1"
+    assert result[0].shape == (3, 8), "Did not return expected shape for A0"
+    assert result[1].shape == (3, 8), "Did not return expected shape for A1"
+    assert {"act_0", "act_1", "pval_0", "pval_1"}.issubset(result[0].columns), "Missing expected output columns for A0"
+    assert {"act_0", "act_1", "pval_0", "pval_1"}.issubset(result[1].columns), "Missing expected output columns for A1"
 
 
 @pytest.mark.github_actions
@@ -360,9 +362,17 @@ def test_extract_enriched_processes_order():
     # Archetype 0
     assert result_desc[0].iloc[0]["Process"] == "ProcessA", "Process not as expected for descending order, A0"
     assert result_desc[0].iloc[0]["0"] == 1.5, "Enrichment score not as expected for descending order, A0"
+    assert result_desc[0].iloc[0]["act_0"] == 1.5, (
+        "Duplicated enrichment score not as expected for descending order, A0"
+    )
+    assert result_desc[0].iloc[0]["pval_0"] == 0.01, "P-value not as expected for descending order, A0"
     # Archetype 1
     assert result_desc[1].iloc[0]["Process"] == "ProcessB", "Process not as expected for descending order, A1"
     assert result_desc[1].iloc[0]["1"] == 1.2, "Enrichment score not as expected for descending order, A1"
+    assert result_desc[1].iloc[0]["act_1"] == 1.2, (
+        "Duplicated enrichment score not as expected for descending order, A1"
+    )
+    assert result_desc[1].iloc[0]["pval_1"] == 0.04, "P-value not as expected for descending order, A1"
 
     # Ascending: least enriched processes first
     # Archetype 0
@@ -401,13 +411,13 @@ def test_extract_enriched_processes_pvalue_filtering():
     result = extract_enriched_processes(est, pval, order="desc", p_threshold=0.05)
 
     # Archetype 0: ProcessC filtered out (p=0.2)
-    assert result[0].shape == (2, 4), "Expected 2 enriched processes for Archetype 0"
+    assert result[0].shape == (2, 8), "Expected 2 enriched processes for Archetype 0"
     assert set(result[0]["Process"]) == {"ProcessA", "ProcessB"}, (
         "Expected only 'ProcessA' and 'ProcessB' to remain for Archetype 0"
     )
 
     # Archetype 1: ProcessB filtered out (p=0.4)
-    assert result[1].shape == (2, 4), "Expected 2 enriched processes for Archetype 1"
+    assert result[1].shape == (2, 8), "Expected 2 enriched processes for Archetype 1"
     assert set(result[1]["Process"]) == {"ProcessA", "ProcessC"}, (
         "Expected only 'ProcessA' and 'ProcessC' to remain for Archetype 1"
     )
@@ -505,7 +515,7 @@ def test_extract_specific_processes_shape():
 
     Verifies:
     - Output is a dictionary with one DataFrame per archetype
-    - Each DataFrame has shape (n_process, n_archetypes+2)
+    - Each DataFrame has shape (n_process, 3*n_archetypes+2)
     """
     # Setup: 2 archetypes, 3 processes
     est = pd.DataFrame(
@@ -530,8 +540,10 @@ def test_extract_specific_processes_shape():
     assert isinstance(result, dict), "Result should be a dictionary of DataFrames"
     assert len(result) == 2, "Expected one result per archetype (2 total)"
 
-    assert result[0].shape == (3, 4), "Did not return expected shape for A0"
-    assert result[1].shape == (3, 4), "Did not return expected shape for A1"
+    assert result[0].shape == (3, 8), "Did not return expected shape for A0"
+    assert result[1].shape == (3, 8), "Did not return expected shape for A1"
+    assert {"act_0", "act_1", "pval_0", "pval_1"}.issubset(result[0].columns), "Missing expected output columns for A0"
+    assert {"act_0", "act_1", "pval_0", "pval_1"}.issubset(result[1].columns), "Missing expected output columns for A1"
 
 
 @pytest.mark.github_actions
@@ -562,13 +574,13 @@ def test_extract_specific_processes_pvalue_filtering():
     result = extract_specific_processes(est, pval, p_threshold=0.05)
 
     # Archetype 0: ProcessC filtered out (p=0.2)
-    assert result[0].shape == (2, 4), "Expected 2 enriched processes for Archetype 0"
+    assert result[0].shape == (2, 8), "Expected 2 enriched processes for Archetype 0"
     assert set(result[0]["Process"]) == {"ProcessA", "ProcessB"}, (
         "Expected only 'ProcessA' and 'ProcessB' to remain for Archetype 0"
     )
 
     # Archetype 1: ProcessB filtered out (p=0.4)
-    assert result[1].shape == (2, 4), "Expected 2 enriched processes for Archetype 1"
+    assert result[1].shape == (2, 8), "Expected 2 enriched processes for Archetype 1"
     assert set(result[1]["Process"]) == {"ProcessA", "ProcessC"}, (
         "Expected only 'ProcessA' and 'ProcessC' to remain for Archetype 1"
     )
@@ -615,6 +627,9 @@ def test_extract_specific_processes_specificity():
     # 0.8−1.5=-0.7
     # 2.0−3.0=-1.0
     assert np.allclose(result[2]["specificity"], [0.5, -0.7, -1.0]), "Unexpected specificity for A2"
+    assert np.allclose(result[0]["act_0"], result[0]["0"]), "act_0 should duplicate enrichment scores for A0"
+    assert np.allclose(result[1]["act_1"], result[1]["1"]), "act_1 should duplicate enrichment scores for A1"
+    assert np.allclose(result[2]["pval_2"], [0.01, 0.01, 0.01]), "Unexpected p-values for A2"
 
 
 @pytest.mark.github_actions

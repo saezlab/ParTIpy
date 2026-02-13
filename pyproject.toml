@@ -42,6 +42,7 @@ optional-dependencies.extra = [
   "squidpy", # required to spatial analyses
   "liana", # required for crosstalk networks
   "networkx", # required for crosstalk networks
+  "harmonypy", # required for integration of cross-condition data
 ]
 optional-dependencies.dev = [
   "ruff",
@@ -130,7 +131,7 @@ matrix.deps.env-vars = [
 line-length = 120 # more generous that standard 79
 src = ["partipy"]
 # for now we will exclude the jupyter notebooks!
-exclude = ["*.ipynb", "docs/source/conf.py"]
+exclude = ["docs/source/conf.py"]
 format.docstring-code-format = true
 lint.select = [
   "B",      # flake8-bugbear
