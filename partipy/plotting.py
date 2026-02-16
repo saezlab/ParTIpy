@@ -50,11 +50,13 @@ def generate_distinct_colors(n: int) -> list[str]:
 
 def _config_to_filters(cfg: ArchetypeConfig) -> dict[str, Any]:
     """Convert an `ArchetypeConfig` into filters usable by the AA getter utilities."""
-    filters = cfg.model_dump()
+    # `optim_kwargs` is stored as a frozen tuple in ArchetypeConfig for hashability.
+    # Use warnings=False to avoid user-facing pydantic serializer warnings, then normalize below.
+    filters = cfg.model_dump(mode="python", warnings=False)
     optim_kwargs = filters.get("optim_kwargs")
     if isinstance(optim_kwargs, Mapping):
         filters["optim_kwargs"] = dict(optim_kwargs)
-    elif isinstance(optim_kwargs, tuple):
+    elif isinstance(optim_kwargs, (tuple, list)):
         filters["optim_kwargs"] = dict(optim_kwargs)
     return filters
 

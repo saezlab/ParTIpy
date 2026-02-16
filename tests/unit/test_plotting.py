@@ -10,6 +10,7 @@ import plotnine as pn
 import pytest
 import scanpy as sc
 from partipy.plotting import (
+    _config_to_filters,
     barplot_enrichment_comparison,
     barplot_functional_enrichment,
     barplot_meta_enrichment,
@@ -120,6 +121,16 @@ def test_plot_bootstrap_3D(mock_adata=mock_adata):
 def test_plot_bootstrap_variance(mock_adata=mock_adata):
     p = plot_bootstrap_variance(mock_adata)
     assert isinstance(p, pn.ggplot), "Expected a plotnine ggplot object"
+
+
+@pytest.mark.github_actions
+def test_config_to_filters_avoids_pydantic_optim_kwargs_warning(mock_adata=mock_adata):
+    cfg = next(iter(mock_adata.uns["AA_results"]))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        filters = _config_to_filters(cfg)
+    assert isinstance(filters.get("optim_kwargs"), dict)
+    assert not any("PydanticSerializationUnexpectedValue" in str(w.message) for w in caught)
 
 
 ### plot_IC ###
