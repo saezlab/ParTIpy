@@ -4,7 +4,7 @@
 
 archetypal_analysis
 quickstart
-cross_condition_lupus
+cross_condition_fibroblast
 spatial
 crosstalk
 data_access
