@@ -130,8 +130,8 @@ matrix.deps.env-vars = [
 [tool.ruff]
 line-length = 120 # more generous that standard 79
 src = ["partipy"]
-# for now we will exclude the jupyter notebooks!
-exclude = ["docs/source/conf.py"]
+# we can use exlude such that ruff does not consider the files and file types
+# exclude = ["docs/source/conf.py"]
 format.docstring-code-format = true
 lint.select = [
   "B",      # flake8-bugbear
