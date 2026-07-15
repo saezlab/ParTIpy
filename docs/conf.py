@@ -101,6 +101,7 @@ exclude_patterns = [
     ".DS_Store",
     "**.ipynb_checkpoints",
     "notebooks/cross_condition_lupus.ipynb",  # for now we do not want to include this in the doucmentation
+    "notebooks/scheme.ipynb",  # figure-generation notebook, not part of the published tutorials
 ]
 
 
@@ -130,6 +131,7 @@ nitpick_ignore = [
     ("py:class", "plotnine.ggplot.ggplot"),
     ("py:class", "plotly.graph_objs._figure.Figure"),
     ("py:class", "pandas.core.frame.DataFrame"),
+    ("py:class", "anndata._core.anndata.AnnData"),
     ("py:data", "partipy.schema.INIT_ALGS"),
     ("py:data", "partipy.schema.OPTIM_ALGS"),
     ("py:data", "partipy.schema.WEIGHT_ALGS"),
